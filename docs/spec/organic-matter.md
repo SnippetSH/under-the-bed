@@ -2,12 +2,15 @@
 
 - 상태: 승인 (2026-11-18)
 - M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), [soil-temperature](soil-temperature.md), [nitrogen](nitrogen.md)
 
 > **M2 변경 (2026-11-18 승인)**: `O2계수 = organic_matter.o2_curve(aeration_index)` ([aeration](aeration.md)). 퇴비의 K·Ca·Mg·P·S와 직접 산 효과는 [soil-chemistry](soil-chemistry.md) "투입".
 
 > **M3 변경 (2026-11-18 승인)**: 무기화로 생기는 NH4+는 총량과 **용액 상태**(`nh4_solution_N_g_per_m2`)에 함께 더해요. 부동화로 NH4+ 총량이 줄면 용액도 같은 비율로 줄여요(비례 차감). 퇴비 투입의 Mn·K·Ca·Mg도 총량과 용액에 함께 들어가요. 규칙 표는 [cation-exchange](cation-exchange.md) "다른 프로세스와의 연결", 개요는 [m3-overview](m3-overview.md).
+
+> **M4 변경 (2026-11-18 승인)**: 작물의 **낙엽**과, 낙과·적화·적과·저온 피해로 잃은 **과실·꽃**의 C·N(과 다른 양분)이 뿌리 고사와 같은 규칙으로 **이분해성 풀**(`labile_C`, `labile_N`)에 들어가요. C는 장부 `C_leaf_litter_g`에 기록해요(언 과실의 C도 포함). 토양 C 보존식은 `유기 C = 초기 + C_in + C_root_litter + C_leaf_litter − C_respired`예요. 규칙은 [strawberry-fruit](strawberry-fruit.md) "낙엽", 개요는 [m4-overview](m4-overview.md).
 
 ## 목적
 
@@ -104,7 +107,7 @@ respired_C = dC − humified_C        → 장부 C_respired_g, 발열 (soil-temp
 ## 보존·불변 조건
 
 - 질소: 유기물 분해는 질소를 풀 사이에서만 옮겨요. 셀의 (유기 N + 무기 N) 합은 분해 단계 전후로 변하지 않아요.
-- 탄소: `유기 C 합 = 초기 + C_in − C_respired`
+- 탄소: `유기 C 합 = 초기 + C_in − C_respired` (M4, 2026-11-18: 작물이 돌려주는 `+ C_root_litter + C_leaf_litter` 항이 더해져요. 분해 단계 자체가 만드는 항은 아니에요)
 - 모든 풀 ≥ 0. 부동화로 NH4+, NO3-가 음수가 되지 않아요.
 
 ## 테스트 (단위)
@@ -120,5 +123,5 @@ respired_C = dC − humified_C        → 장부 C_respired_g, 발열 (soil-temp
 ## 단순화와 비목표
 
 - 리그닌·셀룰로오스 같은 세부 분획 없음 (두 풀로 단순화)
-- 미숙 퇴비의 암모니아 휘산(기체 손실)은 M1에서 없음. 필요하면 M4의 기체 손실 항과 함께 다뤄요
+- 미숙 퇴비의 암모니아 휘산(기체 손실)은 없어요. M4의 기체 손실은 탈질([denitrification](denitrification.md))뿐이에요(2026-11-18). 휘산이 필요하면 M7 가스 장해와 함께 다뤄요
 - 분해균 개체군(M5)이 생기면 `분해균계수`가 1이 아닌 값이 돼요

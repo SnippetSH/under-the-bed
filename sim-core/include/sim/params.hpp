@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -9,18 +10,125 @@
 namespace sim {
 
 // 코어가 이해하는 파라미터 스키마 버전. data/params.toml의 schema_version과 같아야 해요.
-inline constexpr std::int64_t kParamsSchemaVersion = 4;
+inline constexpr std::int64_t kParamsSchemaVersion = 5;
 
 // 값은 전부 data/params.toml에서 와요 (코드에 기본값을 두지 않아요).
 // 각 항목의 의미와 방향은 docs/spec/의 해당 명세를 따라요.
 
-// docs/spec/soil-temperature.md
+// docs/spec/house-climate.md (M4: 다중 피복·측창·난방·CO2. M1 계수 3개는 삭제)
 struct HouseParams {
-    double base_offset_degC = 0.0;
-    double solar_gain_degC_per_W_per_m2 = 0.0;
-    double solar_transmittance_factor = 0.0;  // soil-water와 공유
+    double layer_transmittance_factor = 0.0;       // 피복 한 겹의 일사 투과율
+    double layer_resistance_m2K_per_W = 0.0;       // 피복 한 겹(+ 공기층)의 단열 저항
+    double infiltration_W_per_m2_per_K = 0.0;      // 창을 닫아도 새는 열
+    double window_bypass_fraction = 0.0;           // 완전히 열린 창 하나가 그 겹의 단열을 없애는 비율 (개방률에 비례)
+    std::vector<double> window_open_levels;        // 허용 개방률 (0부터 엄격 오름차순, 0~1. 디렉터 결정: 0, 0.3, 0.5, 0.7, 1.0)
+    double vent_conductance_W_per_m2_per_K = 0.0;  // 모든 겹 양쪽이 열렸을 때 환기 열 교환
+    double solar_heat_gain_fraction = 0.0;         // 투과 일사 중 기온을 올리는 몫
+    double ground_heat_W_per_m2 = 0.0;             // 지중 열 등 기본 열 유입
+    double air_relax_rate_per_hour = 0.0;          // 열 관성
+    double heater_capacity_W_per_m2 = 0.0;
+    double heater_setpoint_min_degC = 0.0;  // SetHeater 설정 온도 허용 범위 (enqueue 검증)
+    double heater_setpoint_max_degC = 0.0;
+    double temp_mean_relax_rate_per_hour = 0.0;    // 기온 이동 평균 (strawberry-phenology)
+    std::array<std::int64_t, 2> cover_change_window_doy{};  // 피복 겹수 변경 가능 기간 [시작, 끝] day_of_year
+    std::int64_t min_cover_layers = 0;
+    std::int64_t max_cover_layers = 0;
+    // CO2
+    std::vector<double> outside_co2_ppm_by_hour;  // 0~23시, 24개
+    double air_volume_m3_per_m2 = 0.0;
+    double co2_mg_per_m3_per_ppm = 0.0;
+    double infiltration_air_changes_per_hour = 0.0;
+    double vent_air_changes_per_hour = 0.0;
+    double co2_floor_ppm = 0.0;
 
     bool operator==(const HouseParams&) const = default;
+};
+
+// docs/spec/strawberry-phenology.md "낮 길이"
+struct CalendarParams {
+    PiecewiseLinear day_length_curve;  // x = day_of_year, y = 낮 길이 h
+
+    bool operator==(const CalendarParams&) const = default;
+};
+
+// docs/spec/strawberry-phenology.md
+struct PhenologyParams {
+    double establishment_rate_per_hour = 0.0;
+    PiecewiseLinear establishment_temp_curve;    // x = 하우스 기온 °C
+    PiecewiseLinear establishment_growth_curve;  // x = 활착 정도, y = 생장·흡수 배율
+    double induction_rate_per_hour = 0.0;
+    PiecewiseLinear induction_day_length_curve;  // x = 낮 길이 h
+    PiecewiseLinear induction_temp_curve;        // x = 하우스 기온 °C
+    PiecewiseLinear induction_nitrogen_curve;    // x = 체내 N / N 요구량
+    double truss_base_temp_degC = 0.0;
+    double truss_degree_days_to_anthesis = 0.0;
+    PiecewiseLinear flowers_per_truss_curve;  // x = 포기당 관부 g, y = 포기당 꽃 수
+
+    bool operator==(const PhenologyParams&) const = default;
+};
+
+// docs/spec/strawberry-phenology.md "모종 등급" (ADR-0006)
+struct SeedlingGradeDef {
+    std::string id;
+    double leaf_g_per_plant = 0.0;
+    double crown_g_per_plant = 0.0;
+    double root_g_per_plant = 0.0;
+    double initial_induction_index = 0.0;  // 초기 화아분화 진행도
+
+    bool operator==(const SeedlingGradeDef&) const = default;
+};
+
+// docs/spec/strawberry-fruit.md "과실" (과위 배열 4개 rank_*는 길이가 같아요 = 과위 수)
+struct FruitParams {
+    std::vector<double> rank_fraction;
+    std::vector<double> rank_anthesis_delay_days;
+    double anthesis_jitter_days = 0.0;  // 과실마다 개화 시점 편차 (±, 일)
+    std::vector<double> rank_potential_fresh_g;
+    double size_variation_fraction = 0.0;
+    PiecewiseLinear pollination_mean_curve;  // x = 하우스 기온 이동 평균 °C
+    double pollination_spread = 0.0;
+    double set_threshold = 0.0;
+    double deformed_threshold = 0.0;
+    PiecewiseLinear pollination_size_curve;  // x = 수정률
+    double dry_matter_fraction = 0.0;
+    double base_temp_degC = 0.0;
+    double degree_days_to_harvest = 0.0;
+    PiecewiseLinear growth_shape_curve;      // x = 진행도, y = 최대 크기 중 도달 비율
+    std::vector<double> size_class_bounds_g;  // 오름차순, 구간 수 = 경계 수 + 1
+    double base_brix = 0.0;
+    PiecewiseLinear brix_supply_curve;   // x = 크기 충족도 이동 평균 (size_satisfaction_mean)
+    PiecewiseLinear brix_k_curve;        // x = K 충족도
+    PiecewiseLinear brix_n_excess_curve; // x = N 과잉 지수
+    PiecewiseLinear brix_water_curve;    // x = relative_water
+    PiecewiseLinear firmness_ca_curve;   // x = Ca 충족도
+    PiecewiseLinear firmness_temp_curve; // x = 하우스 기온 °C
+    PiecewiseLinear firmness_n_excess_curve;
+    // 6b 낙과, 6c 적화·적과 (2026-11-18 디렉터 결정)
+    double abortion_rate_per_development_index = 0.0;  // 진행도 1당 낙과 확률 (p_tick = 이 값 × dD × 곡선 × 과위 배율)
+    double abortion_window_index = 0.0;
+    PiecewiseLinear abortion_satisfaction_curve;  // x = size_satisfaction_mean
+    std::vector<double> rank_abortion_weight;     // 과위 수와 같은 길이
+    double thinnable_max_index = 0.0;
+    // 당도 온도 주·야간 이중 가중 (2026-11-18 디렉터 결정)
+    PiecewiseLinear brix_day_temp_score_curve;    // x = 낮 하우스 기온 °C, y = S_day
+    PiecewiseLinear brix_night_temp_score_curve;  // x = 밤 하우스 기온 °C, y = S_night
+    double brix_day_weight = 0.0;
+    double brix_night_weight = 0.0;
+    PiecewiseLinear brix_temp_score_curve;        // x = K_temp, y = 당도 배율
+    double day_solar_threshold_W_per_m2 = 0.0;
+
+    bool operator==(const FruitParams&) const = default;
+};
+
+// docs/spec/denitrification.md (M4)
+struct DenitrificationParams {
+    double rate_per_hour = 0.0;
+    PiecewiseLinear o2_curve;      // x = aeration_index
+    PiecewiseLinear temp_curve;    // x = soil_temp_degC
+    PiecewiseLinear carbon_curve;  // x = labile_C g/m²
+    double H_eq_per_eq_N = 0.0;    // 음수 = H+ 소비(염기)
+
+    bool operator==(const DenitrificationParams&) const = default;
 };
 
 // docs/spec/soil-water.md
@@ -192,7 +300,6 @@ struct CropParams {
     double par_fraction = 0.0;
     double light_use_efficiency_g_per_MJ = 0.0;
     PiecewiseLinear temp_curve;  // x = 하우스 기온 °C
-    double leaf_allocation_fraction = 0.0;
     PiecewiseLinear water_stress_curve;     // x = relative_water
     PiecewiseLinear salt_stress_curve;      // x = ec_dS_per_m
     PiecewiseLinear nutrient_stress_curve;  // x = 충족도
@@ -215,6 +322,30 @@ struct CropParams {
     double mn_uptake_rate_per_g_root_per_hour = 0.0;
     double mn_max_uptake_ratio = 0.0;
     PiecewiseLinear mn_toxicity_curve;  // x = 체내 Mn / 적정량
+    // M4 (strawberry-fruit, house-climate): 분배·호흡·낙엽·과실 농도·CO2·저온 피해
+    double vegetative_leaf_fraction = 0.0;
+    double vegetative_crown_fraction = 0.0;
+    double vegetative_root_fraction = 0.0;
+    double max_fruit_assimilate_fraction = 0.0;
+    double maintenance_rate_leaf_per_hour = 0.0;
+    double maintenance_rate_crown_per_hour = 0.0;
+    double maintenance_rate_root_per_hour = 0.0;
+    double maintenance_rate_fruit_per_hour = 0.0;
+    PiecewiseLinear maintenance_temp_curve;  // x = 하우스 기온 °C
+    double leaf_senescence_rate_per_hour = 0.0;
+    double fruit_target_N_g_per_g = 0.0;
+    double fruit_target_P_g_per_g = 0.0;
+    double fruit_target_K_g_per_g = 0.0;
+    double fruit_target_Ca_g_per_g = 0.0;
+    double fruit_target_Mg_g_per_g = 0.0;
+    double fruit_target_Mn_g_per_g = 0.0;
+    double co2_g_per_g_dry_matter = 0.0;
+    PiecewiseLinear co2_growth_curve;        // x = 하우스 CO2 ppm
+    PiecewiseLinear cold_leaf_damage_curve;  // x = 하우스 기온 °C, y = 시간당 잎 손실 비율
+    PiecewiseLinear cold_fruit_loss_curve;   // x = 하우스 기온 °C, y = 시간당 과실·꽃 손실 비율
+    // N 전용 사치 흡수 상한·흡수 속도 (strawberry-minimal 3번, M3 Ca·Mg 전용 속도와 같은 방식)
+    double n_luxury_uptake_ratio = 0.0;
+    double n_uptake_rate_per_g_root_per_hour = 0.0;
 
     bool operator==(const CropParams&) const = default;
 };
@@ -269,6 +400,7 @@ struct FertilizerDef {
 struct Params {
     std::int64_t schema_version = 0;
     HouseParams house;
+    CalendarParams calendar;
     SoilWaterParams soil_water;
     SoilTemperatureParams soil_temperature;
     OrganicMatterParams organic_matter;
@@ -283,6 +415,10 @@ struct Params {
     AvailabilityParams availability;
     RootDamageParams root_damage;
     CropParams crop;
+    PhenologyParams phenology;
+    FruitParams fruit;
+    DenitrificationParams denitrification;
+    std::vector<SeedlingGradeDef> seedling_grades;
     std::vector<CompostDef> composts;
     std::vector<FertilizerDef> fertilizers;
     std::vector<LimeDef> limes;

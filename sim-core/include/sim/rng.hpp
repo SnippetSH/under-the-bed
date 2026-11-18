@@ -69,6 +69,11 @@ private:
 
 // 마스터 시드에서 서브시스템별 독립 스트림을 파생해요 (ADR-0004).
 // 서브시스템 ID는 스트림이 필요한 프로세스가 생길 때 명세와 함께 정해요.
+// 서브시스템 스트림 ID. 순서를 바꾸지 말고 뒤에만 추가해요.
+enum class RngStream : std::uint64_t {
+    Biology = 1,  // M4 strawberry-fruit "생물 변이 난수": 꽃 수 소수부, 수정률, 크기 변이, 저온 과실 손실
+};
+
 [[nodiscard]] inline Pcg32 make_stream(std::uint64_t master_seed, std::uint64_t stream_id) {
     return Pcg32(master_seed, stream_id);
 }

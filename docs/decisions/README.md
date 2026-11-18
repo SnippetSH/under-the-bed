@@ -20,6 +20,7 @@
 | [0008](0008-cation-exchange-model.md) | 양이온 교환은 "빈자리 경쟁 + 완화"로 근사 | 승인 |
 | [0009](0009-no-fixed-recipe-variation.md) | "항상 같은 정답"을 막는 변동 설계 | 승인 |
 | [0010](0010-manganese-oxide-pool.md) | 망간에 산화물 풀과 pH 의존 흡착력 추가 (ADR-0007 2번 보완) | 승인 |
+| [0011](0011-house-climate-in-m4.md) | 하우스 기후 관리(다중 피복·측창·난방·CO2)를 M4로 당김 | 승인 |
 
 ## 템플릿
 

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "sim/processes.hpp"
@@ -41,27 +42,30 @@ TEST_CASE("Soil temperature falls monotonically toward house air temperature", "
     REQUIRE(cell.soil_temp_degC < house + 0.01);
 }
 
-// 낮 일사가 있으면 하우스 기온이 외기 + base_offset보다 높다
-TEST_CASE("Daytime solar raises house air above outside plus base offset", "[unit][temperature]") {
+// M4 (house-climate): 낮 일사가 있으면 평형 하우스 기온이 밤(같은 외기)보다 높고, 밤은 외기 + 지중 열 / U
+// (M1 식의 base_offset 테스트를 다중 피복 열수지로 옮김. 기대값의 정의가 바뀐 테스트예요.)
+TEST_CASE("Daytime solar raises house air above the night equilibrium", "[unit][temperature]") {
     const Params p = test::test_params();
+    const sim::HouseState house = process::initial_house(p.house, 3, WeatherHour{}, 0);
     const WeatherHour day{.outside_air_temp_degC = 15.0, .solar_radiation_W_per_m2 = 600.0, .outside_rh_percent = 50.0};
     const WeatherHour night{.outside_air_temp_degC = 15.0, .solar_radiation_W_per_m2 = 0.0, .outside_rh_percent = 50.0};
-    const double floor_degC = day.outside_air_temp_degC + p.house.base_offset_degC;
-    REQUIRE(process::house_air_temp_degC(p.house, day) > floor_degC);
-    REQUIRE(process::house_air_temp_degC(p.house, night) == floor_degC);
+    const double night_degC = process::house_equilibrium(p.house, house, night).air_temp_degC;
+    REQUIRE(night_degC > night.outside_air_temp_degC);
+    REQUIRE(process::house_equilibrium(p.house, house, day).air_temp_degC > night_degC);
 }
 
-// 하우스 안 일사는 투과율에 비례한다
-TEST_CASE("Inside solar scales with transmittance", "[unit][temperature]") {
+// M4: 하우스 안 일사 = 일사 × 투과율^겹수
+TEST_CASE("Inside solar scales with layer transmittance", "[unit][temperature]") {
     Params p = test::test_params();
+    const sim::HouseState house = process::initial_house(p.house, 3, WeatherHour{}, 0);
     const WeatherHour w{.outside_air_temp_degC = 10.0, .solar_radiation_W_per_m2 = 500.0, .outside_rh_percent = 50.0};
-    const double base = process::inside_solar_W_per_m2(p.house, w);
+    const double base = process::inside_solar_W_per_m2(p.house, house, w);
     REQUIRE(base > 0.0);
     REQUIRE(base < w.solar_radiation_W_per_m2);
-    p.house.solar_transmittance_factor *= 0.5;
-    REQUIRE(process::inside_solar_W_per_m2(p.house, w) == base * 0.5);
-    p.house.solar_transmittance_factor = 0.0;
-    REQUIRE(process::inside_solar_W_per_m2(p.house, w) == 0.0);
+    p.house.layer_transmittance_factor *= 0.5;
+    REQUIRE(process::inside_solar_W_per_m2(p.house, house, w) == Catch::Approx(base * 0.125));
+    p.house.layer_transmittance_factor = 0.0;
+    REQUIRE(process::inside_solar_W_per_m2(p.house, house, w) == 0.0);
 }
 
 // relax_rate가 1 이상이면 하우스 기온으로 바로 맞춰진다
@@ -90,8 +94,9 @@ TEST_CASE("Extreme temperatures stay finite", "[unit][temperature][extreme]") {
         }
     }
     const WeatherHour w{.outside_air_temp_degC = -50.0, .solar_radiation_W_per_m2 = 1500.0, .outside_rh_percent = 0.0};
-    REQUIRE(std::isfinite(process::house_air_temp_degC(p.house, w)));
-    REQUIRE(std::isfinite(process::inside_solar_W_per_m2(p.house, w)));
+    const sim::HouseState house = process::initial_house(p.house, 3, w, 12);
+    REQUIRE(std::isfinite(process::house_equilibrium(p.house, house, w).air_temp_degC));
+    REQUIRE(std::isfinite(process::inside_solar_W_per_m2(p.house, house, w)));
 }
 
 // 월드 48틱 동안 토양 온도는 하우스 기온 범위 안에 머문다

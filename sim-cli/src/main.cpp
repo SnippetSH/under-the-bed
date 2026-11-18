@@ -1,16 +1,23 @@
 // sim-cli — 헤드리스 실행기
 //
 //   sim-cli --params data/params.toml --scenario data/scenarios/empty.toml --ticks 8760
-//           [--out runs/empty.csv]
+//           [--out runs/empty.csv] [--no-hash]
 //
 // CSV는 틱 0(초기 상태)부터 틱 N까지 N+1행이에요. 행의 값은 해당 틱 시점의 상태예요.
 // 열: 기상·명령 수, house_air_temp_degC, 셀 평균 토양 상태(soil.hpp 필드 이름), 작물 평균(작물이 있는 타일만,
 // 작물이 하나도 없으면 빈 칸), 장부 합계(ledger_ 접두사), state_hash 순서예요.
 // M3 파생 열: 교환성 양(*_exchangeable_* = 총량 − 용액), 토양 P 총량(p_total = 유효 + 고정),
 // 작물 Mn 충족도·과잉 지수·체내 비율, 길항 배율, stress_hours 10개(StressFactor 순서).
+// M4 파생 열: 하우스(house_air_temp_mean_degC, house_co2_ppm, outside_co2_ppm, 난방 에너지·출력, 피복 겹수,
+// 열린 창 수·개방률 합, 난방 켜짐, 하우스 안 일사, 환기 경로 지수), 작물(관부, 과실 건물, 과실·꽃·화방 수,
+// 활착·화아분화 지수, 과실 공급 비율, 크기 충족도 이동 평균, 총생산·유지 호흡), 수확 누적(정상과·기형과 생체중·개수,
+// 하우스 전체 가중 평균 당도·경도·온도 점수, 낙과·적과 수, 크기 구간별 개수, 첫 수확 틱), 장부 M4 항목.
+// 수확 열은 작물이 있는 타일 평균(개수는 타일당 평균)이에요. 진단 열은 m4-overview "진단·리포트용 기록"이에요.
 // 명령 일정표([[schedule]])는 해당 틱을 처리하기 직전에 enqueue해요.
-// 표준 출력에는 이벤트 종류별 횟수와 최종 상태 해시를 찍어요.
+// --no-hash를 주면 state_hash 열을 비워 둬요 (긴 실행을 빠르게). 최종 해시는 그래도 찍어요.
+// 표준 출력에는 이벤트 종류별 횟수, 수확 합계, 최종 상태 해시를 찍어요.
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <chrono>
@@ -40,13 +47,14 @@ constexpr int kExitUsage = 2;
 
 constexpr std::string_view kUsage =
     "usage: sim-cli --params <params.toml> --scenario <scenario.toml> --ticks <N> "
-    "[--out <file.csv>]";
+    "[--out <file.csv>] [--no-hash]";
 
 struct Options {
     fs::path params;
     fs::path scenario;
     std::optional<fs::path> out;
     std::uint32_t ticks = 0;
+    bool no_hash = false;  // CSV의 state_hash 열을 비움
 };
 
 std::optional<Options> parse_args(int argc, char** argv) {
@@ -54,6 +62,10 @@ std::optional<Options> parse_args(int argc, char** argv) {
     bool has_ticks = false;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
+        if (arg == "--no-hash") {
+            opt.no_hash = true;
+            continue;
+        }
         if (i + 1 >= argc) {
             std::println(stderr, "missing value for {}", arg);
             return std::nullopt;
@@ -113,7 +125,7 @@ double mean_of(const std::vector<sim::SoilCell>& cells, Fn&& fn) {
     return sum / static_cast<double>(cells.size());
 }
 
-Row build_row(const sim::World& world) {
+Row build_row(const sim::World& world, bool include_hash) {
     const sim::Snapshot s = world.snapshot();
     const sim::CropParams& cp = world.params().crop;
     Row row;
@@ -126,6 +138,18 @@ Row build_row(const sim::World& world) {
     row.add("outside_rh_percent", s.weather.outside_rh_percent);
     row.add("pending_commands", static_cast<double>(s.pending_command_count));
     row.add("house_air_temp_degC", s.house_air_temp_degC);
+    // M4 하우스
+    row.add("house_air_temp_mean_degC", s.house.air_temp_mean_degC);
+    row.add("house_co2_ppm", s.house.co2_ppm);
+    row.add("outside_co2_ppm", s.house.outside_co2_ppm);
+    row.add("heating_energy_MJ_per_m2", s.house.heating_energy_MJ_per_m2);
+    row.add("heating_power_W_per_m2", s.house.heating_power_W_per_m2);
+    row.add("cover_layers", s.house.cover_layers);
+    row.add("windows_open_count", s.house.windows_open_count());
+    row.add("windows_open_fraction_sum", s.house.windows_open_fraction_sum());
+    row.add("heater_on", s.house.heater_on ? 1.0 : 0.0);
+    row.add("inside_solar_W_per_m2", s.house.inside_solar_W_per_m2);
+    row.add("vent_path_index", s.house.vent_path_index);
 
 #define SOIL_COL(field) row.add(#field, mean_of(s.soil, [](const sim::SoilCell& c) { return c.field; }))
     SOIL_COL(water_mm);
@@ -228,6 +252,105 @@ Row build_row(const sim::World& world) {
     CROP_COL(plant_Mn_g_per_m2);
     CROP_COL(antagonism_Ca_factor);
     CROP_COL(antagonism_Mg_factor);
+    // M4
+    CROP_COL(crown_g_per_m2);
+    crop_col("fruit_g_per_m2", [](const sim::Crop& c) { return c.fruit_g_per_m2(); });
+    crop_col("fruit_count", [](const sim::Crop& c) {
+        double n = 0.0;
+        for (const sim::Fruit& f : c.fruits) {
+            n += f.set ? 1.0 : 0.0;
+        }
+        return n;
+    });
+    crop_col("flowers_pending", [](const sim::Crop& c) {
+        double n = 0.0;
+        for (const sim::Fruit& f : c.fruits) {
+            n += f.set ? 0.0 : 1.0;
+        }
+        return n;
+    });
+    crop_col("flowers_in_unopened_trusses", [](const sim::Crop& c) {
+        double n = 0.0;
+        for (const sim::Truss& t : c.trusses) {
+            n += t.opened ? 0.0 : t.flowers_per_m2;
+        }
+        return n;
+    });
+    crop_col("trusses_initiated", [](const sim::Crop& c) { return static_cast<double>(c.trusses.size()); });
+    crop_col("trusses_opened", [](const sim::Crop& c) {
+        double n = 0.0;
+        for (const sim::Truss& t : c.trusses) {
+            n += t.opened ? 1.0 : 0.0;
+        }
+        return n;
+    });
+    CROP_COL(establishment_index);
+    CROP_COL(induction_index);
+    CROP_COL(last_supply_ratio);
+    CROP_COL(size_satisfaction_mean);
+    crop_col("last_gross_g_per_m2", [](const sim::Crop& c) { return c.last_gross_g_per_m2; });
+    crop_col("last_respiration_g_per_m2", [](const sim::Crop& c) { return c.last_respiration_g_per_m2; });
+    STATUS_COL("excess_index_N", excess_N);
+    // 수확 누적 (작물이 있는 타일 평균)
+    crop_col("harvest_fresh_g_per_m2", [](const sim::Crop& c) { return c.harvest.harvested_fresh_g; });
+    crop_col("harvest_count", [](const sim::Crop& c) { return static_cast<double>(c.harvest.harvested_fruits); });
+    crop_col("harvest_deformed_count",
+             [](const sim::Crop& c) { return static_cast<double>(c.harvest.harvested_deformed); });
+    crop_col("harvest_deformed_fresh_g_per_m2",
+             [](const sim::Crop& c) { return c.harvest.harvested_deformed_fresh_g; });
+    {
+        // 하우스 전체 정상과 가중 평균 (생체중 가중)
+        double fresh_sum = 0.0;
+        double brix_sum = 0.0;
+        double firmness_sum = 0.0;
+        for (const sim::Crop* c : present) {
+            fresh_sum += c->harvest.harvested_fresh_g;
+            brix_sum += c->harvest.harvested_brix_weighted;
+            firmness_sum += c->harvest.harvested_firmness_weighted;
+        }
+        double day_sum = 0.0, night_sum = 0.0, ktemp_sum = 0.0;
+        for (const sim::Crop* c : present) {
+            day_sum += c->harvest.harvested_day_score_weighted;
+            night_sum += c->harvest.harvested_night_score_weighted;
+            ktemp_sum += c->harvest.harvested_temp_score_weighted;
+        }
+        if (fresh_sum > 0.0) {
+            row.add("harvest_mean_brix", brix_sum / fresh_sum);
+            row.add("harvest_mean_firmness", firmness_sum / fresh_sum);
+            row.add("harvest_mean_day_score", day_sum / fresh_sum);
+            row.add("harvest_mean_night_score", night_sum / fresh_sum);
+            row.add("harvest_mean_temp_score", ktemp_sum / fresh_sum);
+        } else {
+            for (const char* n : {"harvest_mean_brix", "harvest_mean_firmness", "harvest_mean_day_score",
+                                  "harvest_mean_night_score", "harvest_mean_temp_score"}) {
+                row.add_blank(n);
+            }
+        }
+    }
+    crop_col("aborted_count", [](const sim::Crop& c) { return static_cast<double>(c.harvest.aborted_fruits); });
+    crop_col("thinned_count", [](const sim::Crop& c) { return static_cast<double>(c.harvest.thinned_fruits); });
+    const std::size_t size_class_count = world.params().fruit.size_class_bounds_g.size() + 1;
+    for (std::size_t i = 0; i < size_class_count; ++i) {
+        crop_col(std::format("harvest_size_class_{}", i), [i](const sim::Crop& c) {
+            const auto& counts = c.harvest.harvested_size_class_counts;
+            return i < counts.size() ? static_cast<double>(counts[i]) : 0.0;
+        });
+    }
+    {
+        bool any = false;
+        std::uint64_t first = 0;
+        for (const sim::Crop* c : present) {
+            if (c->harvest.has_first_harvest && (!any || c->harvest.first_harvest_tick < first)) {
+                any = true;
+                first = c->harvest.first_harvest_tick;
+            }
+        }
+        if (any) {
+            row.add("first_harvest_tick", static_cast<double>(first));
+        } else {
+            row.add_blank("first_harvest_tick");
+        }
+    }
 #undef CROP_COL
 #undef STATUS_COL
     constexpr std::array<std::string_view, sim::kStressFactorCount> kStressNames = {
@@ -269,8 +392,20 @@ Row build_row(const sim::World& world) {
     LEDGER_COL(Mn_in_g);
     LEDGER_COL(Mn_leached_g);
     LEDGER_COL(Mn_uptake_g);
+    // M4
+    LEDGER_COL(N_harvested_g);
+    LEDGER_COL(P_harvested_g);
+    LEDGER_COL(K_harvested_g);
+    LEDGER_COL(Ca_harvested_g);
+    LEDGER_COL(Mg_harvested_g);
+    LEDGER_COL(Mn_harvested_g);
+    LEDGER_COL(C_leaf_litter_g);
 #undef LEDGER_COL
-    row.add_text("state_hash", std::format("0x{:016x}", world.state_hash()));
+    if (include_hash) {
+        row.add_text("state_hash", std::format("0x{:016x}", world.state_hash()));
+    } else {
+        row.add_blank("state_hash");
+    }
     return row;
 }
 
@@ -285,9 +420,13 @@ std::string join(const std::vector<std::string>& parts) {
     return out;
 }
 
-void write_header(std::ofstream& csv, const sim::World& world) { std::println(csv, "{}", join(build_row(world).names)); }
+void write_header(std::ofstream& csv, const sim::World& world) {
+    std::println(csv, "{}", join(build_row(world, true).names));
+}
 
-void write_row(std::ofstream& csv, const sim::World& world) { std::println(csv, "{}", join(build_row(world).values)); }
+void write_row(std::ofstream& csv, const sim::World& world, bool include_hash) {
+    std::println(csv, "{}", join(build_row(world, include_hash).values));
+}
 
 }  // namespace
 
@@ -335,12 +474,13 @@ int main(int argc, char** argv) {
 
     const auto started = std::chrono::steady_clock::now();
     if (csv.is_open()) {
-        write_row(csv, *world);
+        write_row(csv, *world, !opt->no_hash);
     }
     std::size_t next_command = 0;
     std::uint64_t command_applied_events = 0;
     std::uint64_t nitrite_events = 0;
     std::uint64_t plant_died_events = 0;
+    std::uint64_t fruit_harvested_events = 0;
     for (std::uint32_t t = 0; t < opt->ticks; ++t) {
         // 일정표는 tick 오름차순이라 현재 틱의 명령만 앞에서부터 꺼내면 돼요.
         while (next_command < schedule.size() && schedule[next_command].tick == t) {
@@ -359,10 +499,12 @@ int main(int argc, char** argv) {
                 ++nitrite_events;
             } else if (std::holds_alternative<sim::PlantDiedEvent>(event.payload)) {
                 ++plant_died_events;
+            } else if (std::holds_alternative<sim::FruitHarvestedEvent>(event.payload)) {
+                ++fruit_harvested_events;
             }
         }
         if (csv.is_open()) {
-            write_row(csv, *world);
+            write_row(csv, *world, !opt->no_hash);
         }
     }
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -378,8 +520,22 @@ int main(int argc, char** argv) {
     }
 
     std::println("scenario={} ticks={} elapsed_ms={}", world->scenario().name, opt->ticks, elapsed_ms);
-    std::println("events command_applied={} nitrite_threshold_exceeded={} plant_died={}", command_applied_events,
-                 nitrite_events, plant_died_events);
+    std::println("events command_applied={} nitrite_threshold_exceeded={} plant_died={} fruit_harvested={}",
+                 command_applied_events, nitrite_events, plant_died_events, fruit_harvested_events);
+
+    // 하우스 전체 수확 합계 (모든 타일)
+    double harvest_fresh_g = 0.0;
+    double harvest_deformed_fresh_g = 0.0;
+    std::uint64_t harvest_count = 0;
+    std::uint64_t harvest_deformed_count = 0;
+    for (const sim::Crop& crop : world->snapshot().crops) {
+        harvest_fresh_g += crop.harvest.harvested_fresh_g;
+        harvest_deformed_fresh_g += crop.harvest.harvested_deformed_fresh_g;
+        harvest_count += crop.harvest.harvested_fruits;
+        harvest_deformed_count += crop.harvest.harvested_deformed;
+    }
+    std::println("harvest_total fresh_g={} count={} deformed_fresh_g={} deformed_count={}", harvest_fresh_g,
+                 harvest_count, harvest_deformed_fresh_g, harvest_deformed_count);
     std::println("final_state_hash=0x{:016x}", world->state_hash());
     return kExitOk;
 }

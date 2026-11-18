@@ -1,6 +1,6 @@
 # S4/S4b 기준: pH 6.2, 21일 — docs/spec/m2-overview.md "시나리오 테스트 (M2)" 표. 값은 전부 게임용 임의값이에요.
 
-schema_version = 4
+schema_version = 5
 
 [scenario]
 name = "s4_optimal"
@@ -11,6 +11,7 @@ weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경�
 [house]
 bed_rows = 4
 bed_cols = 20
+cover_layers = 3
 
 [soil]
 field_capacity_mm = 60.0
@@ -40,8 +41,9 @@ p_g_per_m2 = 25.0
 s_g_per_m2 = 3.0
 
 [crop]
-leaf_g_per_m2 = 30.0
-root_g_per_m2 = 10.0
+seedling_grade = "B"       # 모종 등급 (M4 이행, 잎 28 / 관부 16 / 뿌리 12 g/m2)
+plants_per_m2 = 8.0
+initial_establishment_index = 1.0  # (2026-11-18 프로토타입 점검으로 조정)
 
 [difficulty]
 stress_combination = "minimum"
@@ -52,3 +54,113 @@ action = "irrigate"
 amount_mm = 6.0
 repeat_every_ticks = 24
 repeat_count = 21
+
+# 낮 환기 (M4 이행): 매일 10시에 창 6개 전부 열고 16시에 닫기 (2026-11-18 프로토타입 점검으로 조정)
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60

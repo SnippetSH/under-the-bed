@@ -1,6 +1,7 @@
 # 하우스 기온과 토양 온도
 
 - 상태: 승인 (2026-11-18)
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), 분해 발열은 [organic-matter](organic-matter.md)
 
@@ -12,16 +13,14 @@
 
 | 이름 | 의미 | 단위 |
 | --- | --- | --- |
-| `house_air_temp_degC` (월드) | 하우스 기온. 매 틱 다시 계산하는 파생값이지만 스냅샷에 노출해요 | °C |
+| `house_air_temp_degC` (월드) | 하우스 기온. (M4, 2026-11-18) 열 관성이 있는 **상태**로 승격하고 [house-climate](house-climate.md)가 계산해요. 스냅샷에 노출해요 | °C |
 | `soil_temp_degC` (셀) | 근권 토양 온도 | °C |
 
 ## 파라미터
 
 | 키 | 의미 | 단위 | 초기값 | 출처 |
 | --- | --- | --- | --- | --- |
-| `house.base_offset_degC` | 외기 대비 기본 온도차 | °C | 2.0 | 게임용 임의값 |
-| `house.solar_gain_degC_per_W_per_m2` | 외부 일사당 온실 효과 | °C per W/m² | 0.015 | 게임용 임의값 (맑은 한낮 약 +10 °C) |
-| `house.solar_transmittance_factor` | 피복 일사 투과율 (soil-water와 공유) | - | 0.7 | 게임용 임의값 |
+| ~~`house.base_offset_degC`~~, ~~`house.solar_gain_degC_per_W_per_m2`~~, ~~`house.solar_transmittance_factor`~~ | **(M4, 2026-11-18 삭제)** M1 하우스 기온 식의 계수 3개. 현재 값이 아니에요. 대신 [house-climate](house-climate.md)의 `[house]` 파라미터(피복 겹수별 투과율·단열, 창, 난방 등)를 써요 | - | - | - |
 | `soil_temperature.relax_rate_per_hour` | 토양 온도가 하우스 기온을 따라가는 시간당 비율 | 1/h | 0.04 | 게임용 임의값 (시간 상수 약 1일) |
 | `soil_temperature.heat_degC_per_g_C` | 호흡으로 날아간 탄소 1 g/m²당 토양 온도 상승 | °C per g C/m² | 0.4 | 게임용 임의값 |
 
@@ -29,14 +28,14 @@
 
 ### 하우스 기온 (월드 단계 2)
 
-```
-house_air_temp_degC = outside_air_temp_degC + base_offset_degC + solar_gain_degC_per_W_per_m2 × outside_solar
-```
+(M4, 2026-11-18 변경) M1의 단순 식(`외기 + base_offset + solar_gain × 일사`)은 **[house-climate](house-climate.md)의 다중 피복 열수지로 대체됐어요.** 피복 겹수·측창 개방률·난방·열 관성이 들어가고, 하우스 기온은 이번 틱 평형 기온을 시간당 비율로 따라가는 상태예요. 식과 계수는 house-climate가 정본이라 여기에 중복해서 적지 않아요.
 
-- M1 단순화예요. 환기·보온 커튼·난방 명령이 생기면(M7/M8) 이 식에 항이 추가돼요.
+- 닫힌 3중 하우스는 M1 식과 더 이상 같지 않아서(일사 이득 상향, [m4-overview](m4-overview.md) "시나리오 이행"), M1~M3 시나리오는 매일 한낮 환기 일정을 가져요.
 - 외기와 일사는 시나리오 기상 표에서 와요.
 
 ### 토양 온도 완화 (셀 단계 b)
+
+(M4, 2026-11-18) 식은 그대로예요. 다만 `house_air_temp_degC`가 위의 새 하우스 기온(열 관성이 있는 다중 피복 열수지 결과)이라서, 토양 온도는 **새 하우스 기온을 따라가요.** 난방·환기·피복 선택이 토양 온도에도 이어져요.
 
 ```
 soil_temp_degC += (house_air_temp_degC − soil_temp_degC) × min(1, relax_rate_per_hour)
@@ -64,7 +63,7 @@ soil_temp_degC += respired_C_g_per_m2 × heat_degC_per_g_C
 | 조건 | 기대 |
 | --- | --- |
 | 하우스 기온 고정, 토양 온도가 더 낮게 시작 | 단조 증가하며 하우스 기온에 수렴, 넘어서지 않음 |
-| 낮 일사 > 0 | 하우스 기온 > 외기 + base_offset |
+| 낮 일사 > 0 | 하우스 기온 > 외기 (M4, 2026-11-18: 이전 기대의 `base_offset`은 삭제된 계수. 하우스 기온 테스트는 [house-climate](house-climate.md) "테스트"가 맡아요) |
 | 호흡 탄소 x g | 토양 온도가 정확히 `x × heat` 만큼 추가 상승 |
 
 ## 단순화와 비목표

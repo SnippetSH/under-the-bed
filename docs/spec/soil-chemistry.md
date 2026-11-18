@@ -2,6 +2,7 @@
 
 - 상태: 승인 (2026-11-18)
 - M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M2
 - 관련: [m2-overview](m2-overview.md), [nitrogen](nitrogen.md), [strawberry-minimal](strawberry-minimal.md), [ADR-0007](../decisions/0007-acid-toxicity-and-manganese.md)
 
@@ -114,6 +115,7 @@ mg += dissolved_eq × lime_mg_fraction × mg_g_per_eq        → mg_in_g
 (M3: 위 Ca·Mg는 용액 상태에도 같은 양을 더해요)
 
 net_H_eq = 이번 틱 질산화 H+ + 이번 틱 직접 산(명령) + pending_H(지난 틱 흡수) − dissolved_eq
+           + 이번 틱 탈질 H+                                    ← M4, 2026-11-18 (음수: 탈질은 H+를 소비해 pH를 올려요)
 buffer   = base_buffer + buffer_eq_per_pH_per_eq_cec × cec_mineral + organic_C_buffer × 유기 C     ← 광물 CEC 항은 M3, 2026-11-18
 pH      −= net_H_eq / buffer          → ph_min~ph_max로 제한
 pending_H = 0                          (흡수 단계가 다시 채움)
@@ -121,6 +123,7 @@ pending_H = 0                          (흡수 단계가 다시 채움)
 
 - 방향: 질산화와 암모늄 흡수는 pH를 낮추고, 질산 흡수와 석회는 올려요. 유기물이 많은 흙은 pH가 덜 흔들려요.
 - 석회는 산성일 때 빨리 녹고, pH가 올라갈수록 느려져요. 그래서 과하게 넣어도 pH 8 위로는 잘 안 올라가요.
+- (M4, 2026-11-18) pH 수지에 **탈질의 H+ 소비**가 들어가요: 탈질된 N 1 eq당 `denitrification.H_eq_per_eq_N`(−1.0) eq. 단계 g가 f1(탈질)보다 뒤라서 같은 틱에 반영돼요. 식은 [denitrification](denitrification.md).
 - (M3, 2026-11-18) 완충력에 광물 CEC 항이 추가됐어요. 정의는 [cation-exchange](cation-exchange.md) "pH 완충력".
 
 ### 유효량
@@ -152,8 +155,8 @@ ec_dS_per_m = (cation_meq + anion_meq) / 2 / water_mm / ec_meq_per_L_per_dS_per_
 
 ## 보존·불변 조건
 
-- 원소별: `토양 풀 + 작물 체내 = 초기 + in − leached` (N은 기체 손실 포함). 석회의 Ca·Mg는 녹을 때 `*_in_g`로 기록하므로, 미용해 석회는 장부 밖이에요.
-- 산: `H_eq_net` 장부에 net_H를 누적. pH 변화 합 × 완충력과 대조하는 테스트는 완충력이 일정한 경우에만 해요.
+- 원소별: `토양 풀 + 작물 체내 = 초기 + in − leached` (N은 기체 손실 포함). (M4, 2026-11-18) 수확으로 반출된 양을 `− harvested`로 빼요([m4-overview](m4-overview.md)). 석회의 Ca·Mg는 녹을 때 `*_in_g`로 기록하므로, 미용해 석회는 장부 밖이에요.
+- 산: `H_eq_net` 장부에 net_H를 누적. (M4, 2026-11-18) 탈질의 H+ 소비도 net_H에 들어가요. pH 변화 합 × 완충력과 대조하는 테스트는 완충력이 일정한 경우에만 해요.
 - pH는 ph_min~ph_max, EC ≥ 0, 모든 풀 ≥ 0.
 
 ## 테스트 (단위)

@@ -2,12 +2,15 @@
 
 - 상태: 승인 (2026-11-18)
 - M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), [organic-matter](organic-matter.md), [soil-water](soil-water.md)
 
 > **M2 변경 (2026-11-18 승인)**: 1·2단계에 `step1_o2_curve`, `step2_o2_curve`(aeration_index) 곱함. 1단계로 질산화된 N 1 eq당 H+ `nitrification_H_eq_per_eq_N` eq를 이번 틱 산으로 기록([soil-chemistry](soil-chemistry.md)). 아질산 경보와 뿌리 손상은 `no2 × nitrite_toxicity_ph_curve(pH)`로 판정. 용탈 대상에 K·Ca·Mg·P·S(용액 부분) 추가. 비료 투입은 soil-chemistry로 옮김(성분 확장).
 
 > **M3 변경 (2026-11-18 승인)**: `leaching.nh4_solution_fraction`을 삭제하고 NH4+의 녹은 부분을 상태 `nh4_solution_N_g_per_m2`로 들어요([cation-exchange](cation-exchange.md)). 용탈은 이 용액 상태 기준이에요. 질산화 1단계로 NH4 총량이 줄 때 용액도 같은 비율로 줄여요(비례 차감). 비료의 NH4는 총량과 용액에 함께 더해요. 자세한 규칙은 [m3-overview](m3-overview.md).
+
+> **M4 변경 (2026-11-18 승인)**: **탈질(셀 단계 f1)이 추가돼요.** 질산태 N이 과습·따뜻함·이분해성 C가 겹칠 때 기체로 나가 장부 `N_gas_g`가 처음으로 0이 아니게 돼요. 식과 파라미터는 [denitrification](denitrification.md). 작물 수확으로 나가는 N은 장부 `N_harvested_g`, 보존식은 `토양 + 체내 = 초기 + in − leached − gas − harvested`예요([m4-overview](m4-overview.md)).
 
 ## 목적
 
@@ -121,7 +124,7 @@ if nitrite_alarm and no2_N < threshold × nitrite_alarm_reset_fraction:
 ## 보존·불변 조건
 
 - 질산화는 질소 형태만 바꿔요. 셀의 무기 N 합은 질산화 전후로 같아요.
-- 셀 합계 질소 보존식은 [m1-overview](m1-overview.md) "장부"를 따라요.
+- 셀 합계 질소 보존식은 [m1-overview](m1-overview.md) "장부"를 따라요. (M4, 2026-11-18) 탈질로 `N_gas_g`가 늘고, 수확으로 `N_harvested_g`가 늘어요.
 - 모든 풀 ≥ 0
 
 ## 테스트
@@ -143,6 +146,6 @@ S2, S3 (기대 방향은 [m1-overview](m1-overview.md) "시나리오 테스트")
 
 ## 단순화와 비목표
 
-- 탈질, 암모니아 휘산 없음 (기체 손실 0, M4)
+- 탈질은 M4에서 추가됐어요(2026-11-18, [denitrification](denitrification.md)). 이제 기체 손실이 0이 아니에요. 암모니아 휘산과 시설 가스 장해는 여전히 없어요(M7)
 - 질산화균 개체군 없음 (M5에서 1·2단계 균을 따로 둬요)
 - NH4+ 흡착은 M1·M2에서는 고정 비율로만 표현했고, M3에서 양이온 교환([cation-exchange](cation-exchange.md))으로 대체됐어요 (2026-11-18)

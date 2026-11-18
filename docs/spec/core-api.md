@@ -1,6 +1,7 @@
 # 코어 API와 틱 루프 (M0)
 
 - 상태: 승인 (2026-11-18)
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M0
 - 관련 ADR: [0002](../decisions/0002-data-format.md), [0004](../decisions/0004-determinism-scope.md), [0005](../decisions/0005-cpp-toolchain.md)
 
@@ -58,6 +59,7 @@
 
 - 명령 종류는 `Noop` 하나뿐이에요. 명령 큐 구조와 적용 시점을 테스트하기 위한 것이에요. 실제 행동 명령은 해당 프로세스가 생기는 마일스톤에서 추가해요. (M1에서 관수·퇴비·비료 명령 추가: [m1-overview](m1-overview.md))
 - 이벤트는 `CommandApplied` 하나예요(틱, 명령 일련번호). 영농일지의 "플레이어 행동 자동 기록"이 이 이벤트를 쓰게 돼요. (M1에서 `NitriteThresholdExceeded` 추가: [nitrogen](nitrogen.md))
+- (M4, 2026-11-18) 명령 `variant` 순서는 M4에서 `Noop, Irrigate, AddCompost, AddFertilizer, AddLime, Till, SetWindow, SetHeater, SetCoverLayers, ThinFlowers`가 돼요(기존 순서 유지, 뒤에 추가. [m4-overview](m4-overview.md) "명령"). 위 "명령 종류는 `Noop` 하나"는 M0 기준이에요.
 
 ## 기상 입력
 
@@ -94,4 +96,4 @@
 
 - 윤년 없음, 서머타임 없음
 - 크로스 플랫폼 비트 일치는 보장하지 않음 ([ADR-0004](../decisions/0004-determinism-scope.md))
-- 세이브 파일 형식 버전 호환(이전 버전 세이브 불러오기)은 M6에서 다시 다뤄요. M0에서는 버전이 다르면 오류예요.
+- 세이브 파일 형식 버전 호환(이전 버전 세이브 불러오기)은 M6에서 다시 다뤄요. M0에서는 버전이 다르면 오류예요. (M4, 2026-11-18) M4의 세이브 형식은 **v6**이에요(M3의 v5에서 화방·개별 과실·하우스 창 같은 가변 길이 목록이 들어가 v6). 이전 버전 세이브는 그대로 오류예요([m4-overview](m4-overview.md) "구현 작업 분할" 0b)

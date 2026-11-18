@@ -1,6 +1,7 @@
 # M3 개요: CEC·양이온 교환, 길항, 인산 고정, 망간
 
 - 상태: 승인 (2026-11-18, 2차 프로토타입 점검 후 개정본 재승인)
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M3
 - 관련 명세: [cation-exchange](cation-exchange.md), [phosphorus](phosphorus.md), [manganese](manganese.md), M2 명세 전체, [ADR-0007](../decisions/0007-acid-toxicity-and-manganese.md), [ADR-0008](../decisions/0008-cation-exchange-model.md)
 - 완료 기준(계획서 7장): S5·S6 통과. 망간은 M3 범위(ADR-0007)라 S11을, 인산 고정은 새 프로세스라 S12를 함께 둬요(작업 절차 6번).
@@ -60,7 +61,11 @@ M2의 `k_g_per_m2` 등은 의미 그대로 총량이에요. 교환성 양 = 총�
 
 `Mn_in_g`, `Mn_leached_g`, `Mn_uptake_g`. 인산 고정, 망간 산화·환원, 양이온 교환은 계 안의 이동이라 장부 항이 없어요. 보존식의 P 토양 항은 `유효 + 고정`, Mn 토양 항은 `유효태 + 산화물`이에요.
 
+(M4, 2026-11-18) 수확 반출 장부 `N_harvested_g`, `P_…`, `K_…`, `Ca_…`, `Mg_…`, `Mn_harvested_g`와 낙엽·낙과·언 과실의 탄소 `C_leaf_litter_g`가 추가돼요. 원소별 보존식은 `토양 + 체내 = 초기 + in − leached − gas − harvested`(Mn 포함, `gas`는 N의 탈질만)이고 토양 C는 `유기 C = 초기 + C_in + C_root_litter + C_leaf_litter − C_respired`예요([m4-overview](m4-overview.md) "장부 추가").
+
 ## 틱 처리 순서 (M3)
+
+(M4, 2026-11-18) 아래 순서에 f1(탈질), 하우스 환경 변경, 작물 h0~h6 등이 들어가요. [m4-overview](m4-overview.md) "틱 처리 순서 (M4)"가 대체해요.
 
 ```
 매 틱마다:
@@ -88,7 +93,7 @@ M2의 `k_g_per_m2` 등은 의미 그대로 총량이에요. 교환성 양 = 총�
 
 ## 명령
 
-새 명령은 없어요. 황산망간은 `[[fertilizer]]` 데이터로 추가해요(`AddFertilizer`). `variant` 순서는 M2 그대로예요.
+새 명령은 없어요. 황산망간은 `[[fertilizer]]` 데이터로 추가해요(`AddFertilizer`). `variant` 순서는 M2 그대로예요. (M4, 2026-11-18: 뒤에 `SetWindow, SetHeater, SetCoverLayers, ThinFlowers`가 추가돼요, [m4-overview](m4-overview.md) "명령")
 
 ## M2 명세 변경 (M3 승인 시 해당 문서에 반영)
 
@@ -124,6 +129,15 @@ base_buffer_eq_per_m2_per_pH = 1.25 # M3부터 "CEC 밖 완충". 5.0 − 0.15 ×
 
 모든 M1·M2 시나리오를 schema 4로 올리고 위 5줄을 넣어요. `base_buffer`를 1.25로 줄여 **총 완충력을 M2와 같게** 유지해요. 시작 시점 용액 비율도 M2와 거의 같아서(세기 w를 그렇게 잡음) 결과 변화는 M3 효과(교환 완화, 인산 고정, 망간)에서만 와요. 방향 테스트(S1~S4b, S8~S10)는 그대로 통과해야 해요. 수치 변화는 프로토타입 점검 결과에 적어요.
 
+### 시나리오 이행 (M4, 2026-11-18)
+
+M1~M3 시나리오는 모두 schema 5로 올라가요([m4-overview](m4-overview.md) "시나리오 이행"). M3 시나리오(S5·S6·S11·S12 등)에도 다음이 들어가요.
+
+- `[house] cover_layers = 3`.
+- **매일 10~16시에 창 6개 전부를 열고**(`SetWindow`, `open_fraction = 1.0`) 16시에 닫는 일정. 닫힌 3중은 M1 식과 같지 않아서 환기가 없으면 다른 값을 내요([house-climate](house-climate.md)).
+- 작물이 있는 시나리오(S5·S6·S11 등)는 `[crop]`을 `seedling_grade = "B"`, `plants_per_m2 = 8`(잎 28, 관부 16, 뿌리 12 g/m²)과 **`initial_establishment_index = 1.0`**(이미 자란 작물)으로 바꿔요. 작물이 없는 시나리오(S12 등)는 `cover_layers`와 환기 일정만 들어가요.
+- 호흡·분배·활착이 바뀌어 생장량 수치는 달라지지만, S5·S6·S11·S12의 방향 테스트는 그대로 통과해야 해요. 기대값이 바뀌는 단위 테스트는 m4-overview의 승인 목록을 따라요.
+
 ## 시나리오 테스트 (M3)
 
 작물이 있는 시나리오는 별도 표기가 없으면 M2처럼 매일 8시에 6 mm 관수해요. 기준 토양은 위 이행 값과 같아요.
@@ -150,7 +164,7 @@ base_buffer_eq_per_m2_per_pH = 1.25 # M3부터 "CEC 밖 완충". 5.0 − 0.15 ×
 1. **S5의 "팁번 증상"**: M3의 S5는 위 ①~④(Ca 흡수·충족도·용탈)로 판정해요. "팁번"은 증상 매핑(M4~M7) 때 `Ca 충족도 + 길항 배율`에서 만들어요.
 2. **S4 보조 조건 변경**: `p_alk >= p_opt`를 **토양 P 총량(유효 + 고정)** 비교로 바꿔요. 원래 뜻("총량이 충분해도")을 유지하는 변경이에요.
 3. **길항에 NH4 포함**: 길항 지수는 (K + NH4) / (Ca + Mg)예요. Ca 결핍의 원인이 K인지 NH4인지 측정으로 가려야 하는 판단을 만들어요.
-4. **M1·M2 시나리오 이행**: schema 4로 올리면서 `base_buffer` 5.0 → 1.25(총 완충력 유지)로 바꿔요.
+4. **M1·M2 시나리오 이행**: schema 4로 올리면서 `base_buffer` 5.0 → 1.25(총 완충력 유지)로 바꿔요. (M4에서 다시 schema 5로 올려요: 아래 "시나리오 이행 (M4)")
 5. **길항은 수요 상한에도** (2차 점검 후): K 과다에서 체내 Ca가 늘 상한까지 차서 길항이 결과에 남지 않았어요. 길항 배율을 흡수 능력과 Ca·Mg 수요 상한 양쪽에 곱해요([cation-exchange](cation-exchange.md)).
 6. **망간 산화물 풀과 pH 의존 흡착력** (2차 점검 후, [ADR-0010](../decisions/0010-manganese-oxide-pool.md)): 석회가 망간 독성을 오히려 키우던 문제를 현실의 원리(pH 상승 → Mn2+ 산화·침전, 탈양성자화로 특이 흡착 증가)로 고쳐요. 이동성 곡선은 삭제해요.
 7. **3차 점검 후** (2026-11-18): S5-② 판정 기준은 그대로 두고 길항 곡선을 기준 지수(약 0.2)에서 꺾이게 다시 잡아요(E2). 망간 흡착 세기 곡선을 pH 5.0~5.3에서 가파르게(H), 석회 조건에 체내 Mn 비율 추가. 사토 산화물 망간 축소. pH가 기준과 다른 시나리오가 시작 직후 평형 쪽으로 흘러가는 것은 그대로 둬요(S12 인산과 같은 방식, 판마다 평형 시작은 ADR-0009 밭 생성에서).
@@ -188,7 +202,7 @@ M2 때처럼 초기값으로 방향이 나오는지 확인했어요. **본선(ma
 | --- | --- | --- |
 | `crop.ca_uptake_rate_per_g_root_per_hour` | 0.00019 | (없음, 일반 0.002) |
 | `crop.mg_uptake_rate_per_g_root_per_hour` | 0.00021 | (없음, 일반 0.002) |
-| `crop.mn_uptake_rate_per_g_root_per_hour` | 0.00004 | 0.0002 |
+| `crop.mn_uptake_rate_per_g_root_per_hour` | 0.00004 (M4, 2026-11-18 프로토타입 점검으로 0.00001로 조정, [manganese](manganese.md)) | 0.0002 |
 | `antagonism.ca_curve` | `[[0,1],[0.2,1],[0.4,0.6],[0.7,0.35],[1.2,0.15]]` | `[[0,1],[0.3,1],[0.6,0.5],[1.0,0.2],[2.0,0.05]]` |
 | `antagonism.mg_curve` | `[[0,1],[0.18,1],[0.35,0.55],[0.6,0.3],[1.2,0.1]]` | `[[0,1],[0.25,1],[0.5,0.4],[1.0,0.15],[2.0,0.05]]` |
 | `antagonism.min_demand_factor` | 0.6 | (없음) |

@@ -1,5 +1,7 @@
 #include "sim/world.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <format>
 #include <string>
 #include <utility>
@@ -50,16 +52,22 @@ World::World(Params params, Scenario scenario)
     : params_(std::move(params)),
       scenario_(std::move(scenario)),
       tiles_(static_cast<std::size_t>(scenario_.bed_rows) * static_cast<std::size_t>(scenario_.bed_cols),
-             Tile{make_cell(scenario_.soil), Crop{}}) {
+             Tile{make_cell(scenario_.soil), Crop{}}),
+      biology_rng_(make_stream(scenario_.seed, static_cast<std::uint64_t>(RngStream::Biology))) {
     if (scenario_.crop) {
-        const Crop planted = process::plant_crop(*scenario_.crop, params_.crop);
-        for (Tile& tile : tiles_) {
-            tile.crop = planted;
+        // 등급 존재는 create()에서 검증됨 (validate_scenario_against_params)
+        const SeedlingGradeDef* grade = process::find_seedling_grade(params_, scenario_.crop->seedling_grade);
+        if (grade != nullptr) {
+            Crop planted = process::plant_crop(*grade, scenario_.crop->plants_per_m2, params_);
+            planted.establishment_index = scenario_.crop->initial_establishment_index;
+            for (Tile& tile : tiles_) {
+                tile.crop = planted;
+            }
         }
     }
     const CalendarTime t0 = calendar_at(scenario_.start_day_of_year, 0);
-    house_air_temp_degC_ =
-        process::house_air_temp_degC(params_.house, scenario_.weather_hourly[weather_index(t0.day_of_year, t0.hour)]);
+    house_ = process::initial_house(params_.house, scenario_.cover_layers,
+                                    scenario_.weather_hourly[weather_index(t0.day_of_year, t0.hour)], t0.hour);
     // M3 (cation-exchange "초기화 순서"): 통기 지수를 먼저 계산한 뒤 평형을 구해 용액 상태를 채워요(완화 없이).
     // 세이브 로드(deserialize)는 이 뒤에 저장된 셀 상태로 덮어써서 평형을 다시 구하지 않아요.
     for (Tile& tile : tiles_) {
@@ -72,6 +80,7 @@ World::World(Params params, Scenario scenario)
 std::expected<World, Error> World::create(Params params, Scenario scenario) {
     SIM_CHECK(validation::validate_params(params));
     SIM_CHECK(validation::validate_scenario(scenario));
+    SIM_CHECK(validation::validate_scenario_against_params(scenario, params));
     return World(std::move(params), std::move(scenario));
 }
 
@@ -152,6 +161,40 @@ std::expected<void, Error> World::validate_command(const Command& command) const
             return validation::non_negative(c.g_per_m2, "add_lime g_per_m2");
         }
         std::expected<void, Error> operator()(const TillCommand& c) const { return world.validate_area(c.area); }
+        std::expected<void, Error> operator()(const SetWindowCommand& c) const {
+            SIM_CHECK(validation::require(c.layer >= 0 && c.layer < world.house_.cover_layers,
+                                          std::format("set_window layer {} is outside 0..{}", c.layer,
+                                                      world.house_.cover_layers - 1)));
+            SIM_CHECK(validation::require(c.side == WindowSide::Left || c.side == WindowSide::Right,
+                                          "set_window side is not a known value"));
+            const auto& levels = world.params_.house.window_open_levels;
+            const bool allowed = std::find(levels.begin(), levels.end(), c.open_fraction) != levels.end();
+            return validation::require(allowed, std::format("set_window open_fraction {} is not an allowed level",
+                                                            c.open_fraction));
+        }
+        std::expected<void, Error> operator()(const SetHeaterCommand& c) const {
+            const HouseParams& h = world.params_.house;
+            return validation::require(std::isfinite(c.setpoint_degC) && c.setpoint_degC >= h.heater_setpoint_min_degC &&
+                                           c.setpoint_degC <= h.heater_setpoint_max_degC,
+                                       std::format("set_heater setpoint_degC must be within {}..{}",
+                                                   h.heater_setpoint_min_degC, h.heater_setpoint_max_degC));
+        }
+        std::expected<void, Error> operator()(const ThinFlowersCommand& c) const {
+            SIM_CHECK(world.validate_area(c.area));
+            return validation::non_negative(c.per_plant, "thin_flowers per_plant");
+        }
+        std::expected<void, Error> operator()(const SetCoverLayersCommand& c) const {
+            const HouseParams& h = world.params_.house;
+            SIM_CHECK(validation::require(c.layers >= h.min_cover_layers && c.layers <= h.max_cover_layers,
+                                          std::format("set_cover_layers layers must be within {}..{}",
+                                                      h.min_cover_layers, h.max_cover_layers)));
+            // 명령이 적용될 틱(다음 틱 = tick_)의 날짜가 휴작기 안이어야 해요
+            const CalendarTime when = calendar_at(world.scenario_.start_day_of_year, world.tick_);
+            return validation::require(process::in_cover_change_window(h, when.day_of_year),
+                                       std::format("set_cover_layers is only accepted on day_of_year {}..{} (got {})",
+                                                   h.cover_change_window_doy[0], h.cover_change_window_doy[1],
+                                                   when.day_of_year));
+        }
     };
     return std::visit(Visitor{*this}, command);
 }
@@ -206,6 +249,28 @@ void World::apply_command(const TillCommand& command) {
     for_each_tile_in(command.area, [&](Tile& tile) { process::apply_till(tile.soil, tile.crop, params_.aeration); });
 }
 
+void World::apply_command(const SetWindowCommand& command) {
+    // 같은 틱에 앞선 SetCoverLayers로 겹이 줄었으면 무시해요
+    if (command.layer >= 0 && command.layer < house_.cover_layers) {
+        house_.window_open_fraction[static_cast<std::size_t>(command.layer)][static_cast<std::size_t>(command.side)] =
+            command.open_fraction;
+    }
+}
+
+void World::apply_command(const SetHeaterCommand& command) {
+    house_.heater_on = command.on;
+    house_.heater_setpoint_degC = command.setpoint_degC;
+}
+
+void World::apply_command(const SetCoverLayersCommand& command) { process::set_cover_layers(house_, command.layers); }
+
+void World::apply_command(const ThinFlowersCommand& command) {
+    // 생물 변이 스트림을 써요. 칸 순서는 영역 안 행 우선이라 결정론적이에요.
+    for_each_tile_in(command.area, [&](Tile& tile) {
+        (void)process::thin_flowers(tile.crop, tile.soil, params_, command.per_plant, biology_rng_, ledger_);
+    });
+}
+
 // ---- 틱 ----
 
 void World::step(std::uint32_t ticks) {
@@ -215,7 +280,7 @@ void World::step(std::uint32_t ticks) {
     }
 }
 
-// 틱 처리 순서: docs/spec/m3-overview.md "틱 처리 순서 (M3)"
+// 틱 처리 순서: docs/spec/m4-overview.md "틱 처리 순서 (M4)"
 void World::tick_once() {
     // 1. 명령 적용
     for (const QueuedCommand& queued : pending_commands_) {
@@ -227,8 +292,21 @@ void World::tick_once() {
     // 2. 하우스 환경
     const CalendarTime now = calendar_at(scenario_.start_day_of_year, tick_);
     const WeatherHour& weather = scenario_.weather_hourly[weather_index(now.day_of_year, now.hour)];
-    house_air_temp_degC_ = process::house_air_temp_degC(params_.house, weather);
-    const double inside_solar = process::inside_solar_W_per_m2(params_.house, weather);
+    process::update_house_air(house_, params_.house, weather, now.hour);
+    const double inside_solar = house_.inside_solar_W_per_m2;
+    const double house_air_temp_degC = house_.air_temp_degC;
+    const process::CropEnvironment crop_env_base{
+        .inside_solar_W_per_m2 = inside_solar,
+        .house_air_temp_degC = house_air_temp_degC,
+        .house_air_temp_mean_degC = house_.air_temp_mean_degC,
+        .house_co2_ppm = house_.co2_ppm,  // 틱 시작 때 값 (CO2는 셀 계산 뒤에 갱신)
+        .day_of_year = now.day_of_year,
+        .tick = tick_,
+        .mode = scenario_.stress_combination,
+        .tile_index = 0,
+    };
+    const double C_respired_before_g = ledger_.C_respired_g;
+    double crop_net_dry_matter_g = 0.0;
 
     // 3. 토양 셀 (행 우선)
     for (std::size_t i = 0; i < tiles_.size(); ++i) {
@@ -248,7 +326,7 @@ void World::tick_once() {
         process::update_soil_water(cell, params_.soil_water, inside_solar, interception, transpiration_demand,
                                    ledger_);
         // b. 온도
-        process::relax_soil_temperature(cell, params_.soil_temperature, house_air_temp_degC_);
+        process::relax_soil_temperature(cell, params_.soil_temperature, house_air_temp_degC);
         // c. 통기
         cell.aeration_index = process::aeration_index(cell, params_.aeration);
         // d. 미생물: M5
@@ -256,6 +334,8 @@ void World::tick_once() {
         process::decompose_organic_matter(cell, params_.organic_matter, params_.soil_temperature, ledger_);
         // f. 질산화 (NH4 용액 비례 차감)
         process::nitrify(cell, params_.nitrification, params_.soil_chemistry, params_.ions);
+        // f1. 탈질 (M4): NO3 → N_gas, H+ 소비는 pH 단계(g)로
+        process::denitrify(cell, params_.denitrification, params_.ions, ledger_);
         // f2. 망간 산화·환원 → 양이온 교환: CEC → φ → 평형 → 완화 (M3)
         process::update_cation_exchange(cell, params_);
         // f3. 인산 고정 (M3)
@@ -265,9 +345,16 @@ void World::tick_once() {
         // h. 작물
         if (crop_alive) {
             const process::NutrientAvailability available = process::available_nutrients(cell, params_);
-            if (auto died = process::update_crop(crop, cell, params_, available, inside_solar, house_air_temp_degC_,
-                                                 scenario_.stress_combination, tile_index, ledger_)) {
-                events_.push_back(Event{tick_, *died});
+            process::CropEnvironment env = crop_env_base;
+            env.tile_index = tile_index;
+            const process::CropTickResult result =
+                process::update_crop(crop, cell, params_, available, env, biology_rng_, ledger_);
+            crop_net_dry_matter_g += crop.last_gross_g_per_m2 - crop.last_respiration_g_per_m2;
+            if (result.harvested) {
+                events_.push_back(Event{tick_, *result.harvested});
+            }
+            if (result.died) {
+                events_.push_back(Event{tick_, *result.died});
             }
         }
         // i. 용탈
@@ -278,6 +365,13 @@ void World::tick_once() {
         if (auto event = process::check_nitrite_alarm(cell, params_.nitrification, tile_index)) {
             events_.push_back(Event{tick_, *event});
         }
+    }
+
+    // 4. 하우스 CO2 갱신 (이번 틱 작물 흡수·토양 호흡·환기, 셀 평균)
+    if (!tiles_.empty()) {
+        const double cells = static_cast<double>(tiles_.size());
+        process::update_house_co2(house_, params_.house, params_.crop, crop_net_dry_matter_g / cells,
+                                  (ledger_.C_respired_g - C_respired_before_g) / cells);
     }
 
     ++tick_;
@@ -300,7 +394,8 @@ Snapshot World::snapshot() const {
         .bed_rows = scenario_.bed_rows,
         .bed_cols = scenario_.bed_cols,
         .pending_command_count = pending_commands_.size(),
-        .house_air_temp_degC = house_air_temp_degC_,
+        .house_air_temp_degC = house_.air_temp_degC,
+        .house = house_,
         .soil = std::move(soil),
         .crops = std::move(crops),
         .ledger = ledger_,

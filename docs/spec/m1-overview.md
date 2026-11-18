@@ -1,11 +1,14 @@
 # M1 개요: 질소·수분·온도
 
 - 상태: 승인 (2026-11-18)
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M1
 - 관련 명세: [soil-water](soil-water.md), [soil-temperature](soil-temperature.md), [organic-matter](organic-matter.md), [nitrogen](nitrogen.md), [core-api](core-api.md)
 - 완료 기준(계획서 7장): 시나리오 S1·S2·S3 통과, 질소 보존 테스트 통과
 
 > **M2 변경 (2026-11-18 승인)**: 틱 순서·장부·보존식은 [m2-overview](m2-overview.md)가 대체해요.
+
+> **M4 변경 (2026-11-18 승인)**: 하우스 기온 식 대체, 탈질(기체 손실), 장부 `*_harvested`·`C_leaf_litter`, 시나리오 이행이 들어가요. 변경 지점마다 "(M4, 2026-11-18)"로 표시했고, 틱 순서·장부 전체는 [m4-overview](m4-overview.md)가 대체해요.
 
 이 문서는 M1 프로세스들이 공유하는 틀(단위, 셀 상태, 틱 순서, 명령, 장부, 데이터 배치)을 정해요. 각 프로세스의 수식과 인과관계는 개별 명세에 있어요.
 
@@ -25,10 +28,10 @@ M1이 만드는 판단은 세 가지예요.
 | pH 변화 | 셀마다 시나리오 초기값으로 **고정**. 질산화의 pH 계수에는 이미 쓰여요 (S2에 필요) | M2 |
 | EC, 토양 용액 이온 | 없음 | M2 |
 | 양이온 교환 | NH4+는 "용액 비율" 계수 하나로 용탈을 줄여요 | M3 |
-| 탈질, 암모니아 휘산 | 없음 (기체 손실 0) | M4 이후 |
+| 탈질, 암모니아 휘산 | 없음 (기체 손실 0). (M4, 2026-11-18) 탈질은 M4에서 추가돼 기체 손실이 0이 아니에요([denitrification](denitrification.md)). 암모니아 휘산은 여전히 없어요 | 탈질 M4, 휘산 M7 |
 | 미생물 개체군 | 분해균 활성 계수 1로 고정 | M5 |
 | 작물 흡수 | 없음 (작물이 없어요) | M2 |
-| 하우스 환경 제어(환기, 보온, 난방) | 하우스 기온은 외기와 일사로만 정해요 | M7/M8 |
+| 하우스 환경 제어(환기, 보온, 난방) | 하우스 기온은 외기와 일사로만 정해요. (M4, 2026-11-18) M4에서 다중 피복 열수지·측창·난방 명령이 들어와 M1 식은 대체됐어요([house-climate](house-climate.md)). 보온 커튼 개폐·자동 제어는 그대로 이후예요 | M4(기본), M7/M8 |
 
 ## 단위 규약
 
@@ -69,7 +72,7 @@ M1이 만드는 판단은 세 가지예요.
 ```
 매 틱마다:
   1. 명령 큐의 행동을 적용한다            (관수, 퇴비, 비료 → 각 풀에 즉시 더함, 장부 기록)
-  2. 하우스 기온을 갱신한다               (soil-temperature)
+  2. 하우스 기온을 갱신한다               (soil-temperature. M4, 2026-11-18: house-climate의 다중 피복 열수지, 순서는 m4-overview)
   3. 각 토양 셀에 대해 (행 우선 순서):
      a. 수분: 증발 → 배수량 계산          (soil-water)
      b. 온도: 하우스 기온 쪽으로 완화      (soil-temperature)
@@ -115,14 +118,15 @@ M1이 만드는 판단은 세 가지예요.
 | 항목 | 의미 |
 | --- | --- |
 | `water_in_mm`, `water_evaporated_mm`, `water_drained_mm` | 셀 합계, 면적 1 m² 기준 |
-| `N_in_g`, `N_leached_g`, `N_gas_g` | 질소 투입·용탈·기체 손실 (M1에서 기체 손실은 0) |
+| `N_in_g`, `N_leached_g`, `N_gas_g` | 질소 투입·용탈·기체 손실 (M1에서 기체 손실은 0. M4, 2026-11-18: 탈질로 0이 아니게 돼요) |
 | `C_in_g`, `C_respired_g` | 탄소 투입·호흡 손실 |
+| (M4, 2026-11-18) `*_harvested_g`(N, P, K, Ca, Mg, Mn), `C_leaf_litter_g` | 수확으로 반출된 원소량, 낙엽·낙과·언 과실로 토양에 돌아온 탄소([m4-overview](m4-overview.md) "장부 추가") |
 
 보존식 (셀 합계):
 
 - 물: `현재 수분 = 초기 + water_in − evaporated − drained`
-- 질소: `현재 (유기 N + NH4 + NO2 + NO3) = 초기 + N_in − N_leached − N_gas` (작물 흡수는 M2에서 항 추가)
-- 탄소: `현재 유기 C = 초기 + C_in − C_respired`
+- 질소: `현재 (유기 N + NH4 + NO2 + NO3) = 초기 + N_in − N_leached − N_gas` (작물 흡수는 M2에서 항 추가. M4, 2026-11-18: 계 전체는 `토양 + 체내 = 초기 + in − leached − gas − harvested`)
+- 탄소: `현재 유기 C = 초기 + C_in − C_respired` (M4, 2026-11-18: 작물이 돌려주는 `+ C_root_litter + C_leaf_litter` 항이 더해져요)
 
 테스트는 상대 오차 1e-9 이내로 검사해요(부동소수점 누적 오차만 허용).
 
@@ -132,7 +136,7 @@ M1이 만드는 판단은 세 가지예요.
 
 | 테이블 | 내용 | 명세 |
 | --- | --- | --- |
-| `[house]` | 하우스 기온 계수 | soil-temperature |
+| `[house]` | 하우스 기온 계수 3개. (M4, 2026-11-18) 3개 모두 삭제하고 [house-climate](house-climate.md)의 `[house]`로 재구성 | soil-temperature |
 | `[soil_water]` | 증발, 배수 계수 | soil-water |
 | `[soil_temperature]` | 완화 속도, 발열 계수 | soil-temperature |
 | `[organic_matter]` | 분해 속도, 부식화, 곡선 | organic-matter |
@@ -148,7 +152,7 @@ schema_version = 2
 
 [scenario]   # M0과 같음 (name, seed, start_day_of_year, weather_csv)
 
-[house]      # M0과 같음 (bed_rows, bed_cols)
+[house]      # M0과 같음 (bed_rows, bed_cols). M4, 2026-11-18: cover_layers 키가 추가돼요(아래 "시나리오 이행 (M4)")
 
 [soil]       # 새로 추가: 모든 셀의 초기값 (M1은 균일 토양)
 field_capacity_mm = 60.0
@@ -175,6 +179,15 @@ kg_per_m2 = 3.0
 
 - `[[schedule]]`은 "같은 시드 + 같은 명령 목록" 재현을 데이터로 표현한 거예요. 로더가 이것을 `(tick, Command)` 목록으로 펼치고, CLI와 테스트가 해당 틱 직전에 `enqueue`해요. 코어는 일정표를 모르고 명령만 받아요.
 - 모르는 `action`, action에 맞지 않는 키는 오류예요(엄격한 로딩).
+
+### 시나리오 이행 (M4, 2026-11-18)
+
+M1 시나리오는 모두 schema 5로 올라가요([m4-overview](m4-overview.md) "시나리오 이행"). 하우스 기후 식이 바뀌어서 M1 시나리오에도 다음이 들어가요.
+
+- `[house] cover_layers = 3`.
+- **매일 10~16시에 창 6개 전부를 열고**(`SetWindow`, `open_fraction = 1.0`) 16시에 닫는 일정. 일사 이득을 올린 뒤 닫힌 3중은 M1 식과 같지 않아서 환기가 없으면 M1 시나리오가 다른 값을 내요([house-climate](house-climate.md), [ADR-0011](../decisions/0011-house-climate-in-m4.md) "점검 후 보완").
+- M1 시나리오에는 작물이 없어서 `[crop]` 변경(모종 B 등급, 8포기/m², `initial_establishment_index = 1.0`)은 해당되지 않아요. M2·M3 시나리오에만 들어가요.
+- 시나리오 `schema_version`은 5로, 세이브 형식은 v6이에요([core-api](core-api.md)). S1~S3의 방향 테스트는 그대로 통과해야 해요.
 
 ## 스냅샷과 CLI 출력
 

@@ -48,9 +48,11 @@ struct SoilInit {
 };
 
 // 정식 상태 (M2: 시나리오 시작 시 모든 타일에 정식). 체내 양분은 적정 농도 × 생체량으로 시작해요.
+// M4: 모종 등급(params [[seedling_grade]]의 id)과 재식 밀도. 기관별 건물 = 포기당 값 × 재식 밀도.
 struct CropInit {
-    double leaf_g_per_m2 = 0.0;
-    double root_g_per_m2 = 0.0;
+    std::string seedling_grade;
+    double plants_per_m2 = 0.0;
+    double initial_establishment_index = 0.0;  // 활착 시작값 0~1 (필수): 0 = 막 정식한 작기, 1 = 이미 자란 작물(M2·M3 이행)
 
     bool operator==(const CropInit&) const = default;
 };
@@ -66,6 +68,7 @@ struct Scenario {
     int start_day_of_year = 0;  // 1..365, 틱 0의 날짜
     int bed_rows = 0;           // 하우스 베드 타일 그리드 행 수
     int bed_cols = 0;           // 열 수
+    int cover_layers = 0;       // M4: 피복 겹수 시작값 (house-climate)
     SoilInit soil;
     std::optional<CropInit> crop;  // 없으면 작물 없음
     StressCombination stress_combination = StressCombination::Minimum;

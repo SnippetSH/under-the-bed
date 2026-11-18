@@ -27,7 +27,14 @@ add_executable(sim-tests
   test_manganese.cpp
   test_m3_scenarios.cpp
   test_m3_conservation.cpp
-  test_m3_determinism.cpp)
+  test_m3_determinism.cpp
+  test_house_climate.cpp
+  test_phenology.cpp
+  test_fruit.cpp
+  test_denitrification.cpp
+  test_m4_scenarios.cpp
+  test_m4_conservation.cpp
+  test_m4_determinism.cpp)
 
 target_link_libraries(sim-tests PRIVATE sim-core sim-data Catch2::Catch2WithMain)
 # 실제 data/ 파일을 읽는 테스트용 저장소 경로

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "sim/calendar.hpp"
+#include "sim/house.hpp"
 #include "sim/scenario.hpp"
 #include "sim/soil.hpp"
 
@@ -20,7 +21,8 @@ struct Snapshot {
     int bed_cols;
     std::size_t pending_command_count;  // 다음 틱 시작 시 적용될 명령 수
 
-    double house_air_temp_degC;  // 마지막으로 처리한 틱의 하우스 기온 (틱 0에서는 초기 기상으로 계산)
+    double house_air_temp_degC;  // 마지막으로 처리한 틱의 하우스 기온 (틱 0에서는 첫 틱의 평형 기온)
+    HouseState house;            // M4 하우스 기후 상태 (house-climate)
     std::vector<SoilCell> soil;  // 행 우선, bed_rows × bed_cols
     std::vector<Crop> crops;     // 행 우선, soil과 같은 인덱스 (M2)
     Ledger ledger;

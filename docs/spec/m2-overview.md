@@ -2,6 +2,7 @@
 
 - 상태: 승인 (2026-11-18)
 - M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M2
 - 관련 명세: [aeration](aeration.md), [soil-chemistry](soil-chemistry.md), [strawberry-minimal](strawberry-minimal.md), M1 명세 전체, [ADR-0007](../decisions/0007-acid-toxicity-and-manganese.md)
 - 완료 기준(계획서 7장): S4 통과("비료를 줬는데 결핍" 재현), 과습 시 뿌리 손상 재현
@@ -26,11 +27,11 @@ M2는 처음으로 **작물**이 들어오는 마일스톤이에요. 토양에�
 | 양이온 교환(CEC), 길항 | K·Ca·Mg는 M1의 NH4+처럼 **고정된 용액 비율**로만 표현. 완충력은 기본 완충력 + 유기물 기여분 | M3 |
 | 인산 고정(시간에 따른 불용화) | 인산은 pH 유효도 곡선으로만 | M3 |
 | 망간 | 없음 | M3 (ADR-0007) |
-| 생육 단계, 화방, 과실, 품질 | 영양생장 한 단계만. 잎·뿌리 생체량만 | M4 |
+| 생육 단계, 화방, 과실, 품질 | 영양생장 한 단계만. 잎·뿌리 생체량만. (M4, 2026-11-18) M4에서 도입됐어요([strawberry-phenology](strawberry-phenology.md), [strawberry-fruit](strawberry-fruit.md)) | M4 |
 | 증상 표현(황화, 팁번 등) | 충족도·스트레스 기록까지만 계산, 화면 증상 매핑은 안 함 | M4~M7 |
 | 미생물, 병해 | 계수 1 | M5 |
-| 환기·밀폐, 가스 장해 | 하우스 기온은 M1 식 그대로 | M7 |
-| CO2 | 계수 1 | M8 |
+| 환기·밀폐, 가스 장해 | 하우스 기온은 M1 식 그대로. (M4, 2026-11-18) 피복·측창·난방은 M4 [house-climate](house-climate.md)로 대체됐어요. 가스 장해는 M7 | M4(환기·난방), M7(가스) |
+| CO2 | 계수 1. (M4, 2026-11-18) 하우스 CO2는 M4에서 도입됐어요([house-climate](house-climate.md)). CO2 시용기는 M7 | M4, M7 |
 
 ## 단위 규약 (M1에 추가)
 
@@ -59,17 +60,21 @@ M2는 처음으로 **작물**이 들어오는 마일스톤이에요. 토양에�
 
 ### 작물 (타일당 0~1개)
 
-잎·뿌리 건물량, 뿌리 건강도, 체내 양분(N, P, K, Ca, Mg), 생존 여부, 스트레스 기록. [strawberry-minimal](strawberry-minimal.md)
+잎·뿌리 건물량, 뿌리 건강도, 체내 양분(N, P, K, Ca, Mg), 생존 여부, 스트레스 기록. [strawberry-minimal](strawberry-minimal.md) (M4, 2026-11-18: 관부·개별 과실·화방·활착이 추가돼요, [m4-overview](m4-overview.md) "상태 추가")
 
 ### 장부 추가
 
-(2026-11-18) 뿌리 고사로 토양에 들어간 탄소 `C_root_litter_g`도 추가해요. 토양 C 보존식: `유기 C = 초기 + C_in + C_root_litter − C_respired`.
+(2026-11-18) 뿌리 고사로 토양에 들어간 탄소 `C_root_litter_g`도 추가해요. 토양 C 보존식: `유기 C = 초기 + C_in + C_root_litter − C_respired`. (M4, 2026-11-18) 낙엽·낙과·언 과실로 들어온 탄소 `C_leaf_litter_g`가 더해져 `유기 C = 초기 + C_in + C_root_litter + C_leaf_litter − C_respired`예요.
 
 `water_transpired_mm`, 원소별 `*_in_g`, `*_leached_g`, `*_uptake_g` (N, P, K, Ca, Mg, S), `H_eq_net` (산 생성 누계, 검증용).
 
 보존식은 "토양 + 작물 체내"를 하나의 계로 봐요. 흡수는 계 안의 이동이라 총량에서 빠지지 않아요. 토양만 따로 볼 때는 `− *_uptake_g` 항이 들어가요.
 
+(M4, 2026-11-18) 수확 반출 장부 `N_harvested_g`, `P_…`, `K_…`, `Ca_…`, `Mg_…`, `Mn_harvested_g`가 추가돼 계 전체 보존식은 `토양 + 체내 = 초기 + in − leached − gas − harvested`예요. `N_gas_g`는 탈질로 0이 아니게 돼요([m4-overview](m4-overview.md) "장부 추가").
+
 ## 틱 처리 순서 (M2)
+
+(M4, 2026-11-18) 아래 순서는 M4에서 f1(탈질), h0~h6(생물계절·과실), 하우스 CO2 갱신 등이 끼어들어 [m4-overview](m4-overview.md) "틱 처리 순서 (M4)"가 대체해요.
 
 ```
 매 틱마다:
@@ -99,7 +104,7 @@ M2는 처음으로 **작물**이 들어오는 마일스톤이에요. 토양에�
 | `AddLime` | 영역, `lime_id`, `g_per_m2` | 미용해 석회 풀에 당량을 더함 (soil-chemistry) |
 | `Till` | 영역 | 다짐 지수를 `tilled_compaction_index`로. 작물이 있으면 뿌리 손상 (aeration) |
 
-`variant` 순서: `Noop, Irrigate, AddCompost, AddFertilizer, AddLime, Till`.
+`variant` 순서: `Noop, Irrigate, AddCompost, AddFertilizer, AddLime, Till`. (M4, 2026-11-18: 뒤에 `SetWindow, SetHeater, SetCoverLayers, ThinFlowers`가 추가돼요, [m4-overview](m4-overview.md) "명령")
 
 ## M1 명세 변경 (M2 승인 시 해당 문서에 반영)
 
@@ -130,8 +135,8 @@ p_g_per_m2 = 25.0
 s_g_per_m2 = 3.0
 
 [crop]       # 생략하면 작물 없음
-leaf_g_per_m2 = 30.0
-root_g_per_m2 = 10.0
+leaf_g_per_m2 = 30.0     # (M4, 2026-11-18 삭제. 현재는 아래 "시나리오 이행 (M4)")
+root_g_per_m2 = 10.0     # (M4, 2026-11-18 삭제)
 
 [difficulty]
 stress_combination = "minimum"   # minimum | product
@@ -150,7 +155,16 @@ stress_combination = "minimum"   # minimum | product
 
 작물이 있는 시나리오는 별도 표기가 없으면 매일 8시에 6 mm 관수해요(물 스트레스가 다른 효과를 가리지 않도록).
 
-S7(무처리 대조구에서 양분 고갈)은 날씨에 따른 생장 감소와 구분하기 어려워서 생육 단계가 생기는 M4로 미뤄요.
+### 시나리오 이행 (M4, 2026-11-18)
+
+M2 시나리오는 모두 schema 5로 올라가요([m4-overview](m4-overview.md) "시나리오 이행"). 하우스 기후와 작물 초기값이 바뀌어서 다음이 들어가요.
+
+- `[house] cover_layers = 3`.
+- **매일 10~16시에 창 6개 전부를 열고**(`SetWindow`, `open_fraction = 1.0`) 16시에 닫는 일정. 닫힌 3중은 M1 식과 같지 않아서 환기가 없으면 다른 값을 내요([house-climate](house-climate.md)).
+- 작물이 있는 시나리오(S4·S4b·S8·S10 등)는 `[crop]`을 `leaf_g_per_m2 = 30`, `root_g_per_m2 = 10` 대신 `seedling_grade = "B"`, `plants_per_m2 = 8`(잎 28, 관부 16, 뿌리 12 g/m²), **`initial_establishment_index = 1.0`**(이미 자란 작물)으로 바꿔요.
+- 호흡·분배·활착이 바뀌어 생장량 수치는 달라지지만, S4·S4b·S8·S9·S10의 방향 테스트는 그대로 통과해야 해요. 기대값이 바뀌는 단위 테스트는 m4-overview "기대값이 바뀌는 단위 테스트"의 승인 목록을 따라요.
+
+S7(무처리 대조구에서 양분 고갈)은 날씨에 따른 생장 감소와 구분하기 어려워서 생육 단계가 생기는 M4로 미뤄요. (M4, 2026-11-18) M4의 S7로 다뤄요([m4-overview](m4-overview.md) "시나리오 테스트").
 
 ## 구현 작업 분할 (승인 후 확정)
 

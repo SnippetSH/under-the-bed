@@ -81,7 +81,7 @@ bool state_valid(const sim::Snapshot& snap, const sim::SoilChemistryParams& chem
         }
     }
     for (const sim::Crop& crop : snap.crops) {
-        const double v[] = {crop.leaf_g_per_m2,    crop.root_g_per_m2,    crop.plant_N_g_per_m2,
+        const double v[] = {crop.leaf_g_per_m2, crop.crown_g_per_m2, crop.fruit_g_per_m2(), crop.root_g_per_m2,    crop.plant_N_g_per_m2,
                             crop.plant_P_g_per_m2, crop.plant_K_g_per_m2, crop.plant_Ca_g_per_m2,
                             crop.plant_Mg_g_per_m2, crop.plant_Mn_g_per_m2};
         for (double x : v) {
@@ -152,14 +152,14 @@ double run_and_check(Loaded loaded, std::vector<simdata::ScheduledCommand> extra
         const std::array<double, 9> errs = {
             rel_err(now.water, init.water + l.water_in_mm - l.water_evaporated_mm - l.water_transpired_mm -
                                    l.water_drained_mm),
-            rel_err(now.nitrogen, init.nitrogen + l.N_in_g - l.N_leached_g - l.N_gas_g),
-            rel_err(now.p, init.p + l.P_in_g - l.P_leached_g),
-            rel_err(now.k, init.k + l.K_in_g - l.K_leached_g),
-            rel_err(now.ca, init.ca + l.Ca_in_g - l.Ca_leached_g),
-            rel_err(now.mg, init.mg + l.Mg_in_g - l.Mg_leached_g),
+            rel_err(now.nitrogen, init.nitrogen + l.N_in_g - l.N_leached_g - l.N_gas_g - l.N_harvested_g),
+            rel_err(now.p, init.p + l.P_in_g - l.P_leached_g - l.P_harvested_g),
+            rel_err(now.k, init.k + l.K_in_g - l.K_leached_g - l.K_harvested_g),
+            rel_err(now.ca, init.ca + l.Ca_in_g - l.Ca_leached_g - l.Ca_harvested_g),
+            rel_err(now.mg, init.mg + l.Mg_in_g - l.Mg_leached_g - l.Mg_harvested_g),
             rel_err(now.s, init.s + l.S_in_g - l.S_leached_g),
-            rel_err(now.carbon, init.carbon + l.C_in_g + l.C_root_litter_g - l.C_respired_g),
-            rel_err(now.mn, init.mn + l.Mn_in_g - l.Mn_leached_g),
+            rel_err(now.carbon, init.carbon + l.C_in_g + l.C_root_litter_g + l.C_leaf_litter_g - l.C_respired_g),
+            rel_err(now.mn, init.mn + l.Mn_in_g - l.Mn_leached_g - l.Mn_harvested_g),
         };
         static constexpr const char* kNames[9] = {"water", "N", "P", "K", "Ca", "Mg", "S", "C", "Mn"};
         const double worst = *std::max_element(errs.begin(), errs.end());

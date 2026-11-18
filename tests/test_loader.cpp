@@ -28,7 +28,7 @@ std::string weather_csv(std::size_t rows, std::string_view newline = "\n") {
 }
 
 constexpr std::string_view kValidScenario = R"(
-schema_version = 4
+schema_version = 5
 [scenario]
 name = "t"
 seed = 7
@@ -37,6 +37,7 @@ weather_csv = "w.csv"
 [house]
 bed_rows = 2
 bed_cols = 5
+cover_layers = 3
 [soil]
 field_capacity_mm = 60.0
 water_mm = 45
@@ -67,11 +68,84 @@ stress_combination = "minimum"
 
 // 형식 검증용 params 문서 (값은 명세 값이 아니어도 돼요)
 constexpr std::string_view kValidParams = R"(
-schema_version = 4
+schema_version = 5
 [house]
-base_offset_degC = 2.0
-solar_gain_degC_per_W_per_m2 = 0.015
-solar_transmittance_factor = 0.7
+layer_transmittance_factor = 0.9
+layer_resistance_m2K_per_W = 0.13
+infiltration_W_per_m2_per_K = 0.5
+window_bypass_fraction = 0.5
+window_open_levels = [0, 0.3, 0.5, 0.7, 1.0]
+vent_conductance_W_per_m2_per_K = 30.0
+solar_heat_gain_fraction = 0.063
+ground_heat_W_per_m2 = 6.1
+air_relax_rate_per_hour = 0.7
+heater_capacity_W_per_m2 = 150.0
+heater_setpoint_min_degC = 0.0
+heater_setpoint_max_degC = 30.0
+temp_mean_relax_rate_per_hour = 0.042
+cover_change_window_doy = [91, 243]
+min_cover_layers = 2
+max_cover_layers = 4
+outside_co2_ppm_by_hour = [420.0, 424.0, 428.8, 439.4, 464.7, 494.6, 495.1, 466.2, 441.8, 431.9, 427.6, 423.9, 420.0, 415.2, 402.8, 388.1, 397.3, 404.6, 405.0, 405.5, 407.0, 409.4, 412.5, 416]
+air_volume_m3_per_m2 = 3.0
+co2_mg_per_m3_per_ppm = 1.83
+infiltration_air_changes_per_hour = 0.3
+vent_air_changes_per_hour = 30.0
+co2_floor_ppm = 50.0
+[calendar]
+day_length_curve = [[1, 9.56], [181, 14.46], [365, 9.55]]
+[phenology]
+establishment_rate_per_hour = 0.0042
+establishment_temp_curve = [[5, 0], [18, 1], [35, 0.3]]
+establishment_growth_curve = [[0, 0.3], [1, 1]]
+induction_rate_per_hour = 0.002
+induction_day_length_curve = [[8, 1], [14, 0]]
+induction_temp_curve = [[3, 0], [12, 1], [30, 0]]
+induction_nitrogen_curve = [[0, 1], [1.0, 1], [1.3, 0.25]]
+truss_base_temp_degC = 5.0
+truss_degree_days_to_anthesis = 600.0
+flowers_per_truss_curve = [[1, 6], [10, 22]]
+[fruit]
+rank_fraction = [0.07, 0.13, 0.27, 0.53]
+rank_anthesis_delay_days = [0.0, 2.0, 4, 6.0]
+anthesis_jitter_days = 3
+rank_potential_fresh_g = [35.0, 25.0, 16.0, 10.0]
+size_variation_fraction = 0.1
+pollination_mean_curve = [[3, 0.35], [12, 0.92], [35, 0.35]]
+pollination_spread = 0.15
+set_threshold = 0.3
+deformed_threshold = 0.7
+pollination_size_curve = [[0.3, 0.4], [1, 1.0]]
+dry_matter_fraction = 0.09
+base_temp_degC = 5.0
+degree_days_to_harvest = 450.0
+growth_shape_curve = [[0, 0], [1, 1]]
+size_class_bounds_g = [10.0, 15.0, 20.0, 25.0]
+base_brix = 10.0
+brix_supply_curve = [[0, 0.7], [1, 1]]
+brix_day_temp_score_curve = [[3, 0.0003], [23, 1], [43, 0.0003]]
+brix_night_temp_score_curve = [[-10, 0], [8.5, 1], [17, 0]]
+brix_day_weight = 0.6
+brix_night_weight = 0.4
+brix_temp_score_curve = [[0, 0.75], [1, 1.15]]
+day_solar_threshold_W_per_m2 = 0
+abortion_rate_per_development_index = 8.0
+abortion_window_index = 0.25
+abortion_satisfaction_curve = [[0, 1], [0.6, 0.5], [0.85, 0], [1, 0]]
+rank_abortion_weight = [0.1, 0.4, 1.0, 1.6]
+thinnable_max_index = 0.3
+brix_k_curve = [[0.5, 0.75], [1, 1]]
+brix_n_excess_curve = [[0, 1], [0.3, 0.85]]
+brix_water_curve = [[0.4, 1.08], [1.2, 0.95]]
+firmness_ca_curve = [[0.5, 0.6], [1, 1]]
+firmness_temp_curve = [[10, 1], [28, 0.75]]
+firmness_n_excess_curve = [[0, 1], [0.3, 0.85]]
+[denitrification]
+rate_per_hour = 0.004
+o2_curve = [[0, 1], [0.5, 0], [1, 0]]
+temp_curve = [[0, 0], [25, 1], [45, 0.5]]
+carbon_curve = [[0, 0.1], [200, 1]]
+H_eq_per_eq_N = -1.0
 [soil_water]
 evap_mm_per_hour_per_W_per_m2 = 0.0004
 evap_base_mm_per_hour = 0.005
@@ -175,7 +249,6 @@ light_interception_curve = [[0, 0], [4, 0.94]]
 par_fraction = 0.48
 light_use_efficiency_g_per_MJ = 2.5
 temp_curve = [[3, 0], [40, 0]]
-leaf_allocation_fraction = 0.7
 water_stress_curve = [[0.2, 0], [2.0, 1.0]]
 salt_stress_curve = [[0, 1], [8, 0.05]]
 nutrient_stress_curve = [[0, 0], [1.0, 1.0]]
@@ -188,6 +261,8 @@ luxury_uptake_ratio = 1.3
 uptake_rate_per_g_root_per_hour = 0.002
 ca_uptake_rate_per_g_root_per_hour = 0.00019
 mg_uptake_rate_per_g_root_per_hour = 0.00021
+n_luxury_uptake_ratio = 1.3
+n_uptake_rate_per_g_root_per_hour = 0.000015
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015
 root_recovery_rate_per_hour = 0.002
 death_root_health = 0.05
@@ -197,6 +272,38 @@ target_Mn_g_per_g = 0.0001
 mn_uptake_rate_per_g_root_per_hour = 0.00004
 mn_max_uptake_ratio = 30.0
 mn_toxicity_curve = [[0, 1], [30, 0.1]]
+vegetative_leaf_fraction = 0.6
+vegetative_crown_fraction = 0.15
+vegetative_root_fraction = 0.25
+max_fruit_assimilate_fraction = 0.65
+maintenance_rate_leaf_per_hour = 0.00125
+maintenance_rate_crown_per_hour = 0.0004
+maintenance_rate_root_per_hour = 0.0006
+maintenance_rate_fruit_per_hour = 0.0004
+maintenance_temp_curve = [[0, 0.18], [25, 1.0], [40, 2.83]]
+leaf_senescence_rate_per_hour = 0.0005
+fruit_target_N_g_per_g = 0.015
+fruit_target_P_g_per_g = 0.0035
+fruit_target_K_g_per_g = 0.025
+fruit_target_Ca_g_per_g = 0.0015
+fruit_target_Mg_g_per_g = 0.0012
+fruit_target_Mn_g_per_g = 0.00002
+co2_g_per_g_dry_matter = 1.65
+co2_growth_curve = [[50, 0], [400, 1.0], [1200, 1.25]]
+cold_leaf_damage_curve = [[-6, 0.05], [0, 0]]
+cold_fruit_loss_curve = [[-4, 0.2], [0, 0]]
+[[seedling_grade]]
+id = "A"
+leaf_g_per_plant = 4.0
+crown_g_per_plant = 3
+root_g_per_plant = 2.0
+initial_induction_index = 0.8
+[[seedling_grade]]
+id = "C"
+leaf_g_per_plant = 2.5
+crown_g_per_plant = 1.2
+root_g_per_plant = 1.0
+initial_induction_index = 0.0
 [[compost]]
 id = "c1"
 name = "compost one"
@@ -269,8 +376,8 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
     SECTION("valid document fills every field") {
         auto p = simdata::parse_params_toml(kValidParams, "p.toml");
         REQUIRE(p.has_value());
-        CHECK(p->schema_version == 4);
-        CHECK(p->house.base_offset_degC == 2.0);
+        CHECK(p->schema_version == 5);
+        CHECK(p->house.ground_heat_W_per_m2 == 6.1);  // M4: house.base_offset_degC 삭제로 같은 float 키 검사로 바꿈
         CHECK(p->soil_water.evap_moisture_curve.points.size() == 2);
         CHECK(p->soil_water.evap_moisture_curve(0.5) == 0.5);
         CHECK(p->organic_matter.humus_C_to_N_ratio == 10.0);  // 정수로 쓴 실수 키
@@ -332,10 +439,11 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
         REQUIRE_FALSE(p.has_value());
     }
     SECTION("float key given as integer is accepted") {
+        // M4: house.base_offset_degC 삭제로 같은 의도의 house 키(heater_capacity_W_per_m2)로 바꿈
         auto p = simdata::parse_params_toml(
-            replaced(kValidParams, "base_offset_degC = 2.0", "base_offset_degC = 2"), "p.toml");
+            replaced(kValidParams, "heater_capacity_W_per_m2 = 150.0", "heater_capacity_W_per_m2 = 150"), "p.toml");
         REQUIRE(p.has_value());
-        CHECK(p->house.base_offset_degC == 2.0);
+        CHECK(p->house.heater_capacity_W_per_m2 == 150.0);
     }
     SECTION("unknown key in a nested table is rejected") {
         auto p = simdata::parse_params_toml(
@@ -363,7 +471,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
                    ContainsSubstring("missing required key 'soil_water.drainage_rate_per_hour'"));
     }
     SECTION("missing table is rejected") {
-        auto p = simdata::parse_params_toml("schema_version = 4\n", "p.toml");
+        auto p = simdata::parse_params_toml("schema_version = 5\n", "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'house'"));
     }
@@ -395,7 +503,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(q.error().message, ContainsSubstring("organic_matter.humification_fraction"));
     }
     SECTION("old schema version is rejected") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 4", "schema_version = 3"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 5", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -444,21 +552,21 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
     }
     SECTION("[crop] present") {
         auto doc = simdata::parse_scenario_toml(
-            replaced(kValidScenario, "[difficulty]", "[crop]\nleaf_g_per_m2 = 30.0\nroot_g_per_m2 = 10\n[difficulty]"),
+            replaced(kValidScenario, "[difficulty]", "[crop]\nseedling_grade = \"B\"\nplants_per_m2 = 8\ninitial_establishment_index = 0\n[difficulty]"),
             "s.toml");
         REQUIRE(doc.has_value());
         REQUIRE(doc->scenario.crop.has_value());
-        CHECK(doc->scenario.crop->leaf_g_per_m2 == 30.0);
-        CHECK(doc->scenario.crop->root_g_per_m2 == 10.0);
+        CHECK(doc->scenario.crop->seedling_grade == "B");
+        CHECK(doc->scenario.crop->plants_per_m2 == 8.0);  // 정수로 쓴 실수 키
     }
     SECTION("[crop] with a missing or unknown key is rejected") {
         auto missing = simdata::parse_scenario_toml(
-            replaced(kValidScenario, "[difficulty]", "[crop]\nleaf_g_per_m2 = 30.0\n[difficulty]"), "s.toml");
+            replaced(kValidScenario, "[difficulty]", "[crop]\nseedling_grade = \"B\"\n[difficulty]"), "s.toml");
         REQUIRE_FALSE(missing.has_value());
-        CHECK_THAT(missing.error().message, ContainsSubstring("missing required key 'crop.root_g_per_m2'"));
+        CHECK_THAT(missing.error().message, ContainsSubstring("missing required key 'crop.plants_per_m2'"));
         auto unknown = simdata::parse_scenario_toml(
             replaced(kValidScenario, "[difficulty]",
-                     "[crop]\nleaf_g_per_m2 = 30.0\nroot_g_per_m2 = 10\nfruit_g_per_m2 = 1\n[difficulty]"),
+                     "[crop]\nseedling_grade = \"B\"\nplants_per_m2 = 8\ninitial_establishment_index = 0\nfruit_g_per_m2 = 1\n[difficulty]"),
             "s.toml");
         REQUIRE_FALSE(unknown.has_value());
         CHECK_THAT(unknown.error().message, ContainsSubstring("unknown key 'crop.fruit_g_per_m2'"));
@@ -507,7 +615,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(doc.error().message, ContainsSubstring("unknown key 'house.bed_depth_cm'"));
     }
     SECTION("missing table") {
-        auto doc = simdata::parse_scenario_toml("schema_version = 4\n[scenario]\n", "s.toml");
+        auto doc = simdata::parse_scenario_toml("schema_version = 5\n[scenario]\n", "s.toml");
         CHECK_FALSE(doc.has_value());
     }
     SECTION("negative seed") {
@@ -515,7 +623,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
             simdata::parse_scenario_toml(replaced(kValidScenario, "seed = 7", "seed = -1"), "s.toml").has_value());
     }
     SECTION("unsupported schema version") {
-        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 4", "schema_version = 3"),
+        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 5", "schema_version = 4"),
                                                 "s.toml");
         REQUIRE_FALSE(doc.has_value());
         CHECK(doc.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -835,8 +943,8 @@ TEST_CASE("M3 params reject missing, removed and unknown keys", "[unit][loader][
                                             "p.toml");
         CHECK_FALSE(p.has_value());
     }
-    SECTION("params schema 3 (M2) is rejected as an old version") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 4", "schema_version = 3"),
+    SECTION("params schema 4 (M3) is rejected as an old version") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 5", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -868,7 +976,7 @@ TEST_CASE("M3 scenario soil keys are read and required", "[unit][loader][m3]") {
 TEST_CASE("Repository params and scenarios carry the M3 fields", "[unit][loader][data][m3]") {
     auto params = simdata::load_params(test::repo_path("data/params.toml"));
     REQUIRE(params.has_value());
-    CHECK(params->schema_version == 4);
+    CHECK(params->schema_version == 5);
     CHECK(params->cation_exchange.solver_iterations == 60);
     CHECK(params->crop.mn_max_uptake_ratio == 30.0);
     bool has_mnso4 = false;
@@ -881,4 +989,218 @@ TEST_CASE("Repository params and scenarios carry the M3 fields", "[unit][loader]
     REQUIRE(empty.has_value());
     CHECK(empty->soil.cec_mineral_eq_per_m2 > 0.0);
     CHECK(empty->soil.mn_oxide_g_per_m2 >= 0.0);
+}
+
+// ---- M4 (schema 5) ----
+
+TEST_CASE("M4 params tables, arrays and seedling grades are read", "[unit][loader][m4]") {
+    auto p = simdata::parse_params_toml(kValidParams, "p.toml");
+    REQUIRE(p.has_value());
+    CHECK(p->house.layer_resistance_m2K_per_W == 0.13);
+    CHECK(p->house.cover_change_window_doy[0] == 91);
+    CHECK(p->house.cover_change_window_doy[1] == 243);
+    CHECK(p->house.min_cover_layers == 2);
+    CHECK(p->house.max_cover_layers == 4);
+    REQUIRE(p->house.outside_co2_ppm_by_hour.size() == 24);
+    CHECK(p->house.outside_co2_ppm_by_hour[0] == 420.0);
+    CHECK(p->house.outside_co2_ppm_by_hour[23] == 416.0);  // 정수로 쓴 항목
+    CHECK(p->calendar.day_length_curve.points.size() == 3);
+    CHECK(p->phenology.truss_degree_days_to_anthesis == 600.0);
+    CHECK(p->fruit.rank_fraction.size() == 4);
+    CHECK(p->fruit.rank_anthesis_delay_days[2] == 4.0);  // 정수로 쓴 항목
+    CHECK(p->fruit.size_class_bounds_g.size() == 4);
+    CHECK(p->fruit.brix_temp_score_curve(1.0) == 1.15);  // 4차: brix_temp_curve 삭제, 같은 자리 점검을 새 곡선으로
+    CHECK(p->fruit.rank_abortion_weight.size() == 4);
+    CHECK(p->denitrification.H_eq_per_eq_N == -1.0);
+    CHECK(p->crop.vegetative_root_fraction == 0.25);
+    CHECK(p->crop.cold_fruit_loss_curve(-4.0) == 0.2);
+    REQUIRE(p->seedling_grades.size() == 2);
+    CHECK(p->seedling_grades[0].id == "A");
+    CHECK(p->seedling_grades[0].crown_g_per_plant == 3.0);  // 정수로 쓴 실수 키
+    CHECK(p->seedling_grades[0].initial_induction_index == 0.8);
+    CHECK(p->seedling_grades[1].id == "C");
+}
+
+TEST_CASE("M4 params reject missing, removed and malformed keys", "[unit][loader][m4]") {
+    SECTION("removed M1 house keys are unknown now") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "[house]\n", "[house]\nbase_offset_degC = 2.0\n"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("unknown key 'house.base_offset_degC'"));
+    }
+    SECTION("removed leaf_allocation_fraction is unknown now") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "[crop]\n", "[crop]\nleaf_allocation_fraction = 0.7\n"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("unknown key 'crop.leaf_allocation_fraction'"));
+    }
+    SECTION("missing [[seedling_grade]] is rejected") {
+        std::string text = replaced(kValidParams, "[[seedling_grade]]\nid = \"A\"", "[[seedling_gradee]]\nid = \"A\"");
+        text = replaced(text, "[[seedling_grade]]\nid = \"C\"", "[[seedling_gradee]]\nid = \"C\"");
+        auto p = simdata::parse_params_toml(text, "p.toml");
+        REQUIRE_FALSE(p.has_value());
+    }
+    SECTION("missing key in a seedling grade entry is rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "root_g_per_plant = 2.0\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'seedling_grade[0].root_g_per_plant'"));
+    }
+    SECTION("missing M4 table is rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "[fruit]\n", "[fruity]\n"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'fruit'"));
+    }
+    SECTION("number array with a non-number element is rejected") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "rank_fraction = [0.07,", "rank_fraction = [\"x\","), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("fruit.rank_fraction[0]"));
+    }
+    SECTION("number array given as a scalar is rejected") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "size_class_bounds_g = [10.0, 15.0, 20.0, 25.0]", "size_class_bounds_g = 10.0"),
+            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("fruit.size_class_bounds_g"));
+    }
+    SECTION("cover window must be two integers") {
+        auto three = simdata::parse_params_toml(
+            replaced(kValidParams, "cover_change_window_doy = [91, 243]", "cover_change_window_doy = [91, 243, 300]"),
+            "p.toml");
+        REQUIRE_FALSE(three.has_value());
+        CHECK_THAT(three.error().message, ContainsSubstring("house.cover_change_window_doy"));
+        auto floating = simdata::parse_params_toml(
+            replaced(kValidParams, "cover_change_window_doy = [91, 243]", "cover_change_window_doy = [91.5, 243]"),
+            "p.toml");
+        CHECK_FALSE(floating.has_value());
+    }
+    SECTION("params schema 4 (M3) is rejected as an old version") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 5", "schema_version = 4"),
+                                            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
+    }
+}
+
+TEST_CASE("M4 scenario cover_layers and crop init are read and required", "[unit][loader][m4]") {
+    SECTION("cover_layers is read") {
+        auto doc = simdata::parse_scenario_toml(kValidScenario, "s.toml");
+        REQUIRE(doc.has_value());
+        CHECK(doc->scenario.cover_layers == 3);
+    }
+    SECTION("missing cover_layers is rejected") {
+        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "cover_layers = 3\n", ""), "s.toml");
+        REQUIRE_FALSE(doc.has_value());
+        CHECK_THAT(doc.error().message, ContainsSubstring("missing required key 'house.cover_layers'"));
+    }
+    SECTION("old crop keys are rejected") {
+        auto doc = simdata::parse_scenario_toml(
+            replaced(kValidScenario, "[difficulty]", "[crop]\nleaf_g_per_m2 = 30.0\nroot_g_per_m2 = 10\n[difficulty]"),
+            "s.toml");
+        REQUIRE_FALSE(doc.has_value());
+    }
+}
+
+TEST_CASE("M4 schedule actions set_window, set_heater and set_cover_layers parse", "[unit][loader][schedule][m4]") {
+    SECTION("all three actions with repeats") {
+        auto doc = simdata::parse_scenario_toml(scenario_with(R"(
+[[schedule]]
+tick = 6
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 2
+[[schedule]]
+tick = 2
+action = "set_heater"
+on = true
+setpoint_degC = 8
+[[schedule]]
+tick = 4
+action = "set_cover_layers"
+layers = 2
+)"),
+                                                "s.toml");
+        REQUIRE(doc.has_value());
+        REQUIRE(doc->schedule.size() == 4);
+        const auto& heater = std::get<sim::SetHeaterCommand>(doc->schedule[0].command);
+        CHECK(doc->schedule[0].tick == 2);
+        CHECK(heater.on);
+        CHECK(heater.setpoint_degC == 8.0);  // 정수로 쓴 실수 키
+        const auto& cover = std::get<sim::SetCoverLayersCommand>(doc->schedule[1].command);
+        CHECK(doc->schedule[1].tick == 4);
+        CHECK(cover.layers == 2);
+        const auto& window = std::get<sim::SetWindowCommand>(doc->schedule[2].command);
+        CHECK(doc->schedule[2].tick == 6);
+        CHECK(window.layer == 1);
+        CHECK(window.side == sim::WindowSide::Right);
+        CHECK(window.open_fraction == 1.0);
+        CHECK(doc->schedule[3].tick == 30);
+    }
+    SECTION("left side and closing a window") {
+        auto doc = simdata::parse_scenario_toml(
+            scenario_with("[[schedule]]\ntick = 0\naction = \"set_window\"\nlayer = 0\nside = \"left\"\nopen_fraction = 0\n"),
+            "s.toml");
+        REQUIRE(doc.has_value());
+        const auto& window = std::get<sim::SetWindowCommand>(doc->schedule[0].command);
+        CHECK(window.side == sim::WindowSide::Left);
+        CHECK(window.open_fraction == 0.0);
+    }
+    SECTION("bad side string is rejected") {
+        auto doc = simdata::parse_scenario_toml(
+            scenario_with("[[schedule]]\ntick = 0\naction = \"set_window\"\nlayer = 0\nside = \"north\"\nopen_fraction = 1.0\n"),
+            "s.toml");
+        REQUIRE_FALSE(doc.has_value());
+        CHECK_THAT(doc.error().message, ContainsSubstring("schedule[0].side"));
+    }
+    SECTION("area on set_window is an unknown key") {
+        auto doc = simdata::parse_scenario_toml(
+            scenario_with("[[schedule]]\ntick = 0\naction = \"set_window\"\nlayer = 0\nside = \"left\"\n"
+                          "open_fraction = 1.0\narea = [0, 0, 1, 1]\n"),
+            "s.toml");
+        REQUIRE_FALSE(doc.has_value());
+        CHECK_THAT(doc.error().message, ContainsSubstring("unknown key 'schedule[0].area'"));
+    }
+    SECTION("area on set_heater and set_cover_layers is an unknown key") {
+        CHECK_FALSE(simdata::parse_scenario_toml(
+                        scenario_with("[[schedule]]\ntick = 0\naction = \"set_heater\"\non = true\n"
+                                      "setpoint_degC = 5.0\narea = [0, 0, 1, 1]\n"),
+                        "s.toml")
+                        .has_value());
+        CHECK_FALSE(simdata::parse_scenario_toml(
+                        scenario_with("[[schedule]]\ntick = 0\naction = \"set_cover_layers\"\nlayers = 3\n"
+                                      "area = [0, 0, 1, 1]\n"),
+                        "s.toml")
+                        .has_value());
+    }
+    SECTION("missing or mistyped keys are rejected") {
+        auto missing = simdata::parse_scenario_toml(
+            scenario_with("[[schedule]]\ntick = 0\naction = \"set_heater\"\non = true\n"), "s.toml");
+        REQUIRE_FALSE(missing.has_value());
+        CHECK_THAT(missing.error().message, ContainsSubstring("missing required key 'schedule[0].setpoint_degC'"));
+        auto not_bool = simdata::parse_scenario_toml(
+            scenario_with("[[schedule]]\ntick = 0\naction = \"set_heater\"\non = 1\nsetpoint_degC = 5.0\n"),
+            "s.toml");
+        CHECK_FALSE(not_bool.has_value());
+        auto layers_float = simdata::parse_scenario_toml(
+            scenario_with("[[schedule]]\ntick = 0\naction = \"set_cover_layers\"\nlayers = 2.5\n"), "s.toml");
+        CHECK_FALSE(layers_float.has_value());
+    }
+}
+
+TEST_CASE("Repository params and scenarios carry the M4 fields", "[unit][loader][data][m4]") {
+    auto params = simdata::load_params(test::repo_path("data/params.toml"));
+    REQUIRE(params.has_value());
+    CHECK(params->house.outside_co2_ppm_by_hour.size() == 24);
+    CHECK(params->seedling_grades.size() >= 3);
+    CHECK(params->fruit.rank_fraction.size() == params->fruit.rank_potential_fresh_g.size());
+
+    auto s13 = simdata::load_scenario(test::repo_path("data/scenarios/m4/s13_proper.toml"));
+    REQUIRE(s13.has_value());
+    CHECK(s13->cover_layers == 3);
+    REQUIRE(s13->crop.has_value());
+    CHECK(s13->crop->seedling_grade == "B");
+    CHECK(s13->crop->plants_per_m2 == 8.0);
 }

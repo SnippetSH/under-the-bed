@@ -1,6 +1,7 @@
 # 토양 수분 수지
 
 - 상태: 승인 (2026-11-18)
+- M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), 용탈은 [nitrogen](nitrogen.md)
 
@@ -28,7 +29,7 @@
 | `soil_water.evap_base_mm_per_hour` | 일사가 없을 때의 기본 증발 | mm/h | 0.005 | 게임용 임의값 |
 | `soil_water.evap_moisture_curve` | x = relative_water, y = 증발 계수 | - | `[[0,0],[0.3,0.15],[0.7,0.8],[1.0,1.0]]` | 게임용 임의값 |
 | `soil_water.drainage_rate_per_hour` | 포장용수량 초과분 중 시간당 배수 비율 | 1/h | 0.3 | 게임용 임의값 |
-| `house.solar_transmittance_factor` | 하우스 피복 일사 투과율 (soil-temperature와 공유) | - | 0.7 | 게임용 임의값 |
+| ~~`house.solar_transmittance_factor`~~ | **(M4, 2026-11-18 삭제)** 현재 값이 아니에요. 하우스 안 일사는 `일사 × layer_transmittance_factor ^ 겹수`로 계산해요([house-climate](house-climate.md)) | - | - | - |
 
 ## 프로세스
 
@@ -39,7 +40,7 @@
 ### 증발 (셀 단계 a)
 
 ```
-inside_solar   = outside_solar × solar_transmittance_factor
+inside_solar   = outside_solar × layer_transmittance_factor ^ cover_layers      (M4, 2026-11-18: 이전 `outside_solar × solar_transmittance_factor`. house-climate의 τ^겹수, 파생값 `inside_solar_W_per_m2`)
 potential_mm   = evap_mm_per_hour_per_W_per_m2 × inside_solar + evap_base_mm_per_hour
 evaporated_mm  = min(water_mm, potential_mm × evap_moisture_curve(relative_water))
 water_mm      -= evaporated_mm

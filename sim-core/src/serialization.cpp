@@ -2,10 +2,11 @@
 //
 //   magic "FGSV" | format_version u32
 //   [정적 입력] params, scenario (토양 초기값, 기상 표 포함)
-//   [동적 상태] tick, next_command_seq, pending_commands, tiles(토양 셀 + 작물), house_air_temp, ledger
+//   [동적 상태] tick, next_command_seq, house(하우스 상태), biology_rng, pending_commands,
+//               tiles(토양 셀 + 작물 + 화방·과실·수확 기록), ledger
 //
 // state_hash()는 동적 상태 부분만 해시해요. 이벤트는 저장하지 않아요.
-// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5).
+// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5, M4 = 6).
 
 #include <array>
 #include <format>
@@ -21,12 +22,16 @@ namespace sim {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> kMagic = {'F', 'G', 'S', 'V'};
-constexpr std::uint32_t kSaveFormatVersion = 5;
+constexpr std::uint32_t kSaveFormatVersion = 6;
 
 constexpr std::size_t kWeatherHourBytes = 24;       // f64 × 3
 constexpr std::size_t kCurvePointBytes = 16;        // f64 × 2
 constexpr std::size_t kQueuedCommandMinBytes = 12;  // seq u64 + variant index u32
 constexpr std::size_t kMinStringBytes = 8;          // 길이 u64
+constexpr std::size_t kTrussBytes = 73;             // u64 + f64 x 2 + u8 + 진단(u64 x 5 + f64)
+constexpr std::size_t kFruitBytes = 106;            // u32 x 2 + u64 + u8 x 2 + f64 x 11
+constexpr std::size_t kF64Bytes = 8;
+constexpr std::size_t kWindowLayerBytes = 16;  // f64 x 2 (왼쪽·오른쪽 개방률)
 
 std::unexpected<Error> fail(ErrorCode code, std::string message) {
     return std::unexpected(Error{code, std::move(message)});
@@ -52,6 +57,25 @@ void read_curve(detail::ByteReader& r, PiecewiseLinear& c) {
     for (auto& p : c.points) {
         p[0] = r.f64();
         p[1] = r.f64();
+    }
+}
+
+void write_f64_list(detail::ByteWriter& w, const std::vector<double>& v) {
+    w.u64(v.size());
+    for (const double x : v) {
+        w.f64(x);
+    }
+}
+
+void read_f64_list(detail::ByteReader& r, std::vector<double>& v) {
+    const std::uint64_t n = r.u64();
+    if (!r.ok() || n > r.remaining() / kF64Bytes) {
+        r.fail();
+        return;
+    }
+    v.resize(static_cast<std::size_t>(n));
+    for (double& x : v) {
+        x = r.f64();
     }
 }
 
@@ -177,6 +201,66 @@ void write_crop(detail::ByteWriter& w, const Crop& c) {
     w.f64(c.plant_Mn_g_per_m2);
     w.f64(c.antagonism_Ca_factor);
     w.f64(c.antagonism_Mg_factor);
+
+    // M4
+    w.f64(c.crown_g_per_m2);
+    w.f64(c.plants_per_m2);
+    w.f64(c.establishment_index);
+    w.f64(c.induction_index);
+    w.f64(c.last_gross_g_per_m2);
+    w.f64(c.last_respiration_g_per_m2);
+    w.f64(c.last_supply_ratio);
+    w.f64(c.size_satisfaction_mean);
+    w.u64(c.trusses.size());
+    for (const Truss& t : c.trusses) {
+        w.u64(t.initiated_tick);
+        w.f64(t.development_index);
+        w.f64(t.flowers_per_m2);
+        w.u8(t.opened ? 1 : 0);
+        w.u64(t.opened_tick);
+        w.u64(t.harvested_fruits);
+        w.f64(t.harvested_fresh_g);
+        w.u64(t.aborted_fruits);
+        w.u64(t.first_harvest_tick);
+        w.u64(t.last_harvest_tick);
+    }
+    w.u64(c.fruits.size());
+    for (const Fruit& f : c.fruits) {
+        w.u32(f.truss_index);
+        w.u32(f.rank);
+        w.u64(f.anthesis_tick);
+        w.u8(f.set ? 1 : 0);
+        w.f64(f.pollination_index);
+        w.u8(f.deformed ? 1 : 0);
+        w.f64(f.potential_fresh_g);
+        w.f64(f.dry_g);
+        w.f64(f.development_index);
+        w.f64(f.brix_factor_sum);
+        w.f64(f.firmness_factor_sum);
+        w.f64(f.weight_sum);
+        w.f64(f.day_score_sum);
+        w.f64(f.day_weight_sum);
+        w.f64(f.night_score_sum);
+        w.f64(f.night_weight_sum);
+    }
+    const HarvestRecord& h = c.harvest;
+    w.u64(h.harvested_fruits);
+    w.f64(h.harvested_fresh_g);
+    w.u64(h.harvested_deformed);
+    w.f64(h.harvested_deformed_fresh_g);
+    w.f64(h.harvested_brix_weighted);
+    w.f64(h.harvested_firmness_weighted);
+    w.u64(h.harvested_size_class_counts.size());
+    for (const std::uint64_t n : h.harvested_size_class_counts) {
+        w.u64(n);
+    }
+    w.u8(h.has_first_harvest ? 1 : 0);
+    w.u64(h.first_harvest_tick);
+    w.u64(h.aborted_fruits);
+    w.u64(h.thinned_fruits);
+    w.f64(h.harvested_day_score_weighted);
+    w.f64(h.harvested_night_score_weighted);
+    w.f64(h.harvested_temp_score_weighted);
 }
 
 void read_crop(detail::ByteReader& r, Crop& c) {
@@ -202,15 +286,133 @@ void read_crop(detail::ByteReader& r, Crop& c) {
     c.plant_Mn_g_per_m2 = r.f64();
     c.antagonism_Ca_factor = r.f64();
     c.antagonism_Mg_factor = r.f64();
+
+    // M4
+    c.crown_g_per_m2 = r.f64();
+    c.plants_per_m2 = r.f64();
+    c.establishment_index = r.f64();
+    c.induction_index = r.f64();
+    c.last_gross_g_per_m2 = r.f64();
+    c.last_respiration_g_per_m2 = r.f64();
+    c.last_supply_ratio = r.f64();
+    c.size_satisfaction_mean = r.f64();
+
+    const std::uint64_t truss_count = r.u64();
+    if (!r.ok() || truss_count > r.remaining() / kTrussBytes) {
+        r.fail();
+        return;
+    }
+    c.trusses.assign(static_cast<std::size_t>(truss_count), Truss{});
+    for (Truss& t : c.trusses) {
+        t.initiated_tick = r.u64();
+        t.development_index = r.f64();
+        t.flowers_per_m2 = r.f64();
+        const std::uint8_t opened = r.u8();
+        if (opened > 1) {
+            r.fail();
+        }
+        t.opened = opened == 1;
+        t.opened_tick = r.u64();
+        t.harvested_fruits = r.u64();
+        t.harvested_fresh_g = r.f64();
+        t.aborted_fruits = r.u64();
+        t.first_harvest_tick = r.u64();
+        t.last_harvest_tick = r.u64();
+    }
+
+    const std::uint64_t fruit_count = r.u64();
+    if (!r.ok() || fruit_count > r.remaining() / kFruitBytes) {
+        r.fail();
+        return;
+    }
+    c.fruits.assign(static_cast<std::size_t>(fruit_count), Fruit{});
+    for (Fruit& f : c.fruits) {
+        f.truss_index = r.u32();
+        f.rank = r.u32();
+        f.anthesis_tick = r.u64();
+        const std::uint8_t set = r.u8();
+        f.pollination_index = r.f64();
+        const std::uint8_t deformed = r.u8();
+        if (set > 1 || deformed > 1) {
+            r.fail();
+        }
+        f.set = set == 1;
+        f.deformed = deformed == 1;
+        f.potential_fresh_g = r.f64();
+        f.dry_g = r.f64();
+        f.development_index = r.f64();
+        f.brix_factor_sum = r.f64();
+        f.firmness_factor_sum = r.f64();
+        f.weight_sum = r.f64();
+        f.day_score_sum = r.f64();
+        f.day_weight_sum = r.f64();
+        f.night_score_sum = r.f64();
+        f.night_weight_sum = r.f64();
+    }
+
+    HarvestRecord& h = c.harvest;
+    h.harvested_fruits = r.u64();
+    h.harvested_fresh_g = r.f64();
+    h.harvested_deformed = r.u64();
+    h.harvested_deformed_fresh_g = r.f64();
+    h.harvested_brix_weighted = r.f64();
+    h.harvested_firmness_weighted = r.f64();
+    const std::uint64_t class_count = r.u64();
+    if (!r.ok() || class_count > r.remaining() / kF64Bytes) {
+        r.fail();
+        return;
+    }
+    h.harvested_size_class_counts.assign(static_cast<std::size_t>(class_count), 0);
+    for (std::uint64_t& n : h.harvested_size_class_counts) {
+        n = r.u64();
+    }
+    const std::uint8_t has_first = r.u8();
+    if (has_first > 1) {
+        r.fail();
+    }
+    h.has_first_harvest = has_first == 1;
+    h.first_harvest_tick = r.u64();
+    h.aborted_fruits = r.u64();
+    h.thinned_fruits = r.u64();
+    h.harvested_day_score_weighted = r.f64();
+    h.harvested_night_score_weighted = r.f64();
+    h.harvested_temp_score_weighted = r.f64();
+}
+
+// 세이브의 작물 구조 검사: 과위·화방 인덱스가 범위 안이고, 꽃(set = false)은 건물이 0이고,
+// 크기 구간 개수가 params와 맞는지. 시뮬레이션이 이 불변 조건에 기대어 인덱스를 써요.
+bool crop_structure_is_valid(const Crop& crop, const Params& params) {
+    if (!crop.present) {
+        return crop.trusses.empty() && crop.fruits.empty();
+    }
+    if (crop.harvest.harvested_size_class_counts.size() != params.fruit.size_class_bounds_g.size() + 1) {
+        return false;
+    }
+    const std::size_t ranks = params.fruit.rank_fraction.size();
+    for (const Fruit& fruit : crop.fruits) {
+        if (fruit.rank >= ranks || fruit.truss_index >= crop.trusses.size()) {
+            return false;
+        }
+        if (!fruit.set && fruit.dry_g != 0.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_window_open_level(const HouseParams& params, double open_fraction) {
+    for (const double level : params.window_open_levels) {
+        if (open_fraction == level) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---- 정적 입력 ----
 
 void write_params(detail::ByteWriter& w, const Params& p) {
     w.i64(p.schema_version);
-    w.f64(p.house.base_offset_degC);
-    w.f64(p.house.solar_gain_degC_per_W_per_m2);
-    w.f64(p.house.solar_transmittance_factor);
     w.f64(p.soil_water.evap_mm_per_hour_per_W_per_m2);
     w.f64(p.soil_water.evap_base_mm_per_hour);
     write_curve(w, p.soil_water.evap_moisture_curve);
@@ -278,7 +480,6 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.crop.par_fraction);
     w.f64(p.crop.light_use_efficiency_g_per_MJ);
     write_curve(w, p.crop.temp_curve);
-    w.f64(p.crop.leaf_allocation_fraction);
     write_curve(w, p.crop.water_stress_curve);
     write_curve(w, p.crop.salt_stress_curve);
     write_curve(w, p.crop.nutrient_stress_curve);
@@ -360,13 +561,126 @@ void write_params(detail::ByteWriter& w, const Params& p) {
         w.f64(l.ca_fraction);
         w.f64(l.mg_fraction);
     }
+
+    // ---- M4 (append) ----
+    const HouseParams& h = p.house;
+    w.f64(h.layer_transmittance_factor);
+    w.f64(h.layer_resistance_m2K_per_W);
+    w.f64(h.infiltration_W_per_m2_per_K);
+    w.f64(h.window_bypass_fraction);
+    w.f64(h.vent_conductance_W_per_m2_per_K);
+    w.f64(h.solar_heat_gain_fraction);
+    w.f64(h.ground_heat_W_per_m2);
+    w.f64(h.air_relax_rate_per_hour);
+    w.f64(h.heater_capacity_W_per_m2);
+    w.f64(h.heater_setpoint_min_degC);
+    w.f64(h.heater_setpoint_max_degC);
+    w.f64(h.temp_mean_relax_rate_per_hour);
+    w.i64(h.cover_change_window_doy[0]);
+    w.i64(h.cover_change_window_doy[1]);
+    w.i64(h.min_cover_layers);
+    w.i64(h.max_cover_layers);
+    write_f64_list(w, h.outside_co2_ppm_by_hour);
+    write_f64_list(w, h.window_open_levels);
+    w.f64(h.air_volume_m3_per_m2);
+    w.f64(h.co2_mg_per_m3_per_ppm);
+    w.f64(h.infiltration_air_changes_per_hour);
+    w.f64(h.vent_air_changes_per_hour);
+    w.f64(h.co2_floor_ppm);
+
+    write_curve(w, p.calendar.day_length_curve);
+
+    const PhenologyParams& ph = p.phenology;
+    w.f64(ph.establishment_rate_per_hour);
+    write_curve(w, ph.establishment_temp_curve);
+    write_curve(w, ph.establishment_growth_curve);
+    w.f64(ph.induction_rate_per_hour);
+    write_curve(w, ph.induction_day_length_curve);
+    write_curve(w, ph.induction_temp_curve);
+    write_curve(w, ph.induction_nitrogen_curve);
+    w.f64(ph.truss_base_temp_degC);
+    w.f64(ph.truss_degree_days_to_anthesis);
+    write_curve(w, ph.flowers_per_truss_curve);
+
+    const FruitParams& fr = p.fruit;
+    write_f64_list(w, fr.rank_fraction);
+    write_f64_list(w, fr.rank_anthesis_delay_days);
+    w.f64(fr.anthesis_jitter_days);
+    write_f64_list(w, fr.rank_potential_fresh_g);
+    w.f64(fr.size_variation_fraction);
+    write_curve(w, fr.pollination_mean_curve);
+    w.f64(fr.pollination_spread);
+    w.f64(fr.set_threshold);
+    w.f64(fr.deformed_threshold);
+    write_curve(w, fr.pollination_size_curve);
+    w.f64(fr.dry_matter_fraction);
+    w.f64(fr.base_temp_degC);
+    w.f64(fr.degree_days_to_harvest);
+    write_curve(w, fr.growth_shape_curve);
+    write_f64_list(w, fr.size_class_bounds_g);
+    w.f64(fr.base_brix);
+    write_curve(w, fr.brix_supply_curve);
+    write_curve(w, fr.brix_k_curve);
+    write_curve(w, fr.brix_n_excess_curve);
+    write_curve(w, fr.brix_water_curve);
+    write_curve(w, fr.firmness_ca_curve);
+    write_curve(w, fr.firmness_temp_curve);
+    write_curve(w, fr.firmness_n_excess_curve);
+    w.f64(fr.abortion_rate_per_development_index);
+    w.f64(fr.abortion_window_index);
+    write_curve(w, fr.abortion_satisfaction_curve);
+    write_f64_list(w, fr.rank_abortion_weight);
+    w.f64(fr.thinnable_max_index);
+    write_curve(w, fr.brix_day_temp_score_curve);
+    write_curve(w, fr.brix_night_temp_score_curve);
+    w.f64(fr.brix_day_weight);
+    w.f64(fr.brix_night_weight);
+    write_curve(w, fr.brix_temp_score_curve);
+    w.f64(fr.day_solar_threshold_W_per_m2);
+
+    const DenitrificationParams& dn = p.denitrification;
+    w.f64(dn.rate_per_hour);
+    write_curve(w, dn.o2_curve);
+    write_curve(w, dn.temp_curve);
+    write_curve(w, dn.carbon_curve);
+    w.f64(dn.H_eq_per_eq_N);
+
+    const CropParams& c4 = p.crop;
+    w.f64(c4.vegetative_leaf_fraction);
+    w.f64(c4.vegetative_crown_fraction);
+    w.f64(c4.vegetative_root_fraction);
+    w.f64(c4.max_fruit_assimilate_fraction);
+    w.f64(c4.maintenance_rate_leaf_per_hour);
+    w.f64(c4.maintenance_rate_crown_per_hour);
+    w.f64(c4.maintenance_rate_root_per_hour);
+    w.f64(c4.maintenance_rate_fruit_per_hour);
+    write_curve(w, c4.maintenance_temp_curve);
+    w.f64(c4.leaf_senescence_rate_per_hour);
+    w.f64(c4.fruit_target_N_g_per_g);
+    w.f64(c4.fruit_target_P_g_per_g);
+    w.f64(c4.fruit_target_K_g_per_g);
+    w.f64(c4.fruit_target_Ca_g_per_g);
+    w.f64(c4.fruit_target_Mg_g_per_g);
+    w.f64(c4.fruit_target_Mn_g_per_g);
+    w.f64(c4.co2_g_per_g_dry_matter);
+    write_curve(w, c4.co2_growth_curve);
+    write_curve(w, c4.cold_leaf_damage_curve);
+    write_curve(w, c4.cold_fruit_loss_curve);
+    w.f64(c4.n_luxury_uptake_ratio);
+    w.f64(c4.n_uptake_rate_per_g_root_per_hour);
+
+    w.u64(p.seedling_grades.size());
+    for (const SeedlingGradeDef& g : p.seedling_grades) {
+        w.str(g.id);
+        w.f64(g.leaf_g_per_plant);
+        w.f64(g.crown_g_per_plant);
+        w.f64(g.root_g_per_plant);
+        w.f64(g.initial_induction_index);
+    }
 }
 
 void read_params(detail::ByteReader& r, Params& p) {
     p.schema_version = r.i64();
-    p.house.base_offset_degC = r.f64();
-    p.house.solar_gain_degC_per_W_per_m2 = r.f64();
-    p.house.solar_transmittance_factor = r.f64();
     p.soil_water.evap_mm_per_hour_per_W_per_m2 = r.f64();
     p.soil_water.evap_base_mm_per_hour = r.f64();
     read_curve(r, p.soil_water.evap_moisture_curve);
@@ -434,7 +748,6 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.crop.par_fraction = r.f64();
     p.crop.light_use_efficiency_g_per_MJ = r.f64();
     read_curve(r, p.crop.temp_curve);
-    p.crop.leaf_allocation_fraction = r.f64();
     read_curve(r, p.crop.water_stress_curve);
     read_curve(r, p.crop.salt_stress_curve);
     read_curve(r, p.crop.nutrient_stress_curve);
@@ -531,6 +844,127 @@ void read_params(detail::ByteReader& r, Params& p) {
         l.ca_fraction = r.f64();
         l.mg_fraction = r.f64();
     }
+
+    // ---- M4 (append) ----
+    HouseParams& h = p.house;
+    h.layer_transmittance_factor = r.f64();
+    h.layer_resistance_m2K_per_W = r.f64();
+    h.infiltration_W_per_m2_per_K = r.f64();
+    h.window_bypass_fraction = r.f64();
+    h.vent_conductance_W_per_m2_per_K = r.f64();
+    h.solar_heat_gain_fraction = r.f64();
+    h.ground_heat_W_per_m2 = r.f64();
+    h.air_relax_rate_per_hour = r.f64();
+    h.heater_capacity_W_per_m2 = r.f64();
+    h.heater_setpoint_min_degC = r.f64();
+    h.heater_setpoint_max_degC = r.f64();
+    h.temp_mean_relax_rate_per_hour = r.f64();
+    h.cover_change_window_doy[0] = r.i64();
+    h.cover_change_window_doy[1] = r.i64();
+    h.min_cover_layers = r.i64();
+    h.max_cover_layers = r.i64();
+    read_f64_list(r, h.outside_co2_ppm_by_hour);
+    read_f64_list(r, h.window_open_levels);
+    h.air_volume_m3_per_m2 = r.f64();
+    h.co2_mg_per_m3_per_ppm = r.f64();
+    h.infiltration_air_changes_per_hour = r.f64();
+    h.vent_air_changes_per_hour = r.f64();
+    h.co2_floor_ppm = r.f64();
+
+    read_curve(r, p.calendar.day_length_curve);
+
+    PhenologyParams& ph = p.phenology;
+    ph.establishment_rate_per_hour = r.f64();
+    read_curve(r, ph.establishment_temp_curve);
+    read_curve(r, ph.establishment_growth_curve);
+    ph.induction_rate_per_hour = r.f64();
+    read_curve(r, ph.induction_day_length_curve);
+    read_curve(r, ph.induction_temp_curve);
+    read_curve(r, ph.induction_nitrogen_curve);
+    ph.truss_base_temp_degC = r.f64();
+    ph.truss_degree_days_to_anthesis = r.f64();
+    read_curve(r, ph.flowers_per_truss_curve);
+
+    FruitParams& fr = p.fruit;
+    read_f64_list(r, fr.rank_fraction);
+    read_f64_list(r, fr.rank_anthesis_delay_days);
+    fr.anthesis_jitter_days = r.f64();
+    read_f64_list(r, fr.rank_potential_fresh_g);
+    fr.size_variation_fraction = r.f64();
+    read_curve(r, fr.pollination_mean_curve);
+    fr.pollination_spread = r.f64();
+    fr.set_threshold = r.f64();
+    fr.deformed_threshold = r.f64();
+    read_curve(r, fr.pollination_size_curve);
+    fr.dry_matter_fraction = r.f64();
+    fr.base_temp_degC = r.f64();
+    fr.degree_days_to_harvest = r.f64();
+    read_curve(r, fr.growth_shape_curve);
+    read_f64_list(r, fr.size_class_bounds_g);
+    fr.base_brix = r.f64();
+    read_curve(r, fr.brix_supply_curve);
+    read_curve(r, fr.brix_k_curve);
+    read_curve(r, fr.brix_n_excess_curve);
+    read_curve(r, fr.brix_water_curve);
+    read_curve(r, fr.firmness_ca_curve);
+    read_curve(r, fr.firmness_temp_curve);
+    read_curve(r, fr.firmness_n_excess_curve);
+    fr.abortion_rate_per_development_index = r.f64();
+    fr.abortion_window_index = r.f64();
+    read_curve(r, fr.abortion_satisfaction_curve);
+    read_f64_list(r, fr.rank_abortion_weight);
+    fr.thinnable_max_index = r.f64();
+    read_curve(r, fr.brix_day_temp_score_curve);
+    read_curve(r, fr.brix_night_temp_score_curve);
+    fr.brix_day_weight = r.f64();
+    fr.brix_night_weight = r.f64();
+    read_curve(r, fr.brix_temp_score_curve);
+    fr.day_solar_threshold_W_per_m2 = r.f64();
+
+    DenitrificationParams& dn = p.denitrification;
+    dn.rate_per_hour = r.f64();
+    read_curve(r, dn.o2_curve);
+    read_curve(r, dn.temp_curve);
+    read_curve(r, dn.carbon_curve);
+    dn.H_eq_per_eq_N = r.f64();
+
+    CropParams& c4 = p.crop;
+    c4.vegetative_leaf_fraction = r.f64();
+    c4.vegetative_crown_fraction = r.f64();
+    c4.vegetative_root_fraction = r.f64();
+    c4.max_fruit_assimilate_fraction = r.f64();
+    c4.maintenance_rate_leaf_per_hour = r.f64();
+    c4.maintenance_rate_crown_per_hour = r.f64();
+    c4.maintenance_rate_root_per_hour = r.f64();
+    c4.maintenance_rate_fruit_per_hour = r.f64();
+    read_curve(r, c4.maintenance_temp_curve);
+    c4.leaf_senescence_rate_per_hour = r.f64();
+    c4.fruit_target_N_g_per_g = r.f64();
+    c4.fruit_target_P_g_per_g = r.f64();
+    c4.fruit_target_K_g_per_g = r.f64();
+    c4.fruit_target_Ca_g_per_g = r.f64();
+    c4.fruit_target_Mg_g_per_g = r.f64();
+    c4.fruit_target_Mn_g_per_g = r.f64();
+    c4.co2_g_per_g_dry_matter = r.f64();
+    read_curve(r, c4.co2_growth_curve);
+    read_curve(r, c4.cold_leaf_damage_curve);
+    read_curve(r, c4.cold_fruit_loss_curve);
+    c4.n_luxury_uptake_ratio = r.f64();
+    c4.n_uptake_rate_per_g_root_per_hour = r.f64();
+
+    const std::uint64_t grade_count = r.u64();
+    if (!r.ok() || grade_count > r.remaining() / (kMinStringBytes + 4 * kF64Bytes)) {
+        r.fail();
+        return;
+    }
+    p.seedling_grades.resize(static_cast<std::size_t>(grade_count));
+    for (SeedlingGradeDef& g : p.seedling_grades) {
+        g.id = r.str();
+        g.leaf_g_per_plant = r.f64();
+        g.crown_g_per_plant = r.f64();
+        g.root_g_per_plant = r.f64();
+        g.initial_induction_index = r.f64();
+    }
 }
 
 void write_scenario(detail::ByteWriter& w, const Scenario& s) {
@@ -539,6 +973,7 @@ void write_scenario(detail::ByteWriter& w, const Scenario& s) {
     w.i32(s.start_day_of_year);
     w.i32(s.bed_rows);
     w.i32(s.bed_cols);
+    w.i32(s.cover_layers);
 
     const SoilInit& soil = s.soil;
     w.f64(soil.field_capacity_mm);
@@ -567,8 +1002,9 @@ void write_scenario(detail::ByteWriter& w, const Scenario& s) {
 
     w.u8(s.crop.has_value() ? 1 : 0);
     if (s.crop) {
-        w.f64(s.crop->leaf_g_per_m2);
-        w.f64(s.crop->root_g_per_m2);
+        w.str(s.crop->seedling_grade);
+        w.f64(s.crop->plants_per_m2);
+        w.f64(s.crop->initial_establishment_index);
     }
     w.u8(static_cast<std::uint8_t>(s.stress_combination));
 
@@ -586,6 +1022,7 @@ void read_scenario(detail::ByteReader& r, Scenario& s) {
     s.start_day_of_year = r.i32();
     s.bed_rows = r.i32();
     s.bed_cols = r.i32();
+    s.cover_layers = r.i32();
 
     SoilInit& soil = s.soil;
     soil.field_capacity_mm = r.f64();
@@ -618,8 +1055,9 @@ void read_scenario(detail::ByteReader& r, Scenario& s) {
     }
     if (has_crop == 1) {
         CropInit crop;
-        crop.leaf_g_per_m2 = r.f64();
-        crop.root_g_per_m2 = r.f64();
+        crop.seedling_grade = r.str();
+        crop.plants_per_m2 = r.f64();
+        crop.initial_establishment_index = r.f64();
         s.crop = crop;
     }
     const std::uint8_t stress_combination = r.u8();
@@ -668,6 +1106,20 @@ void write_command(detail::ByteWriter& w, const Command& command) {
             w.f64(c.g_per_m2);
         }
         void operator()(const TillCommand& c) const { write_area(w, c.area); }
+        void operator()(const SetWindowCommand& c) const {
+            w.i32(c.layer);
+            w.u8(static_cast<std::uint8_t>(c.side));
+            w.f64(c.open_fraction);
+        }
+        void operator()(const SetHeaterCommand& c) const {
+            w.u8(c.on ? 1 : 0);
+            w.f64(c.setpoint_degC);
+        }
+        void operator()(const SetCoverLayersCommand& c) const { w.i32(c.layers); }
+        void operator()(const ThinFlowersCommand& c) const {
+            write_area(w, c.area);
+            w.f64(c.per_plant);
+        }
     };
     std::visit(Visitor{w}, command);
 }
@@ -709,6 +1161,38 @@ std::expected<Command, Error> read_command(detail::ByteReader& r) {
             c.area = read_area(r);
             return c;
         }
+        case 6: {
+            SetWindowCommand c;
+            c.layer = r.i32();
+            const std::uint8_t side = r.u8();
+            c.open_fraction = r.f64();
+            if (side > static_cast<std::uint8_t>(WindowSide::Right)) {
+                return fail(ErrorCode::InvalidData, "saved window command has an invalid side");
+            }
+            c.side = static_cast<WindowSide>(side);
+            return c;
+        }
+        case 7: {
+            SetHeaterCommand c;
+            const std::uint8_t on = r.u8();
+            if (on > 1) {
+                return fail(ErrorCode::InvalidData, "saved heater command has an invalid flag");
+            }
+            c.on = on == 1;
+            c.setpoint_degC = r.f64();
+            return c;
+        }
+        case 8: {
+            SetCoverLayersCommand c;
+            c.layers = r.i32();
+            return c;
+        }
+        case 9: {
+            ThinFlowersCommand c;
+            c.area = read_area(r);
+            c.per_plant = r.f64();
+            return c;
+        }
         default:
             if (!r.ok()) {
                 return fail(ErrorCode::Truncated, "save data ends inside the command queue");
@@ -723,6 +1207,27 @@ void World::write_dynamic(detail::ByteWriter& w) const {
     w.u64(tick_);
     w.u64(next_command_seq_);
 
+    // 하우스는 명령 검증(cover_layers)이 의존하므로 대기 명령보다 앞에 둬요.
+    w.i32(house_.cover_layers);
+    w.u64(house_.window_open_fraction.size());
+    for (const auto& layer : house_.window_open_fraction) {
+        w.f64(layer[0]);
+        w.f64(layer[1]);
+    }
+    w.u8(house_.heater_on ? 1 : 0);
+    w.f64(house_.heater_setpoint_degC);
+    w.f64(house_.air_temp_degC);
+    w.f64(house_.air_temp_mean_degC);
+    w.f64(house_.co2_ppm);
+    w.f64(house_.heating_energy_MJ_per_m2);
+    w.f64(house_.outside_co2_ppm);
+    w.f64(house_.inside_solar_W_per_m2);
+    w.f64(house_.heating_power_W_per_m2);
+    w.f64(house_.vent_path_index);
+
+    w.u64(biology_rng_.raw_state());
+    w.u64(biology_rng_.raw_increment());
+
     w.u64(pending_commands_.size());
     for (const QueuedCommand& queued : pending_commands_) {
         w.u64(queued.seq);
@@ -734,8 +1239,6 @@ void World::write_dynamic(detail::ByteWriter& w) const {
         write_cell(w, tile.soil);
         write_crop(w, tile.crop);
     }
-
-    w.f64(house_air_temp_degC_);
 
     w.f64(ledger_.water_in_mm);
     w.f64(ledger_.water_evaporated_mm);
@@ -766,11 +1269,59 @@ void World::write_dynamic(detail::ByteWriter& w) const {
     w.f64(ledger_.Mn_in_g);
     w.f64(ledger_.Mn_leached_g);
     w.f64(ledger_.Mn_uptake_g);
+    w.f64(ledger_.N_harvested_g);
+    w.f64(ledger_.P_harvested_g);
+    w.f64(ledger_.K_harvested_g);
+    w.f64(ledger_.Ca_harvested_g);
+    w.f64(ledger_.Mg_harvested_g);
+    w.f64(ledger_.Mn_harvested_g);
+    w.f64(ledger_.C_leaf_litter_g);
 }
 
 std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     tick_ = r.u64();
     next_command_seq_ = r.u64();
+
+    // 하우스 상태 (대기 명령 검증이 cover_layers를 읽어요)
+    house_.cover_layers = r.i32();
+    const std::uint64_t window_layers = r.u64();
+    if (!r.ok() || window_layers > r.remaining() / kWindowLayerBytes) {
+        return fail(ErrorCode::Truncated, "save data ends inside the house state");
+    }
+    if (house_.cover_layers < params_.house.min_cover_layers || house_.cover_layers > params_.house.max_cover_layers ||
+        window_layers != static_cast<std::uint64_t>(house_.cover_layers)) {
+        return fail(ErrorCode::InvalidData, "house cover layers are inconsistent with params or window state");
+    }
+    house_.window_open_fraction.assign(static_cast<std::size_t>(window_layers), std::array<double, 2>{0.0, 0.0});
+    for (auto& layer : house_.window_open_fraction) {
+        const double left = r.f64();
+        const double right = r.f64();
+        if (!is_window_open_level(params_.house, left) || !is_window_open_level(params_.house, right)) {
+            return fail(ErrorCode::InvalidData, "house window open fraction is not an allowed level");
+        }
+        layer = {left, right};
+    }
+    const std::uint8_t heater_on = r.u8();
+    if (heater_on > 1) {
+        return fail(ErrorCode::InvalidData, "house heater flag is invalid");
+    }
+    house_.heater_on = heater_on == 1;
+    house_.heater_setpoint_degC = r.f64();
+    house_.air_temp_degC = r.f64();
+    house_.air_temp_mean_degC = r.f64();
+    house_.co2_ppm = r.f64();
+    house_.heating_energy_MJ_per_m2 = r.f64();
+    house_.outside_co2_ppm = r.f64();
+    house_.inside_solar_W_per_m2 = r.f64();
+    house_.heating_power_W_per_m2 = r.f64();
+    house_.vent_path_index = r.f64();
+
+    const std::uint64_t rng_state = r.u64();
+    const std::uint64_t rng_increment = r.u64();
+    if (!r.ok()) {
+        return fail(ErrorCode::Truncated, "save data ends inside the house state");
+    }
+    biology_rng_ = Pcg32::from_raw(rng_state, rng_increment);
 
     const std::uint64_t pending_count = r.u64();
     if (!r.ok() || pending_count > r.remaining() / kQueuedCommandMinBytes) {
@@ -805,9 +1356,10 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     for (Tile& tile : tiles_) {
         read_cell(r, tile.soil);
         read_crop(r, tile.crop);
+        if (r.ok() && !crop_structure_is_valid(tile.crop, params_)) {
+            return fail(ErrorCode::InvalidData, "saved crop has inconsistent trusses, fruits or harvest record");
+        }
     }
-
-    house_air_temp_degC_ = r.f64();
 
     ledger_.water_in_mm = r.f64();
     ledger_.water_evaporated_mm = r.f64();
@@ -838,6 +1390,13 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     ledger_.Mn_in_g = r.f64();
     ledger_.Mn_leached_g = r.f64();
     ledger_.Mn_uptake_g = r.f64();
+    ledger_.N_harvested_g = r.f64();
+    ledger_.P_harvested_g = r.f64();
+    ledger_.K_harvested_g = r.f64();
+    ledger_.Ca_harvested_g = r.f64();
+    ledger_.Mg_harvested_g = r.f64();
+    ledger_.Mn_harvested_g = r.f64();
+    ledger_.C_leaf_litter_g = r.f64();
 
     if (!r.ok()) {
         return fail(ErrorCode::Truncated, "save data ends inside the dynamic state");

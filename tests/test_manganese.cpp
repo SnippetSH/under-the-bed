@@ -65,7 +65,10 @@ double reduced_in_one_tick(double ph, double aeration, const sim::Params& params
 
 sim::Crop make_crop(const sim::Params& params) { return sim::process::plant_crop(test::test_crop_init(), params.crop); }
 
-double biomass_of(const sim::Crop& crop) { return crop.leaf_g_per_m2 + crop.root_g_per_m2; }
+// M4: Mn 요구량 = 적정 농도 x (잎 + 관부 + 뿌리) + 과실 적정 농도 x 과실 (strawberry-fruit 8번)
+double mn_requirement_of(const sim::Crop& crop, const sim::Params& params) {
+    return sim::process::nutrient_requirement(crop, params.crop).Mn;
+}
 
 // 용액에 Mn이 충분한 유효량 (다른 원소는 0이라 Mn 흡수만 봐요)
 sim::process::NutrientAvailability mn_only(double mn_g_per_m2) {
@@ -259,23 +262,25 @@ TEST_CASE("Lime lowers solution and available Mn more than calcium nitrate at th
     CHECK(limed.available < nitrated.available);
 }
 
-// 체내 Mn이 적정의 30배 → 흡수 0 (수요 상한 mn_max_uptake_ratio)
+// 체내 Mn이 요구량의 30배 → 흡수 0 (수요 상한 mn_max_uptake_ratio)
+// M4: 요구량에 관부·과실이 들어가요. 호흡·낙엽은 끄고 수요 상한만 봐요. (이전: 상한 = 목표 x 30 x (잎 + 뿌리))
 TEST_CASE("Mn uptake stops when the plant holds the maximum multiple of the target", "[unit][manganese][m3]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();
     sim::SoilCell cell = test::test_cell();
     sim::Crop crop = make_crop(params);
-    crop.plant_Mn_g_per_m2 = params.crop.target_Mn_g_per_g * params.crop.mn_max_uptake_ratio * biomass_of(crop);
+    const double cap_at_full = params.crop.mn_max_uptake_ratio * mn_requirement_of(crop, params);
+    crop.plant_Mn_g_per_m2 = cap_at_full;
     sim::Ledger ledger;
     step(crop, cell, params, mn_only(cell.mn_solution_g_per_m2), kNightSolar_W_per_m2, ledger);
     CHECK(ledger.Mn_uptake_g == 0.0);
-    CHECK(crop.plant_Mn_g_per_m2 == params.crop.target_Mn_g_per_g * params.crop.mn_max_uptake_ratio * biomass_of(crop));
+    CHECK(crop.plant_Mn_g_per_m2 == cap_at_full);
 
     // 상한 바로 아래면 모자란 만큼만 흡수 (능력이 충분하면 수요가 병목)
     sim::SoilCell cell_below = test::test_cell();
     cell_below.mn_g_per_m2 = 50.0;
     cell_below.mn_solution_g_per_m2 = 50.0;
     sim::Crop below = make_crop(params);
-    const double cap = params.crop.target_Mn_g_per_g * params.crop.mn_max_uptake_ratio * biomass_of(below);
+    const double cap = params.crop.mn_max_uptake_ratio * mn_requirement_of(below, params);
     const double gap = 0.01 * cap;
     below.plant_Mn_g_per_m2 = cap - gap;
     sim::Ledger below_ledger;
@@ -285,8 +290,9 @@ TEST_CASE("Mn uptake stops when the plant holds the maximum multiple of the targ
 }
 
 // Mn 흡수 능력 = 용액 유효량 × min(1, 속도 × 뿌리 × 건강도) × water × salt, 흡수는 용액에서 총량과 함께 빠진다
+// M4: 흡수 능력은 줄어든 뿌리를 읽으므로 밤 호흡·낙엽을 꺼서 식을 그대로 봐요
 TEST_CASE("Mn uptake capacity follows the spec and draws from solution and total together", "[unit][manganese][m3]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();
     sim::SoilCell cell = test::test_cell();
     cell.mn_g_per_m2 = 30.0;
     cell.mn_solution_g_per_m2 = 20.0;
@@ -312,14 +318,15 @@ TEST_CASE("Mn toxicity ratio ten gives a growth factor of 0.7 and records Toxici
     sim::SoilCell toxic_cell = test::test_cell();
     sim::Crop healthy = make_crop(params);
     sim::Crop toxic = make_crop(params);
-    toxic.plant_Mn_g_per_m2 = 10.0 * params.crop.target_Mn_g_per_g * biomass_of(toxic);
+    toxic.plant_Mn_g_per_m2 = 10.0 * mn_requirement_of(toxic, params);  // M4: 요구량에 관부 포함
     REQUIRE(sim::process::nutrient_status(toxic, params.crop).plant_Mn_ratio == Catch::Approx(10.0));
     sim::Ledger ledger;
     const sim::process::NutrientAvailability none = mn_only(0.0);
     step(healthy, healthy_cell, params, none, kDaySolar_W_per_m2, ledger);
     step(toxic, toxic_cell, params, none, kDaySolar_W_per_m2, ledger);
-    REQUIRE(healthy.last_growth_g_per_m2 > 0.0);
-    CHECK(toxic.last_growth_g_per_m2 == Catch::Approx(0.7 * healthy.last_growth_g_per_m2));
+    // M4: 계수는 총생산에 곱해져요 (순생장 = 총생산 - 호흡). 이전: last_growth에 곱해짐
+    REQUIRE(healthy.last_gross_g_per_m2 > 0.0);
+    CHECK(toxic.last_gross_g_per_m2 == Catch::Approx(0.7 * healthy.last_gross_g_per_m2));
     CHECK(toxic.stress_hours[idx(sim::StressFactor::ToxicityMn)] == 1.0);
     for (std::size_t i = 0; i < sim::kStressFactorCount; ++i) {
         if (i != idx(sim::StressFactor::ToxicityMn)) {
@@ -334,7 +341,7 @@ TEST_CASE("Mn deficiency records NutrientMn stress hours", "[unit][manganese][m3
     const sim::Params params = test::test_params();
     sim::SoilCell cell = test::test_cell();
     sim::Crop crop = make_crop(params);
-    crop.plant_Mn_g_per_m2 = 0.5 * params.crop.target_Mn_g_per_g * biomass_of(crop);
+    crop.plant_Mn_g_per_m2 = 0.5 * mn_requirement_of(crop, params);
     sim::Ledger ledger;
     step(crop, cell, params, mn_only(0.0), kDaySolar_W_per_m2, ledger);
     CHECK(crop.stress_hours[idx(sim::StressFactor::NutrientMn)] == 1.0);
