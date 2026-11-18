@@ -52,7 +52,7 @@
 | `crop.root_dieback_per_damage` | 뿌리 건강도 손상 비율 1당 죽는 뿌리 건물 비율 (0~1) | 1.0 | 게임용 임의값 (2026-11-18 추가: 과습 손상이 생장에 남도록) |
 | `crop.dry_matter_C_fraction` | 건물 중 탄소 비율 (죽은 뿌리가 토양 유기물로 갈 때) | 0.45 | 식물 건물 일반값 |
 | `root_damage.waterlog_curve` | x = aeration_index, y = 시간당 손상 비율 | `[[0,0.01],[0.2,0.004],[0.4,0.0005],[0.5,0]]` | |
-| `root_damage.heat_curve` | x = 토양 온도 °C | `[[32,0],[35,0.002],[40,0.01],[45,0.03]]` | 환기가 없는 M2 하우스 기준. M7에서 다시 봐요 (tmp.md 1번) |
+| `root_damage.heat_curve` | x = 토양 온도 °C | `[[32,0],[35,0.002],[40,0.01],[45,0.03]]` | 환기가 없는 M2 하우스 기준. M7에서 다시 봐요 (balancing.md 1번) |
 | `root_damage.nitrite_curve` | x = 유효 아질산(g N/m², pH 배율 적용 후) | `[[0,0],[2,0],[4,0.004],[8,0.015]]` | |
 | `root_damage.acid_curve` | x = pH | soil-chemistry 참고 | ADR-0007 |
 | `nitrification.nitrite_toxicity_ph_curve` | x = pH, y = 아질산 독성 배율 | `[[4.5,8.0],[5.5,3.0],[6.5,1.3],[7.0,1.0],[9.0,1.0]]` | 산성일수록 HNO2 비율 증가(pKa 약 3.3). 중성·알칼리 1 |
@@ -66,11 +66,13 @@
 ```
 water    = water_stress_curve(relative_water)
 salt     = salt_stress_curve(ec_dS_per_m)
-nutrient = min over X∈{N,P,K,Ca,Mg} nutrient_stress_curve(sufficiency_X)
-root     = root_health
-combined = minimum 모드: min(water, salt, nutrient, root)
-           product 모드: water × salt × nutrient × root
+nutrient_X = nutrient_stress_curve(sufficiency_X)      X ∈ {N, P, K, Ca, Mg}
+root       = root_health
+combined   = minimum 모드: min(water, salt, nutrient_N … nutrient_Mg, root)
+             product 모드: water × salt × Π_X nutrient_X × root
 ```
+
+- (2026-11-18 디렉터 결정) product 모드는 원소별 영양 계수를 **각각** 곱해요. 계획서 5장 하드 모드("스트레스를 전부 곱해요")와 M2 코드에 명세를 맞춘 거예요. 처음 승인본은 영양 계수 중 최솟값 하나만 곱했어요.
 
 - `combined < 1`인 틱에만, 가장 작은 요인(동률이면 위 순서상 앞선 것, nutrient는 원소까지)을 `stress_hours`에 1시간 더해요. 모든 계수가 1이면 기록하지 않아요.
 - `sufficiency_X = min(1, plant_X / (target_X × (leaf + root)))`, `excess_index_X = max(0, plant_X / (target_X × (leaf + root)) − 1)`.

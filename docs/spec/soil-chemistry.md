@@ -96,7 +96,7 @@ M1의 `leaching.nh4_solution_fraction`과 같은 방식이에요. M3에서 양�
 | `superphosphate` (신규, 과인산석회) | P 87, Ca 180, S 110 | 제품 일반 성분 P2O5 20% |
 | `magnesium_sulfate` (신규, 황산고토) | Mg 98, S 130 | 제품 일반 성분 |
 
-퇴비의 K·Ca·Mg·P 함량은 게임용 임의값으로 넣고, `tmp.md`의 "퇴비 성분 공개 자료로 다시 잡기" 항목에서 함께 다뤄요.
+퇴비의 K·Ca·Mg·P 함량은 게임용 임의값으로 넣고, `balancing.md`의 "퇴비 성분 공개 자료로 다시 잡기" 항목에서 함께 다뤄요.
 
 ## 프로세스
 

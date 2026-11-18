@@ -17,6 +17,9 @@
 | [0005](0005-cpp-toolchain.md) | C++ 표준과 툴체인 | 승인 |
 | [0006](0006-off-season-and-disinfection.md) | 하계 휴작기 정비와 토양 소독, 육묘 제외 | 승인 |
 | [0007](0007-acid-toxicity-and-manganese.md) | 산성 장해는 곡선 근사, 망간은 별도 풀 | 승인 |
+| [0008](0008-cation-exchange-model.md) | 양이온 교환은 "빈자리 경쟁 + 완화"로 근사 | 승인 |
+| [0009](0009-no-fixed-recipe-variation.md) | "항상 같은 정답"을 막는 변동 설계 | 승인 |
+| [0010](0010-manganese-oxide-pool.md) | 망간에 산화물 풀과 pH 의존 흡착력 추가 (ADR-0007 2번 보완) | 승인 |
 
 ## 템플릿
 
