@@ -1,10 +1,13 @@
 # 유기물 분해
 
 - 상태: 승인 (2026-11-18)
+- M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), [soil-temperature](soil-temperature.md), [nitrogen](nitrogen.md)
 
 > **M2 변경 (2026-11-18 승인)**: `O2계수 = organic_matter.o2_curve(aeration_index)` ([aeration](aeration.md)). 퇴비의 K·Ca·Mg·P·S와 직접 산 효과는 [soil-chemistry](soil-chemistry.md) "투입".
+
+> **M3 변경 (2026-11-18 승인)**: 무기화로 생기는 NH4+는 총량과 **용액 상태**(`nh4_solution_N_g_per_m2`)에 함께 더해요. 부동화로 NH4+ 총량이 줄면 용액도 같은 비율로 줄여요(비례 차감). 퇴비 투입의 Mn·K·Ca·Mg도 총량과 용액에 함께 들어가요. 규칙 표는 [cation-exchange](cation-exchange.md) "다른 프로세스와의 연결", 개요는 [m3-overview](m3-overview.md).
 
 ## 목적
 
@@ -73,8 +76,8 @@ demand_N   = humified_C / humus_C_to_N_ratio       # 새 부식이 붙잡는 질
 net_N      = released_N − demand_N
 ```
 
-- **net_N ≥ 0 (무기화)**: `nh4_N += net_N`
-- **net_N < 0 (부동화)**: 부족분 `need = −net_N`을 NH4+에서 먼저, 모자라면 NO3-에서 가져가요.
+- **net_N ≥ 0 (무기화)**: `nh4_N += net_N` (M3, 2026-11-18: `nh4_solution_N += net_N`도 함께, 먼저 녹은 채로 나와요)
+- **net_N < 0 (부동화)**: 부족분 `need = −net_N`을 NH4+에서 먼저, 모자라면 NO3-에서 가져가요. (M3, 2026-11-18: NH4+ 총량이 줄면 `nh4_solution_N ×= 새 nh4_N / 옛 nh4_N`, 비례 차감)
   - 무기 질소(NH4+ + NO3-)가 `need`보다 적으면, **분해 자체를 줄여요**: `dC, released_N, humified_C, demand_N`을 모두 `available / need` 비율로 낮춰요. 이러면 need가 정확히 available과 같아져요. (질소가 없으면 고탄질비 유기물은 분해가 멈춰요.)
 
 풀 갱신:

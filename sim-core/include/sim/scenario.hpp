@@ -38,6 +38,11 @@ struct SoilInit {
     double mg_g_per_m2 = 0.0;
     double p_g_per_m2 = 0.0;
     double s_g_per_m2 = 0.0;
+    // M3
+    double cec_mineral_eq_per_m2 = 0.0;
+    double mn_g_per_m2 = 0.0;
+    double mn_oxide_g_per_m2 = 0.0;
+    double p_fixed_g_per_m2 = 0.0;
 
     bool operator==(const SoilInit&) const = default;
 };

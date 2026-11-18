@@ -42,7 +42,9 @@ void nitrify(SoilCell& cell, const NitrificationParams& params, const SoilChemis
         transfer_fraction(params.step1_rate_per_hour * env_factor * params.step1_ph_curve(ph) *
                           params.step1_o2_curve(cell.aeration_index));
     const double n1_g_per_m2 = transfer_amount(cell.nh4_N_g_per_m2, step1_fraction);
+    const double nh4_before = cell.nh4_N_g_per_m2;
     cell.nh4_N_g_per_m2 -= n1_g_per_m2;
+    sync_nh4_solution(cell, nh4_before);  // M3: 비례 차감
     cell.no2_N_g_per_m2 += n1_g_per_m2;
     // 질산화된 N 1 eq당 H+ 2 eq 생성
     cell.acid_H_eq_this_tick += n1_g_per_m2 / ions.nh4_N_g_per_eq * chemistry.nitrification_H_eq_per_eq_N;

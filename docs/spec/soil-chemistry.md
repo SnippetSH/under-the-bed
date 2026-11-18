@@ -1,6 +1,7 @@
 # 토양 화학: 양분 풀, pH 수지, 석회, EC, 유효도, 산성 장해
 
 - 상태: 승인 (2026-11-18)
+- M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
 - 마일스톤: M2
 - 관련: [m2-overview](m2-overview.md), [nitrogen](nitrogen.md), [strawberry-minimal](strawberry-minimal.md), [ADR-0007](../decisions/0007-acid-toxicity-and-manganese.md)
 
@@ -16,7 +17,7 @@
 
 | 이름 | 의미 | 단위 |
 | --- | --- | --- |
-| `k_g_per_m2`, `ca_g_per_m2`, `mg_g_per_m2` | 식물이 쓸 수 있는 양이온 풀 (흙에 붙은 것 + 녹은 것) | g/m² |
+| `k_g_per_m2`, `ca_g_per_m2`, `mg_g_per_m2` | 식물이 쓸 수 있는 양이온 풀 (흙에 붙은 것 + 녹은 것). 총량이에요. 녹은 부분은 별도 용액 상태(M3, 2026-11-18, [cation-exchange](cation-exchange.md)) | g/m² |
 | `p_g_per_m2` | 식물이 쓸 수 있는 인산 풀 (P 기준) | g P/m² |
 | `s_g_per_m2` | 황산 풀 (S 기준) | g S/m² |
 | `ph` | 토양 pH. **M2부터 변수** | - |
@@ -24,7 +25,7 @@
 | `lime_ca_fraction`, `lime_mg_fraction` | 미용해 석회 당량 중 Ca·Mg 비율 (여러 석회가 섞이면 가중 평균) | - |
 | `pending_H_eq_per_m2` | 이전 틱 작물 흡수에서 생겨 다음 pH 갱신에 반영할 산 | eq/m² |
 | `ec_dS_per_m` (파생) | 토양 용액 전기전도도 | dS/m |
-| `base_buffer_eq_per_m2_per_pH` (정적) | 흙 고유 완충력. 시나리오 `[soil]` (예시 5.0: 흙 240 kg/m² 기준 약 2 cmol/kg per pH, 게임용 임의값) | eq/m² per pH |
+| `base_buffer_eq_per_m2_per_pH` (정적) | 흙 고유 완충력. 시나리오 `[soil]` (예시 5.0: 흙 240 kg/m² 기준 약 2 cmol/kg per pH, 게임용 임의값). (M3, 2026-11-18) 광물 CEC 항이 따로 생겨 "CEC 밖 완충"으로 뜻이 좁아지고, 이행 시 5.0 → 1.25 ([m3-overview](m3-overview.md)) | eq/m² per pH |
 
 ## 파라미터
 
@@ -41,14 +42,11 @@
 
 ### 용액 비율 (`[soil_chemistry]`)
 
-M1의 `leaching.nh4_solution_fraction`과 같은 방식이에요. M3에서 양이온 교환으로 바뀌어요.
+(M3, 2026-11-18) K·Ca·Mg의 용액 비율(`k_solution_fraction` 0.03, `ca_solution_fraction` 0.01, `mg_solution_fraction` 0.02)은 **삭제**했어요. 이 셋과 NH4(M1의 `leaching.nh4_solution_fraction`)는 M3부터 양이온 교환의 **용액 상태**로 대체돼요 ([cation-exchange](cation-exchange.md)). 아래에는 음이온(P·S)의 비율만 남아요.
 
 | 키 | 의미 | 초기값 | 출처 |
 | --- | --- | --- | --- |
-| `k_solution_fraction` | 풀 중 녹아 있는 비율 | 0.03 | 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) |
-| `ca_solution_fraction` | | 0.01 | 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) |
-| `mg_solution_fraction` | | 0.02 | 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) |
-| `p_solution_fraction` | | 0.002 | 게임용 임의값 (S4에서 고pH일 때 흡수 능력이 수요보다 작아지도록 잡은 값 (2026-11-18 프로토타입 점검으로 조정)) |
+| `p_solution_fraction` | 풀 중 녹아 있는 비율 | 0.002 | 게임용 임의값 (S4에서 고pH일 때 흡수 능력이 수요보다 작아지도록 잡은 값 (2026-11-18 프로토타입 점검으로 조정)) |
 | `s_solution_fraction` | | 0.8 | 게임용 임의값 (황산은 잘 녹고 잘 씻김) |
 | `nitrification_H_eq_per_eq_N` | 질산화된 N 1 eq당 생기는 H+ | 2.0 | 화학량론 (NH4+ + 2O2 → NO3- + 2H+ + H2O) |
 | `uptake_H_eq_per_eq_NH4` | 작물이 NH4+ 1 eq 흡수할 때 내놓는 H+ | 1.0 | 전하 균형 |
@@ -96,13 +94,14 @@ M1의 `leaching.nh4_solution_fraction`과 같은 방식이에요. M3에서 양�
 | `superphosphate` (신규, 과인산석회) | P 87, Ca 180, S 110 | 제품 일반 성분 P2O5 20% |
 | `magnesium_sulfate` (신규, 황산고토) | Mg 98, S 130 | 제품 일반 성분 |
 
-퇴비의 K·Ca·Mg·P 함량은 게임용 임의값으로 넣고, `tmp.md`의 "퇴비 성분 공개 자료로 다시 잡기" 항목에서 함께 다뤄요.
+퇴비의 K·Ca·Mg·P 함량은 게임용 임의값으로 넣고, `balancing.md`의 "퇴비 성분 공개 자료로 다시 잡기" 항목에서 함께 다뤄요.
 
 ## 프로세스
 
 ### 투입 (명령 단계)
 
 - 비료·퇴비: 각 원소 풀에 `양 × 함량`을 더하고 원소별 `*_in_g` 장부에 기록. `direct_acid_eq_per_kg × 양`은 이번 틱 H+에 더해요. (퇴비의 K 등은 투입 즉시 무기 풀로 들어간다고 단순화)
+- (M3, 2026-11-18) 양이온(NH4, K, Ca, Mg, Mn)은 총량과 **용액 상태에도 같은 양을 더해요**(먼저 녹은 채로 들어가고 이후 교환 완화로 붙어요). 망간(`mn_g_per_kg`)과 황산망간 비료는 [manganese](manganese.md), 규칙 표는 [cation-exchange](cation-exchange.md) "다른 프로세스와의 연결".
 - 석회 `AddLime{lime_id, g_per_m2}`: `lime_undissolved_eq += g/1000 × eq_per_kg`. Ca·Mg 비율은 기존 미용해 석회와 당량 가중 평균.
 
 ### 석회 용해 → pH 갱신 (셀 단계 g)
@@ -112,34 +111,38 @@ dissolved_eq = lime_undissolved × min(1, rate × ph_curve(pH) × moisture_curve
 lime_undissolved −= dissolved_eq
 ca += dissolved_eq × lime_ca_fraction × ca_g_per_eq        → ca_in_g
 mg += dissolved_eq × lime_mg_fraction × mg_g_per_eq        → mg_in_g
+(M3: 위 Ca·Mg는 용액 상태에도 같은 양을 더해요)
 
 net_H_eq = 이번 틱 질산화 H+ + 이번 틱 직접 산(명령) + pending_H(지난 틱 흡수) − dissolved_eq
-buffer   = base_buffer + organic_C_buffer × 유기 C
+buffer   = base_buffer + buffer_eq_per_pH_per_eq_cec × cec_mineral + organic_C_buffer × 유기 C     ← 광물 CEC 항은 M3, 2026-11-18
 pH      −= net_H_eq / buffer          → ph_min~ph_max로 제한
 pending_H = 0                          (흡수 단계가 다시 채움)
 ```
 
 - 방향: 질산화와 암모늄 흡수는 pH를 낮추고, 질산 흡수와 석회는 올려요. 유기물이 많은 흙은 pH가 덜 흔들려요.
 - 석회는 산성일 때 빨리 녹고, pH가 올라갈수록 느려져요. 그래서 과하게 넣어도 pH 8 위로는 잘 안 올라가요.
-- M3에서 완충력에 CEC 항이 추가돼요.
+- (M3, 2026-11-18) 완충력에 광물 CEC 항이 추가됐어요. 정의는 [cation-exchange](cation-exchange.md) "pH 완충력".
 
 ### 유효량
 
 ```
-solution_X  = 풀_X × X_solution_fraction             (N은 M1과 같이 NH4는 nh4_solution_fraction, NO3는 1)
+solution_X  = 용액 상태_X        (NH4, K, Ca, Mg, Mn: M3, 2026-11-18, cation-exchange)
+            = 풀_X × X_solution_fraction   (P, S만. NO3는 1)
 available_X = solution_X × X_ph_curve(pH)
 ```
+
+(M3) M2에서는 `풀_X × X_solution_fraction`이었어요. 양이온의 `solution_X`는 이제 교환 평형으로 움직이는 용액 상태예요. 망간은 별도 pH 유효도 곡선 없이 `available_Mn = mn_solution`([manganese](manganese.md)).
 
 작물 흡수는 `available_X`를 넘지 못해요([strawberry-minimal](strawberry-minimal.md)).
 
 ### 용탈 확장 (셀 단계 i)
 
-M1과 같은 배수 비율 `f`로, 각 원소의 **용액 부분**만 빠져요: `X −= 풀_X × X_solution_fraction × f` → `*_leached_g`.
+M1과 같은 배수 비율 `f`로, 각 원소의 **용액 부분**만 빠져요: `X −= solution_X × f` → `*_leached_g`. (M3, 2026-11-18) 양이온(K·Ca·Mg·Mn)은 용액 상태 `solution_X`를 쓰고 총량과 용액에서 같은 양을 빼요. P·S는 `풀_X × X_solution_fraction`이에요. Mn 용탈은 `Mn_leached_g`에 기록해요([cation-exchange](cation-exchange.md), [manganese](manganese.md)).
 
 ### EC (셀 단계 j)
 
 ```
-cation_meq = Σ (용액 NH4, K, Ca, Mg) g / g_per_eq × 1000
+cation_meq = Σ (용액 NH4, K, Ca, Mg, Mn) g / g_per_eq × 1000     ← Mn은 M3, 2026-11-18
 anion_meq  = Σ (용액 NO3, NO2, S, P) g / g_per_eq × 1000
 ec_dS_per_m = (cation_meq + anion_meq) / 2 / water_mm / ec_meq_per_L_per_dS_per_m
 ```
@@ -172,4 +175,4 @@ ec_dS_per_m = (cation_meq + anion_meq) / 2 / water_mm / ec_meq_per_L_per_dS_per_
 - pH는 셀당 값 하나예요. 근권 pH(뿌리 주변만 다른 pH)는 없어요.
 - 탄산칼슘 침전, 석고 생성 같은 2차 반응은 없어요.
 - 나트륨, 염소는 없어요(염류는 비료 성분으로만).
-- 인산 고정의 시간 지연과 망간은 M3예요.
+- 인산 고정의 시간 지연은 M3에서 [phosphorus](phosphorus.md)로, 망간은 [manganese](manganese.md)로 들어왔어요 (M3, 2026-11-18). 이 문서의 P는 pH 유효도 곡선까지만 다뤄요.

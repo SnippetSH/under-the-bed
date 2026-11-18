@@ -1,11 +1,11 @@
-# 시뮬레이션 파라미터 (ADR-0002, schema_version 3 = M2)
+# 시뮬레이션 파라미터 (ADR-0002, schema_version 4 = M3)
 #
 # 키 이름에 단위를 붙이고, 값마다 출처를 주석으로 달아요. 출처가 없으면 "게임용 임의값".
 # 곡선은 [[x, y], ...] 배열이고 x는 엄격하게 오름차순이에요.
 # 각 값의 의미는 docs/spec/ 의 해당 명세(soil-water, soil-temperature, organic-matter, nitrogen,
-# aeration, soil-chemistry, strawberry-minimal)를 봐요.
+# aeration, soil-chemistry, strawberry-minimal, cation-exchange, phosphorus, manganese)를 봐요.
 
-schema_version = 3  # sim::kParamsSchemaVersion과 같아야 해요
+schema_version = 4  # sim::kParamsSchemaVersion과 같아야 해요
 
 [house]  # docs/spec/soil-temperature.md
 base_offset_degC = 2.0                    # 외기 대비 기본 온도차. 게임용 임의값
@@ -47,8 +47,35 @@ step1_o2_curve = [[0, 0.05], [0.3, 0.5], [0.6, 1.0], [1, 1.0]]  # x = aeration_i
 step2_o2_curve = [[0, 0.0], [0.3, 0.2], [0.6, 0.8], [0.8, 1.0], [1, 1.0]]  # x = aeration_index. 게임용 임의값. 1단계보다 민감 -> 과습에서 아질산 축적
 nitrite_toxicity_ph_curve = [[4.5, 8.0], [5.5, 3.0], [6.5, 1.3], [7.0, 1.0], [9.0, 1.0]]  # x = pH, y = 독성 배율. 게임용 임의값 (산성일수록 HNO2 비율 증가, pKa 약 3.3)
 
-[leaching]  # docs/spec/nitrogen.md "용탈"
-nh4_solution_fraction = 0.1               # NH4+ 중 용액에 있어 빠질 수 있는 비율. 게임용 임의값 (M3에서 양이온 교환으로 대체)
+[cation_exchange]  # docs/spec/cation-exchange.md
+cec_organic_eq_per_g_C = 0.0015           # 난분해성(부식) C 1 g당 CEC. 게임용 임의값 (부식 CEC 약 90 cmol/kg OM, 일반 범위 하단)
+exchange_rate_per_hour = 0.3              # 용액 양이 평형값 쪽으로 움직이는 시간당 비율. 게임용 임의값 (시간 상수 약 3시간)
+nh4_retention_factor = 70.0               # 자리에 붙으려는 세기 w. 게임용 임의값 (기준 토양에서 M2 용액 비율 0.1과 같아지도록)
+k_retention_factor = 250.0                # 게임용 임의값 (M2 0.03과 같아지도록)
+ca_retention_factor = 760.0               # 게임용 임의값 (M2 0.01과 같아지도록)
+mg_retention_factor = 380.0               # 게임용 임의값 (M2 0.02와 같아지도록)
+solver_iterations = 60                    # φ 이분법 반복 횟수 (수치 해법 상수). double 정밀도 수렴에 충분
+buffer_eq_per_pH_per_eq_cec = 0.15        # 광물 CEC 1 eq당 pH 완충력. 게임용 임의값
+
+[antagonism]  # docs/spec/cation-exchange.md "흡수 길항". x = 길항 지수 (용액 K+NH4 당량 / 용액 Ca+Mg 당량)
+ca_curve = [[0.0, 1.0], [0.2, 1.0], [0.4, 0.6], [0.7, 0.35], [1.2, 0.15]]  # y = Ca 흡수 능력·수요 상한 배율. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정)
+mg_curve = [[0.0, 1.0], [0.18, 1.0], [0.35, 0.55], [0.6, 0.3], [1.2, 0.1]]  # y = Mg 흡수 능력·수요 상한 배율 (Ca보다 민감). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정)
+min_demand_factor = 0.6                   # Ca·Mg 수요 상한에 거는 길항 배율의 하한. 게임용 임의값, 세포벽 등 최소 Ca·Mg, 2026-11-18 4차 프로토타입 점검 후 신설
+
+[phosphorus]  # docs/spec/phosphorus.md
+fixation_rate_per_hour = 0.0015           # 유효 -> 고정 최대 시간당 비율. 게임용 임의값 (pH 곡선 1에서 반감기 약 19일)
+fixation_ph_curve = [[4.5, 1.0], [5.5, 0.6], [6.3, 0.2], [6.8, 0.2], [7.5, 0.6], [8.5, 1.0]]  # x = pH, y = 고정 속도 배율. 게임용 임의값 (일반 유효도 도표 모양)
+release_rate_per_hour = 0.00005           # 고정 -> 유효 시간당 비율 (pH 무관). 게임용 임의값 (반감기 약 1.6년)
+
+[manganese]  # docs/spec/manganese.md
+# Mn 산화물 풀과 pH 의존 흡착력 (ADR-0010, 2026-11-18 개정)
+retention_ph_curve = [[4.5, 450.0], [5.0, 500.0], [5.1, 900.0], [5.3, 1500.0], [6.5, 1500.0], [7.5, 1800.0], [8.5, 2000.0]]  # x = pH, y = 교환 세기 w_Mn. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정)
+oxidation_rate_per_hour = 0.002          # Mn2+ -> 산화물 최대 시간당 비율. 게임용 임의값 (pH 6.5·통기 충분 반감기 약 2주)
+oxidation_ph_curve = [[4.5, 0.005], [5.0, 0.02], [5.3, 0.06], [5.5, 0.12], [5.8, 0.3], [6.0, 0.5], [6.5, 1.0], [7.0, 2.0], [7.5, 4.0], [8.5, 10.0]]  # x = pH. 지수 모양 구간 선형 근사. 게임용 임의값
+oxidation_o2_curve = [[0, 0.0], [0.3, 0.2], [0.6, 0.8], [0.8, 1.0], [1, 1.0]]  # x = aeration_index. 게임용 임의값
+reduction_rate_per_hour = 0.00006        # 산화물 -> Mn2+ 최대 시간당 비율. 게임용 임의값 (기준 토양에서 산화 ≈ 환원)
+reduction_ph_curve = [[4.5, 6.0], [5.0, 3.0], [5.5, 1.8], [6.5, 1.0], [7.5, 0.5], [8.5, 0.3]]  # x = pH. 게임용 임의값
+reduction_o2_curve = [[0, 20.0], [0.2, 10.0], [0.4, 4.0], [0.6, 1.5], [0.8, 1.0], [1, 1.0]]  # x = aeration_index. 게임용 임의값
 
 [aeration]  # docs/spec/aeration.md
 compaction_cap_curve = [[0, 1.0], [0.5, 0.8], [1.0, 0.35]]  # x = compaction_index, y = 통기 지수 상한. 게임용 임의값
@@ -66,11 +93,9 @@ ca_g_per_eq = 20.039                      # Ca 원자량 / 2
 mg_g_per_eq = 12.153                      # Mg 원자량 / 2
 p_g_per_eq = 30.974                       # H2PO4- 1가로 단순화
 s_g_per_eq = 16.03                        # SO4 2-, S 원자량 / 2
+mn_g_per_eq = 27.469                      # Mn 원자량 54.938 / 2, 2가 (docs/spec/manganese.md)
 
 [soil_chemistry]  # docs/spec/soil-chemistry.md
-k_solution_fraction = 0.03                # 풀 중 녹아 있는 비율. 게임용 임의값
-ca_solution_fraction = 0.01               # 게임용 임의값
-mg_solution_fraction = 0.02               # 게임용 임의값
 p_solution_fraction = 0.002               # 게임용 임의값 (S4에서 고pH일 때 흡수 능력이 수요보다 작아지도록 잡음)
 s_solution_fraction = 0.8                 # 게임용 임의값 (황산은 잘 녹고 잘 씻김)
 nitrification_H_eq_per_eq_N = 2.0         # 화학량론: NH4+ + 2O2 -> NO3- + 2H+ + H2O
@@ -114,11 +139,17 @@ target_K_g_per_g = 0.020                  # 대략 1.1~2.5%
 target_Ca_g_per_g = 0.012                 # 대략 0.5~1.5%
 target_Mg_g_per_g = 0.004                 # 대략 0.25~0.45%
 luxury_uptake_ratio = 1.3                 # 적정 농도의 몇 배까지 더 먹는지. 게임용 임의값
-uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율. 게임용 임의값
+uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율 (N·P·K. Ca·Mg·Mn은 전용 속도). 게임용 임의값
+ca_uptake_rate_per_g_root_per_hour = 0.00019  # Ca 전용 흡수 비율 (s5_standard 낮 흡수 능력 여유 약 4배). 게임용 임의값, Ca는 뿌리 끝에서만 흡수돼 효율이 낮음, 2026-11-18 프로토타입 점검으로 신설
+mg_uptake_rate_per_g_root_per_hour = 0.00021  # Mg 전용 흡수 비율 (여유 약 4배). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015  # 하우스 안 일사 x 받는 빛 비율 1 W/m²당 증산. 게임용 임의값 (맑은 날 하루 약 1.5~2.5 mm)
 root_recovery_rate_per_hour = 0.002       # 손상이 없을 때 뿌리 건강도 회복 비율. 게임용 임의값
 death_root_health = 0.05                  # 이 아래로 내려가면 고사. 게임용 임의값
 root_dieback_per_damage = 1.0             # 손상 비율 1당 죽는 뿌리 건물 비율. 게임용 임의값 (과습 손상이 생장에 남도록)
+target_Mn_g_per_g = 0.0001                # 적정 체내 농도 (딸기 잎 분석 적정 범위 대략 50~200 mg/kg)
+mn_uptake_rate_per_g_root_per_hour = 0.00004  # 뿌리 1 g당 용액 Mn에서 시간당 가져가는 비율. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정, 3차: 0.00002 -> 0.00004)
+mn_max_uptake_ratio = 30.0                # 적정 농도의 몇 배까지 쌓일 수 있는지. 게임용 임의값 (망간은 수동적으로 쌓여 독성까지 감)
+mn_toxicity_curve = [[0, 1], [5, 1], [10, 0.7], [20, 0.3], [30, 0.1]]  # x = 체내 Mn / 적정량, y = 생장 계수. 게임용 임의값 (약 500 mg/kg부터 장해)
 dry_matter_C_fraction = 0.45              # 건물 중 탄소 비율. 식물 건물 일반값
 
 # 퇴비 정의. 모든 값은 게임용 임의값 (docs/spec/organic-matter.md, soil-chemistry.md)
@@ -134,6 +165,7 @@ ca_g_per_kg = 10.0
 mg_g_per_kg = 4.0
 p_g_per_kg = 4.0
 s_g_per_kg = 2.0
+mn_g_per_kg = 0.3                         # 게임용 임의값
 direct_acid_eq_per_kg = 0.0
 
 [[compost]]
@@ -148,6 +180,7 @@ ca_g_per_kg = 15.0
 mg_g_per_kg = 5.0
 p_g_per_kg = 5.0
 s_g_per_kg = 2.0
+mn_g_per_kg = 0.4                         # 게임용 임의값
 direct_acid_eq_per_kg = 0.0
 
 [[compost]]
@@ -162,6 +195,7 @@ ca_g_per_kg = 5.0
 mg_g_per_kg = 1.0
 p_g_per_kg = 1.0
 s_g_per_kg = 1.0
+mn_g_per_kg = 0.2                         # 게임용 임의값
 direct_acid_eq_per_kg = 0.0
 
 # 비료 정의. 출처: 제품 일반 성분 (docs/spec/nitrogen.md, soil-chemistry.md)
@@ -175,6 +209,7 @@ ca_g_per_kg = 0.0
 mg_g_per_kg = 0.0
 p_g_per_kg = 0.0
 s_g_per_kg = 240.0                        # 제품 일반 성분
+mn_g_per_kg = 0.0
 direct_acid_eq_per_kg = 0.0               # 산성화는 질산화 H+로 설명됨
 
 [[fertilizer]]
@@ -187,6 +222,7 @@ ca_g_per_kg = 0.0
 mg_g_per_kg = 0.0
 p_g_per_kg = 0.0
 s_g_per_kg = 0.0
+mn_g_per_kg = 0.0
 direct_acid_eq_per_kg = 0.0
 
 [[fertilizer]]
@@ -199,6 +235,7 @@ ca_g_per_kg = 190.0                       # 제품 일반 성분
 mg_g_per_kg = 0.0
 p_g_per_kg = 0.0
 s_g_per_kg = 0.0
+mn_g_per_kg = 0.0
 direct_acid_eq_per_kg = 0.0
 
 [[fertilizer]]
@@ -211,6 +248,7 @@ ca_g_per_kg = 0.0
 mg_g_per_kg = 0.0
 p_g_per_kg = 0.0
 s_g_per_kg = 180.0                        # 제품 일반 성분
+mn_g_per_kg = 0.0
 direct_acid_eq_per_kg = 0.0
 
 [[fertilizer]]
@@ -223,6 +261,7 @@ ca_g_per_kg = 180.0                       # 제품 일반 성분
 mg_g_per_kg = 0.0
 p_g_per_kg = 87.0                         # 제품 일반 성분 P2O5 20%
 s_g_per_kg = 110.0                        # 제품 일반 성분
+mn_g_per_kg = 0.0
 direct_acid_eq_per_kg = 0.0
 
 [[fertilizer]]
@@ -235,6 +274,20 @@ ca_g_per_kg = 0.0
 mg_g_per_kg = 98.0                        # 제품 일반 성분
 p_g_per_kg = 0.0
 s_g_per_kg = 130.0                        # 제품 일반 성분
+mn_g_per_kg = 0.0
+direct_acid_eq_per_kg = 0.0
+
+[[fertilizer]]
+id = "manganese_sulfate"
+name = "황산망간"
+nh4_N_g_per_kg = 0.0
+no3_N_g_per_kg = 0.0
+k_g_per_kg = 0.0
+ca_g_per_kg = 0.0
+mg_g_per_kg = 0.0
+p_g_per_kg = 0.0
+s_g_per_kg = 190.0                        # 제품 일반 성분 (MnSO4·H2O)
+mn_g_per_kg = 320.0                       # 제품 일반 성분 (MnSO4·H2O)
 direct_acid_eq_per_kg = 0.0
 
 # 석회 정의 (docs/spec/soil-chemistry.md "석회 정의")

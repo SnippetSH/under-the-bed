@@ -1,6 +1,7 @@
 # 딸기 작물 최소 버전: 흡수, 생장, 뿌리 건강도
 
 - 상태: 승인 (2026-11-18)
+- M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
 - 마일스톤: M2
 - 관련: [m2-overview](m2-overview.md), [soil-chemistry](soil-chemistry.md), [aeration](aeration.md), 계획서 5장
 
@@ -20,11 +21,12 @@
 | `leaf_g_per_m2`, `root_g_per_m2` | 잎·뿌리 건물량 | g/m² |
 | `root_health` | 뿌리 건강도 | 0~1 |
 | `plant_N_g_per_m2`, `plant_P_…`, `plant_K_…`, `plant_Ca_…`, `plant_Mg_…` | 체내 양분 | g/m² |
+| `plant_Mn_g_per_m2` (M3, 2026-11-18) | 체내 망간. 정의·파생값(`plant_Mn_ratio`)은 [manganese](manganese.md) | g/m² |
 | `stress_hours[요인]` | 요인별로 생장을 가장 크게 제한한 누적 시간 (작기 리포트용) | h |
 
 정식 시(시나리오 시작) 체내 양분은 `적정 농도 × (잎 + 뿌리)`로 시작해요(충족도 1).
 
-파생값(스냅샷 노출): `leaf_area_index`, 원소별 `sufficiency`(0~1)와 `excess_index`(≥0), 이번 틱 스트레스 계수들, 이번 틱 생장량.
+파생값(스냅샷 노출): `leaf_area_index`, 원소별 `sufficiency`(0~1)와 `excess_index`(≥0), 이번 틱 스트레스 계수들, 이번 틱 생장량. (M3, 2026-11-18) 원소에 Mn이 추가되고, 이번 틱 길항 배율(Ca, Mg)도 노출해요.
 
 ## 파라미터 (`[crop]`, `[root_damage]`, 모두 게임용 임의값이고 근거는 비고)
 
@@ -44,15 +46,19 @@
 | `crop.target_K_g_per_g` | | 0.020 | 대략 1.1~2.5% |
 | `crop.target_Ca_g_per_g` | | 0.012 | 대략 0.5~1.5% |
 | `crop.target_Mg_g_per_g` | | 0.004 | 대략 0.25~0.45% |
+| `crop.target_Mn_g_per_g` (M3, 2026-11-18) | | 0.0001 | 대략 50~200 mg/kg ([manganese](manganese.md)) |
 | `crop.luxury_uptake_ratio` | 적정 농도의 몇 배까지 더 먹는지 (과잉 지수의 원천) | 1.3 | |
-| `crop.uptake_rate_per_g_root_per_hour` | 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율 | 0.002 | |
+| `crop.uptake_rate_per_g_root_per_hour` | 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율. (M3) N·P·K에 써요. Ca·Mg·Mn은 아래 전용 속도 | 0.002 | |
+| `crop.ca_uptake_rate_per_g_root_per_hour`, `crop.mg_uptake_rate_per_g_root_per_hour` (M3, 2026-11-18) | Ca·Mg 전용 흡수 속도. 일반 속도(0.002)는 Ca·Mg 흡수 능력이 필요량의 30~100배가 돼 길항이 무효였어요 | 0.00019, 0.00021 | 게임용 임의값. [cation-exchange](cation-exchange.md) |
+| `crop.mn_uptake_rate_per_g_root_per_hour`, `crop.mn_max_uptake_ratio`, `crop.mn_toxicity_curve` (M3, 2026-11-18) | Mn 전용 흡수 속도, 수요 상한 배수, 독성 곡선 | 0.00004, 30, 곡선은 [manganese](manganese.md) | 게임용 임의값 |
+| `antagonism.ca_curve`, `antagonism.mg_curve`, `antagonism.min_demand_factor` (M3, 2026-11-18) | Ca·Mg 길항 배율 곡선, 수요 상한 배율의 하한 | 곡선과 하한 0.6은 [cation-exchange](cation-exchange.md) | 게임용 임의값 |
 | `crop.transpiration_mm_per_hour_per_W_per_m2` | 하우스 안 일사 × 받는 빛 비율 1 W/m²당 증산 | 0.0015 | 맑은 날 하루 약 1.5~2.5 mm |
 | `crop.root_recovery_rate_per_hour` | 손상이 없을 때 뿌리 건강도 회복 (1까지 남은 양의 비율) | 0.002 | |
 | `crop.death_root_health` | 이 아래로 내려가면 고사 | 0.05 | |
 | `crop.root_dieback_per_damage` | 뿌리 건강도 손상 비율 1당 죽는 뿌리 건물 비율 (0~1) | 1.0 | 게임용 임의값 (2026-11-18 추가: 과습 손상이 생장에 남도록) |
 | `crop.dry_matter_C_fraction` | 건물 중 탄소 비율 (죽은 뿌리가 토양 유기물로 갈 때) | 0.45 | 식물 건물 일반값 |
 | `root_damage.waterlog_curve` | x = aeration_index, y = 시간당 손상 비율 | `[[0,0.01],[0.2,0.004],[0.4,0.0005],[0.5,0]]` | |
-| `root_damage.heat_curve` | x = 토양 온도 °C | `[[32,0],[35,0.002],[40,0.01],[45,0.03]]` | 환기가 없는 M2 하우스 기준. M7에서 다시 봐요 (tmp.md 1번) |
+| `root_damage.heat_curve` | x = 토양 온도 °C | `[[32,0],[35,0.002],[40,0.01],[45,0.03]]` | 환기가 없는 M2 하우스 기준. M7에서 다시 봐요 (balancing.md 1번) |
 | `root_damage.nitrite_curve` | x = 유효 아질산(g N/m², pH 배율 적용 후) | `[[0,0],[2,0],[4,0.004],[8,0.015]]` | |
 | `root_damage.acid_curve` | x = pH | soil-chemistry 참고 | ADR-0007 |
 | `nitrification.nitrite_toxicity_ph_curve` | x = pH, y = 아질산 독성 배율 | `[[4.5,8.0],[5.5,3.0],[6.5,1.3],[7.0,1.0],[9.0,1.0]]` | 산성일수록 HNO2 비율 증가(pKa 약 3.3). 중성·알칼리 1 |
@@ -66,11 +72,16 @@
 ```
 water    = water_stress_curve(relative_water)
 salt     = salt_stress_curve(ec_dS_per_m)
-nutrient = min over X∈{N,P,K,Ca,Mg} nutrient_stress_curve(sufficiency_X)
-root     = root_health
-combined = minimum 모드: min(water, salt, nutrient, root)
-           product 모드: water × salt × nutrient × root
+nutrient_X = nutrient_stress_curve(sufficiency_X)      X ∈ {N, P, K, Ca, Mg, Mn}     ← Mn은 M3, 2026-11-18
+root       = root_health
+mn_toxicity = mn_toxicity_curve(plant_Mn_ratio)                                           ← M3, 2026-11-18
+combined   = minimum 모드: min(water, salt, nutrient_N … nutrient_Mn, root, mn_toxicity)
+             product 모드: water × salt × Π_X nutrient_X × root × mn_toxicity
 ```
+
+- (M3, 2026-11-18) `StressFactor`에 `NutrientMn`, `ToxicityMn`을 맨 뒤(Root 다음)에 추가해서 기존 인덱스와 동률 규칙은 그대로예요. 정의는 [manganese](manganese.md) "스트레스".
+
+- (2026-11-18 디렉터 결정) product 모드는 원소별 영양 계수를 **각각** 곱해요. 계획서 5장 하드 모드("스트레스를 전부 곱해요")와 M2 코드에 명세를 맞춘 거예요. 처음 승인본은 영양 계수 중 최솟값 하나만 곱했어요.
 
 - `combined < 1`인 틱에만, 가장 작은 요인(동률이면 위 순서상 앞선 것, nutrient는 원소까지)을 `stress_hours`에 1시간 더해요. 모든 계수가 1이면 기록하지 않아요.
 - `sufficiency_X = min(1, plant_X / (target_X × (leaf + root)))`, `excess_index_X = max(0, plant_X / (target_X × (leaf + root)) − 1)`.
@@ -92,7 +103,14 @@ capacity_X = available_X × min(1, uptake_rate_per_g_root × root × root_health
 uptake_X   = min(demand_X, capacity_X)
 ```
 
-- `available_X`는 [soil-chemistry](soil-chemistry.md) "유효량". 흡수량은 해당 토양 풀에서 빼고 체내 풀과 `X_uptake_g` 장부에 더해요.
+- `available_X`는 [soil-chemistry](soil-chemistry.md) "유효량". 흡수량은 해당 토양 풀에서 빼고 체내 풀과 `X_uptake_g` 장부에 더해요. (M3, 2026-11-18) 양이온(NH4, K, Ca, Mg, Mn)은 총량과 **용액 상태에서 같은 양을** 빼요. 흡수는 유효량(용액 × pH 유효도) 안에서만 일어나요([cation-exchange](cation-exchange.md)).
+- (M3, 2026-11-18) Ca·Mg는 전용 속도 `crop.ca_uptake_rate…`, `crop.mg_uptake_rate…`를 `uptake_rate_per_g_root` 자리에 써요. 또 길항 배율 `a_X = antagonism.X_curve(antagonism_index)`를 흡수 능력과 수요 상한에 곱해요. 수요 상한 쪽 배율은 하한이 있어요:
+  ```
+  capacity_X = available_X × min(1, X_uptake_rate × root × root_health) × water × salt × a_X          (X = Ca, Mg)
+  demand_X   = max(0, target_X × luxury_uptake_ratio × max(min_demand_factor, a_X) × (leaf + root) − plant_X)
+  ```
+  `min_demand_factor` = 0.6이고 흡수 능력에는 하한이 없어요. 길항 지수 `(용액 K + 용액 NH4) / (용액 Ca + 용액 Mg)`(당량)와 근거는 [cation-exchange](cation-exchange.md) "흡수 길항". N·P·K는 길항을 받지 않아요.
+- (M3, 2026-11-18) Mn: `demand_Mn = max(0, target_Mn × mn_max_uptake_ratio × (leaf + root) − plant_Mn)`, `capacity_Mn = 용액 Mn × min(1, mn_uptake_rate × root × root_health) × water × salt`. 길항은 적용하지 않아요. 식과 독성은 [manganese](manganese.md) "흡수"·"스트레스".
 - N은 NH4+와 NO3- 유효량 비율대로 나눠 가져가요. NH4+ 흡수는 H+, NO3- 흡수는 OH-를 `pending_H`에 기록해요(다음 틱 pH 갱신).
 - 방향: 뿌리가 적거나 상하면, 마르거나 짜면 덜 먹어요. 유효량이 많으면 적정 농도의 1.3배까지 더 먹어요(질소 과잉의 원천, M4에서 화아분화 지연 등에 사용).
 
@@ -123,8 +141,9 @@ if root_health < death_root_health: alive = false → 이벤트 PlantDied{tile, 
 dead_root   = root × min(1, damage) × root_dieback_per_damage
 share       = dead_root / (leaf + root)                 (죽기 전 생체량 기준)
 root       −= dead_root
-체내 양분 X −= plant_X × share   (X = N, P, K, Ca, Mg; 양분은 생체량에 고르게 분포한다고 단순화)
-토양으로:  N → labile_N,  P·K·Ca·Mg → 각 토양 풀,  C = dead_root × dry_matter_C_fraction → labile_C
+체내 양분 X −= plant_X × share   (X = N, P, K, Ca, Mg, Mn; 양분은 생체량에 고르게 분포한다고 단순화)   ← Mn은 M3, 2026-11-18
+토양으로:  N → labile_N,  P·K·Ca·Mg → 각 토양 풀,  Mn → 유효태 Mn,  C = dead_root × dry_matter_C_fraction → labile_C
+          (M3, 2026-11-18: K·Ca·Mg·Mn은 총량과 용액 상태에 함께 돌아가요. N은 M2처럼 이분해성 유기 N으로)
 장부:      C_root_litter_g += C
 ```
 
@@ -135,7 +154,7 @@ root       −= dead_root
 
 ## 보존·불변 조건
 
-- 원소별 `토양 + 체내 = 초기 + in − leached (− gas)`. 흡수와 뿌리 고사는 계 안의 이동이에요.
+- 원소별 `토양 + 체내 = 초기 + in − leached (− gas)`. 흡수와 뿌리 고사는 계 안의 이동이에요. (M3, 2026-11-18) 원소에 Mn이 추가돼요(토양 Mn = 유효태 + 산화물, [manganese](manganese.md)).
 - 물: `토양 = 초기 + in − 증발 − 증산 − 배수`.
 - 생체량, 체내 양분 ≥ 0. root_health 0~1. 광합성 탄소는 장부 밖이에요. 토양 C 보존식은 `유기 C = 초기 + C_in + C_root_litter − C_respired`.
 
@@ -162,5 +181,5 @@ root       −= dead_root
 - 생육 단계, 화방, 관부, 과실, 품질, 적엽 (M4)
 - 호흡 손실, 노화 (M4)
 - 증상 화면 표현 (M4~M7). M2는 충족도와 스트레스 기록까지만
-- 길항 (M3), CO2 (M8), 병해 (M5)
+- CO2 (M8), 병해 (M5). (길항은 M3에서 들어왔어요, 2026-11-18)
 - 정식은 시나리오 시작 시점으로만. 정식 명령은 필요해지면 추가

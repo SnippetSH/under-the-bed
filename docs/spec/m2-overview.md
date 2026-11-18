@@ -1,6 +1,7 @@
 # M2 개요: pH·EC·통기 + 단순 작물
 
 - 상태: 승인 (2026-11-18)
+- M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
 - 마일스톤: M2
 - 관련 명세: [aeration](aeration.md), [soil-chemistry](soil-chemistry.md), [strawberry-minimal](strawberry-minimal.md), M1 명세 전체, [ADR-0007](../decisions/0007-acid-toxicity-and-manganese.md)
 - 완료 기준(계획서 7장): S4 통과("비료를 줬는데 결핍" 재현), 과습 시 뿌리 손상 재현
@@ -140,7 +141,7 @@ stress_combination = "minimum"   # minimum | product
 
 | ID | 비교 | 기대 방향 | 기간 |
 | --- | --- | --- | --- |
-| **S4** | `s4_optimal`(pH 6.2) 대 `s4_alkaline`(pH 8.0), 같은 토양 P 총량 | 알칼리 쪽 P 충족도가 낮다. **토양 P 풀은 알칼리 쪽이 같거나 더 많다** | 21일 |
+| **S4** | `s4_optimal`(pH 6.2) 대 `s4_alkaline`(pH 8.0), 같은 토양 P 총량 | 알칼리 쪽 P 충족도가 낮다. **토양 P 총량(유효 + 고정)은 알칼리 쪽이 같거나 더 많다** (M3, 2026-11-18 디렉터 결정 2번: 인산 고정이 생겨 유효 P 풀 대신 총량으로 비교. 원래 뜻인 "총량이 충분해도"를 유지) | 21일 |
 | S4b | `s4_optimal` 대 `s4_acid`(pH 4.6) | 산성 쪽 뿌리 건강도와 생장량이 낮다 (산성 장해). Ca·Mg 결핍은 M3 양이온 교환 이후에 다시 정의 | 21일 |
 | **S8** | `s8_proper`(경운, 하루 6 mm) 대 `s8_waterlogged`(다짐 0.8, 하루 25 mm) | 과습 쪽 통기 지수 최저값·뿌리 건강도·생장량이 낮다 | 14일 |
 | S9 | 산성 토양(pH 5.0)에 석회 투입 대 무처리 | pH가 **서서히** 오른다: 1일 뒤 상승폭 < 14일 뒤 상승폭. 무처리는 오르지 않는다 | 14일 |

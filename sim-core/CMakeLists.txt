@@ -19,6 +19,8 @@ add_library(sim-core STATIC
   src/validation.hpp
   src/world.cpp
   src/processes/aeration.cpp
+  src/processes/cation_exchange.cpp
+  src/processes/phosphorus.cpp
   src/processes/crop.cpp
   src/processes/leaching.cpp
   src/processes/nitrification.cpp

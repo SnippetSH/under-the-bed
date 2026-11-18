@@ -21,7 +21,13 @@ add_executable(sim-tests
   test_validation.cpp
   test_m2_scenarios.cpp
   test_m2_conservation.cpp
-  test_m2_determinism.cpp)
+  test_m2_determinism.cpp
+  test_cation_exchange.cpp
+  test_phosphorus.cpp
+  test_manganese.cpp
+  test_m3_scenarios.cpp
+  test_m3_conservation.cpp
+  test_m3_determinism.cpp)
 
 target_link_libraries(sim-tests PRIVATE sim-core sim-data Catch2::Catch2WithMain)
 # 실제 data/ 파일을 읽는 테스트용 저장소 경로

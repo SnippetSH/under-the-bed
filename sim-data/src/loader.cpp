@@ -461,8 +461,36 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         n.step2_o2_curve = r.curve("step2_o2_curve");
         n.nitrite_toxicity_ph_curve = r.curve("nitrite_toxicity_ph_curve");
     });
-    run("leaching", [&](TableReader& r) {
-        p.leaching.nh4_solution_fraction = r.number("nh4_solution_fraction");
+    run("cation_exchange", [&](TableReader& r) {
+        auto& c = p.cation_exchange;
+        c.cec_organic_eq_per_g_C = r.number("cec_organic_eq_per_g_C");
+        c.exchange_rate_per_hour = r.number("exchange_rate_per_hour");
+        c.nh4_retention_factor = r.number("nh4_retention_factor");
+        c.k_retention_factor = r.number("k_retention_factor");
+        c.ca_retention_factor = r.number("ca_retention_factor");
+        c.mg_retention_factor = r.number("mg_retention_factor");
+        c.solver_iterations = r.integer("solver_iterations");
+        c.buffer_eq_per_pH_per_eq_cec = r.number("buffer_eq_per_pH_per_eq_cec");
+    });
+    run("antagonism", [&](TableReader& r) {
+        p.antagonism.ca_curve = r.curve("ca_curve");
+        p.antagonism.mg_curve = r.curve("mg_curve");
+        p.antagonism.min_demand_factor = r.number("min_demand_factor");
+    });
+    run("phosphorus", [&](TableReader& r) {
+        p.phosphorus.fixation_rate_per_hour = r.number("fixation_rate_per_hour");
+        p.phosphorus.fixation_ph_curve = r.curve("fixation_ph_curve");
+        p.phosphorus.release_rate_per_hour = r.number("release_rate_per_hour");
+    });
+    run("manganese", [&](TableReader& r) {
+        auto& m = p.manganese;
+        m.retention_ph_curve = r.curve("retention_ph_curve");
+        m.oxidation_rate_per_hour = r.number("oxidation_rate_per_hour");
+        m.oxidation_ph_curve = r.curve("oxidation_ph_curve");
+        m.oxidation_o2_curve = r.curve("oxidation_o2_curve");
+        m.reduction_rate_per_hour = r.number("reduction_rate_per_hour");
+        m.reduction_ph_curve = r.curve("reduction_ph_curve");
+        m.reduction_o2_curve = r.curve("reduction_o2_curve");
     });
     run("aeration", [&](TableReader& r) {
         auto& a = p.aeration;
@@ -482,12 +510,10 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         i.mg_g_per_eq = r.number("mg_g_per_eq");
         i.p_g_per_eq = r.number("p_g_per_eq");
         i.s_g_per_eq = r.number("s_g_per_eq");
+        i.mn_g_per_eq = r.number("mn_g_per_eq");
     });
     run("soil_chemistry", [&](TableReader& r) {
         auto& c = p.soil_chemistry;
-        c.k_solution_fraction = r.number("k_solution_fraction");
-        c.ca_solution_fraction = r.number("ca_solution_fraction");
-        c.mg_solution_fraction = r.number("mg_solution_fraction");
         c.p_solution_fraction = r.number("p_solution_fraction");
         c.s_solution_fraction = r.number("s_solution_fraction");
         c.nitrification_H_eq_per_eq_N = r.number("nitrification_H_eq_per_eq_N");
@@ -535,11 +561,17 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.target_Mg_g_per_g = r.number("target_Mg_g_per_g");
         c.luxury_uptake_ratio = r.number("luxury_uptake_ratio");
         c.uptake_rate_per_g_root_per_hour = r.number("uptake_rate_per_g_root_per_hour");
+        c.ca_uptake_rate_per_g_root_per_hour = r.number("ca_uptake_rate_per_g_root_per_hour");
+        c.mg_uptake_rate_per_g_root_per_hour = r.number("mg_uptake_rate_per_g_root_per_hour");
         c.transpiration_mm_per_hour_per_W_per_m2 = r.number("transpiration_mm_per_hour_per_W_per_m2");
         c.root_recovery_rate_per_hour = r.number("root_recovery_rate_per_hour");
         c.death_root_health = r.number("death_root_health");
         c.root_dieback_per_damage = r.number("root_dieback_per_damage");
         c.dry_matter_C_fraction = r.number("dry_matter_C_fraction");
+        c.target_Mn_g_per_g = r.number("target_Mn_g_per_g");
+        c.mn_uptake_rate_per_g_root_per_hour = r.number("mn_uptake_rate_per_g_root_per_hour");
+        c.mn_max_uptake_ratio = r.number("mn_max_uptake_ratio");
+        c.mn_toxicity_curve = r.curve("mn_toxicity_curve");
     });
     if (!status) {
         return std::unexpected(std::move(status.error()));
@@ -558,6 +590,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.mg_g_per_kg = r.number("mg_g_per_kg");
         c.p_g_per_kg = r.number("p_g_per_kg");
         c.s_g_per_kg = r.number("s_g_per_kg");
+        c.mn_g_per_kg = r.number("mn_g_per_kg");
         c.direct_acid_eq_per_kg = r.number("direct_acid_eq_per_kg");
         if (auto done = r.finish(); !done) {
             return std::unexpected(std::move(done.error()));
@@ -575,6 +608,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         f.mg_g_per_kg = r.number("mg_g_per_kg");
         f.p_g_per_kg = r.number("p_g_per_kg");
         f.s_g_per_kg = r.number("s_g_per_kg");
+        f.mn_g_per_kg = r.number("mn_g_per_kg");
         f.direct_acid_eq_per_kg = r.number("direct_acid_eq_per_kg");
         if (auto done = r.finish(); !done) {
             return std::unexpected(std::move(done.error()));
@@ -656,6 +690,10 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
     s.mg_g_per_m2 = soil.number("mg_g_per_m2");
     s.p_g_per_m2 = soil.number("p_g_per_m2");
     s.s_g_per_m2 = soil.number("s_g_per_m2");
+    s.cec_mineral_eq_per_m2 = soil.number("cec_mineral_eq_per_m2");
+    s.mn_g_per_m2 = soil.number("mn_g_per_m2");
+    s.mn_oxide_g_per_m2 = soil.number("mn_oxide_g_per_m2");
+    s.p_fixed_g_per_m2 = soil.number("p_fixed_g_per_m2");
     if (auto done = soil.finish(); !done) {
         return std::unexpected(std::move(done.error()));
     }

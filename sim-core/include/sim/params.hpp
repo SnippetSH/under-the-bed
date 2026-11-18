@@ -9,7 +9,7 @@
 namespace sim {
 
 // 코어가 이해하는 파라미터 스키마 버전. data/params.toml의 schema_version과 같아야 해요.
-inline constexpr std::int64_t kParamsSchemaVersion = 3;
+inline constexpr std::int64_t kParamsSchemaVersion = 4;
 
 // 값은 전부 data/params.toml에서 와요 (코드에 기본값을 두지 않아요).
 // 각 항목의 의미와 방향은 docs/spec/의 해당 명세를 따라요.
@@ -74,11 +74,49 @@ struct NitrificationParams {
     bool operator==(const NitrificationParams&) const = default;
 };
 
-// docs/spec/nitrogen.md "용탈"
-struct LeachingParams {
-    double nh4_solution_fraction = 0.0;
+// docs/spec/cation-exchange.md (M3)
+struct CationExchangeParams {
+    double cec_organic_eq_per_g_C = 0.0;
+    double exchange_rate_per_hour = 0.0;
+    double nh4_retention_factor = 0.0;
+    double k_retention_factor = 0.0;
+    double ca_retention_factor = 0.0;
+    double mg_retention_factor = 0.0;
+    std::int64_t solver_iterations = 0;
+    double buffer_eq_per_pH_per_eq_cec = 0.0;
 
-    bool operator==(const LeachingParams&) const = default;
+    bool operator==(const CationExchangeParams&) const = default;
+};
+
+// docs/spec/cation-exchange.md "흡수 길항" (M3). x = 길항 지수
+struct AntagonismParams {
+    PiecewiseLinear ca_curve;
+    PiecewiseLinear mg_curve;
+    double min_demand_factor = 0.0;  // Ca·Mg 수요 상한에 거는 길항 배율의 하한 (흡수 능력에는 적용 안 함)
+
+    bool operator==(const AntagonismParams&) const = default;
+};
+
+// docs/spec/phosphorus.md (M3)
+struct PhosphorusParams {
+    double fixation_rate_per_hour = 0.0;
+    PiecewiseLinear fixation_ph_curve;  // x = pH
+    double release_rate_per_hour = 0.0;
+
+    bool operator==(const PhosphorusParams&) const = default;
+};
+
+// docs/spec/manganese.md (M3)
+struct ManganeseParams {
+    PiecewiseLinear retention_ph_curve;  // x = pH, y = w_Mn (ADR-0010)
+    double oxidation_rate_per_hour = 0.0;
+    PiecewiseLinear oxidation_ph_curve;
+    PiecewiseLinear oxidation_o2_curve;
+    double reduction_rate_per_hour = 0.0;
+    PiecewiseLinear reduction_ph_curve;
+    PiecewiseLinear reduction_o2_curve;
+
+    bool operator==(const ManganeseParams&) const = default;
 };
 
 // docs/spec/aeration.md (M2)
@@ -102,15 +140,13 @@ struct IonParams {
     double mg_g_per_eq = 0.0;
     double p_g_per_eq = 0.0;
     double s_g_per_eq = 0.0;
+    double mn_g_per_eq = 0.0;  // M3
 
     bool operator==(const IonParams&) const = default;
 };
 
-// docs/spec/soil-chemistry.md "용액 비율" 외 (M2)
+// docs/spec/soil-chemistry.md "용액 비율" 외 (M2). K·Ca·Mg·NH4 용액 비율은 M3에서 용액 상태로 대체 (cation-exchange)
 struct SoilChemistryParams {
-    double k_solution_fraction = 0.0;
-    double ca_solution_fraction = 0.0;
-    double mg_solution_fraction = 0.0;
     double p_solution_fraction = 0.0;
     double s_solution_fraction = 0.0;
     double nitrification_H_eq_per_eq_N = 0.0;
@@ -167,11 +203,18 @@ struct CropParams {
     double target_Mg_g_per_g = 0.0;
     double luxury_uptake_ratio = 0.0;
     double uptake_rate_per_g_root_per_hour = 0.0;
+    double ca_uptake_rate_per_g_root_per_hour = 0.0;  // M3: Ca·Mg 전용 흡수 속도 (cation-exchange "흡수 길항")
+    double mg_uptake_rate_per_g_root_per_hour = 0.0;
     double transpiration_mm_per_hour_per_W_per_m2 = 0.0;
     double root_recovery_rate_per_hour = 0.0;
     double death_root_health = 0.0;
     double root_dieback_per_damage = 0.0;  // 손상 비율 1당 죽는 뿌리 건물 비율 (뿌리 고사)
     double dry_matter_C_fraction = 0.0;    // 건물 중 탄소 비율
+    // M3 망간 (docs/spec/manganese.md)
+    double target_Mn_g_per_g = 0.0;
+    double mn_uptake_rate_per_g_root_per_hour = 0.0;
+    double mn_max_uptake_ratio = 0.0;
+    PiecewiseLinear mn_toxicity_curve;  // x = 체내 Mn / 적정량
 
     bool operator==(const CropParams&) const = default;
 };
@@ -200,6 +243,7 @@ struct CompostDef {
     double mg_g_per_kg = 0.0;
     double p_g_per_kg = 0.0;
     double s_g_per_kg = 0.0;
+    double mn_g_per_kg = 0.0;  // M3
     double direct_acid_eq_per_kg = 0.0;  // 음수 = 염기
 
     bool operator==(const CompostDef&) const = default;
@@ -216,6 +260,7 @@ struct FertilizerDef {
     double mg_g_per_kg = 0.0;
     double p_g_per_kg = 0.0;
     double s_g_per_kg = 0.0;
+    double mn_g_per_kg = 0.0;  // M3
     double direct_acid_eq_per_kg = 0.0;  // 질산화·흡수로 설명되지 않는 직접 효과. 음수 = 염기
 
     bool operator==(const FertilizerDef&) const = default;
@@ -228,7 +273,10 @@ struct Params {
     SoilTemperatureParams soil_temperature;
     OrganicMatterParams organic_matter;
     NitrificationParams nitrification;
-    LeachingParams leaching;
+    CationExchangeParams cation_exchange;
+    AntagonismParams antagonism;
+    PhosphorusParams phosphorus;
+    ManganeseParams manganese;
     AerationParams aeration;
     IonParams ions;
     SoilChemistryParams soil_chemistry;

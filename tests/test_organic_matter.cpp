@@ -30,6 +30,7 @@ sim::SoilCell empty_om_cell(double nh4_N_g_per_m2, double no3_N_g_per_m2) {
     cell.stable_C_g_per_m2 = 0.0;
     cell.stable_N_g_per_m2 = 0.0;
     cell.nh4_N_g_per_m2 = nh4_N_g_per_m2;
+    cell.nh4_solution_N_g_per_m2 = nh4_N_g_per_m2;  // M3: 용액 상태도 같이 맞춰요 (0 ≤ 용액 ≤ 총량)
     cell.no2_N_g_per_m2 = 0.0;
     cell.no3_N_g_per_m2 = no3_N_g_per_m2;
     return cell;

@@ -1,11 +1,13 @@
 // M2 패키지 단위 테스트 (docs/spec/m2-overview.md "구현 작업 분할")
 // 작물: docs/spec/strawberry-minimal.md "테스트 (단위)"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <optional>
 
 #include "sim/processes.hpp"
@@ -24,14 +26,15 @@ std::size_t idx(sim::StressFactor factor) { return static_cast<std::size_t>(fact
 
 sim::Crop make_crop(const sim::Params& params) { return sim::process::plant_crop(test::test_crop_init(), params.crop); }
 
-// 테스트에서 직접 만드는 유효량: 토양 풀 전체를 유효로 봐요 (화학 패키지 구현과 무관)
+// 테스트에서 직접 만드는 유효량: 용액 상태 전체를 유효로 봐요 (M3: 양이온은 용액에서만 흡수, pH 곡선은 1로 가정)
 sim::process::NutrientAvailability full_availability(const sim::SoilCell& cell) {
-    return {.nh4_N = cell.nh4_N_g_per_m2,
+    return {.nh4_N = cell.nh4_solution_N_g_per_m2,
             .no3_N = cell.no3_N_g_per_m2,
             .p = cell.p_g_per_m2,
-            .k = cell.k_g_per_m2,
-            .ca = cell.ca_g_per_m2,
-            .mg = cell.mg_g_per_m2};
+            .k = cell.k_solution_g_per_m2,
+            .ca = cell.ca_solution_g_per_m2,
+            .mg = cell.mg_solution_g_per_m2,
+            .mn = cell.mn_solution_g_per_m2};
 }
 
 struct ElementTotals {
@@ -148,6 +151,7 @@ TEST_CASE("Crop with more leaf grows more under the same conditions", "[unit][cr
     large.plant_K_g_per_m2 = params.crop.target_K_g_per_g * (large.leaf_g_per_m2 + large.root_g_per_m2);
     large.plant_Ca_g_per_m2 = params.crop.target_Ca_g_per_g * (large.leaf_g_per_m2 + large.root_g_per_m2);
     large.plant_Mg_g_per_m2 = params.crop.target_Mg_g_per_g * (large.leaf_g_per_m2 + large.root_g_per_m2);
+    large.plant_Mn_g_per_m2 = params.crop.target_Mn_g_per_g * (large.leaf_g_per_m2 + large.root_g_per_m2);
     sim::Ledger ledger;
 
     (void)step(small, cell_a, params, full_availability(cell_a), kDaySolar_W_per_m2, ledger);
@@ -764,4 +768,310 @@ TEST_CASE("Crop stays finite and non-negative under extreme inputs", "[unit][cro
     CHECK_THAT(now.K, WithinRel(initial.K, kRelTol));
     CHECK_THAT(now.Ca, WithinRel(initial.Ca, kRelTol));
     CHECK_THAT(now.Mg, WithinRel(initial.Mg, kRelTol));
+}
+
+// ---- M3: Ca·Mg 전용 흡수 속도, 길항(수요 상한과 하한), 용액 상태 흡수, 곱셈 모드, 뿌리 고사 반환 ----
+// (docs/spec/strawberry-minimal.md M3 개정, cation-exchange.md "흡수 길항")
+
+namespace {
+
+// 길항 지수를 원하는 값으로 만든 셀: Ca·Mg 용액을 정하고 K(또는 NH4) 용액으로 (K + NH4) / (Ca + Mg) 당량비를 맞춰요.
+sim::SoilCell cell_with_antagonism_index(const sim::Params& params, double antagonism_index, double ca_solution,
+                                         double mg_solution, double nh4_share_of_monovalent = 0.0) {
+    sim::SoilCell cell = test::test_cell();
+    cell.ca_solution_g_per_m2 = ca_solution;
+    cell.mg_solution_g_per_m2 = mg_solution;
+    cell.ca_g_per_m2 = std::max(cell.ca_g_per_m2, 2.0 * ca_solution);
+    cell.mg_g_per_m2 = std::max(cell.mg_g_per_m2, 2.0 * mg_solution);
+    const double divalent_eq = ca_solution / params.ions.ca_g_per_eq + mg_solution / params.ions.mg_g_per_eq;
+    const double monovalent_eq = antagonism_index * divalent_eq;
+    cell.k_solution_g_per_m2 = (1.0 - nh4_share_of_monovalent) * monovalent_eq * params.ions.k_g_per_eq;
+    cell.nh4_solution_N_g_per_m2 = nh4_share_of_monovalent * monovalent_eq * params.ions.nh4_N_g_per_eq;
+    cell.k_g_per_m2 = std::max(cell.k_g_per_m2, 2.0 * cell.k_solution_g_per_m2);
+    cell.nh4_N_g_per_m2 = std::max(cell.nh4_N_g_per_m2, 2.0 * cell.nh4_solution_N_g_per_m2);
+    return cell;
+}
+
+// 흡수 능력이 병목이 되지 않도록 크게 준 유효량 (직접 지정)
+sim::process::NutrientAvailability abundant_availability() {
+    return {.nh4_N = 0.0, .no3_N = 0.0, .p = 0.0, .k = 0.0, .ca = 2000.0, .mg = 2000.0, .mn = 0.0};
+}
+
+// 목표 농도 × 사치 배율 × 길항 배율 × 건물량
+double luxury_cap_g_per_m2(double target_g_per_g, const sim::Params& params, const sim::Crop& crop, double factor) {
+    return target_g_per_g * params.crop.luxury_uptake_ratio * factor * (crop.leaf_g_per_m2 + crop.root_g_per_m2);
+}
+
+}  // namespace
+
+// Ca·Mg는 일반 흡수 속도가 아니라 전용 속도(ca_·mg_uptake_rate)로 능력이 정해진다
+TEST_CASE("Ca and Mg uptake capacity use their own uptake rates", "[unit][crop][m3]") {
+    const sim::Params params = test::test_params();
+    const auto run = [&](const sim::Params& p) {
+        sim::SoilCell cell = cell_with_antagonism_index(p, 0.0, 30.0, 10.0);  // 길항 없음 (K·NH4 용액 0)
+        sim::Crop crop = make_crop(p);
+        crop.plant_Ca_g_per_m2 = 0.0;
+        crop.plant_Mg_g_per_m2 = 0.0;
+        const sim::process::NutrientAvailability available{
+            .nh4_N = 0.0, .no3_N = 0.0, .p = 0.0, .k = 0.0, .ca = 10.0, .mg = 10.0, .mn = 0.0};
+        sim::Ledger ledger;
+        (void)step(crop, cell, p, available, kNightSolar_W_per_m2, ledger);
+        return ledger;
+    };
+    const sim::Ledger base = run(params);
+    const double root = test::test_crop_init().root_g_per_m2;
+    // 식: 유효량 × min(1, 전용 속도 × 뿌리 × 건강도) × water × salt (여기서 water = salt = 1, 건강도 1, 길항 1)
+    CHECK(base.Ca_uptake_g ==
+          Catch::Approx(10.0 * std::min(1.0, params.crop.ca_uptake_rate_per_g_root_per_hour * root)));
+    CHECK(base.Mg_uptake_g ==
+          Catch::Approx(10.0 * std::min(1.0, params.crop.mg_uptake_rate_per_g_root_per_hour * root)));
+    // Ca·Mg 전용 속도는 일반 속도보다 작아요
+    CHECK(params.crop.ca_uptake_rate_per_g_root_per_hour < params.crop.uptake_rate_per_g_root_per_hour);
+    CHECK(params.crop.mg_uptake_rate_per_g_root_per_hour < params.crop.uptake_rate_per_g_root_per_hour);
+
+    // Ca 속도만 2배 → Ca 흡수만 2배, Mg는 그대로
+    sim::Params fast_ca = params;
+    fast_ca.crop.ca_uptake_rate_per_g_root_per_hour *= 2.0;
+    const sim::Ledger doubled = run(fast_ca);
+    CHECK(doubled.Ca_uptake_g == Catch::Approx(2.0 * base.Ca_uptake_g));
+    CHECK(doubled.Mg_uptake_g == base.Mg_uptake_g);
+
+    // Mg 속도만 2배
+    sim::Params fast_mg = params;
+    fast_mg.crop.mg_uptake_rate_per_g_root_per_hour *= 2.0;
+    const sim::Ledger mg_doubled = run(fast_mg);
+    CHECK(mg_doubled.Mg_uptake_g == Catch::Approx(2.0 * base.Mg_uptake_g));
+    CHECK(mg_doubled.Ca_uptake_g == base.Ca_uptake_g);
+
+    // 일반 속도를 바꿔도 Ca·Mg 흡수는 변하지 않아요
+    sim::Params fast_general = params;
+    fast_general.crop.uptake_rate_per_g_root_per_hour *= 3.0;
+    const sim::Ledger general = run(fast_general);
+    CHECK(general.Ca_uptake_g == base.Ca_uptake_g);
+    CHECK(general.Mg_uptake_g == base.Mg_uptake_g);
+}
+
+// 길항은 수요 상한에도 걸린다: 상한 = 목표 × 1.3 × max(min_demand_factor, 배율) × 건물량. 하한 덕에 흡수가 완전히 멈추지 않는다
+TEST_CASE("Antagonism lowers the Ca and Mg demand cap down to the minimum demand floor", "[unit][crop][m3]") {
+    const sim::Params params = test::test_params();
+    REQUIRE(params.antagonism.min_demand_factor > params.antagonism.ca_curve(3.0));  // 하한이 쓰이는 영역이 있어야 의미가 있어요
+    for (const double index : {0.0, 0.3, 0.7, 3.0}) {
+        INFO("antagonism index " << index);
+        sim::SoilCell cell = cell_with_antagonism_index(params, index, 100.0, 20.0);
+        sim::Crop crop = make_crop(params);
+        const double ca_factor = std::max(params.antagonism.min_demand_factor, params.antagonism.ca_curve(index));
+        const double mg_factor = std::max(params.antagonism.min_demand_factor, params.antagonism.mg_curve(index));
+        // 시작 체내량은 어떤 상한보다도 낮게 (수요가 양수)
+        crop.plant_Ca_g_per_m2 = 0.3 * luxury_cap_g_per_m2(params.crop.target_Ca_g_per_g, params, crop, 1.0);
+        crop.plant_Mg_g_per_m2 = 0.3 * luxury_cap_g_per_m2(params.crop.target_Mg_g_per_g, params, crop, 1.0);
+        sim::Ledger ledger;
+        (void)step(crop, cell, params, abundant_availability(), kNightSolar_W_per_m2, ledger);
+        // 능력이 충분하므로 수요 상한(하한 적용 후 배율)까지 정확히 채워져요
+        CHECK(crop.plant_Ca_g_per_m2 ==
+              Catch::Approx(luxury_cap_g_per_m2(params.crop.target_Ca_g_per_g, params, crop, ca_factor)));
+        CHECK(crop.plant_Mg_g_per_m2 ==
+              Catch::Approx(luxury_cap_g_per_m2(params.crop.target_Mg_g_per_g, params, crop, mg_factor)));
+    }
+
+    // 강한 길항에서도 하한 때문에 흡수가 0이 되지 않는다 (체내 양이 하한 상한보다 낮으면 계속 흡수)
+    sim::SoilCell strong = cell_with_antagonism_index(params, 3.0, 100.0, 20.0);
+    sim::Crop crop = make_crop(params);
+    crop.plant_Ca_g_per_m2 = 0.5 * luxury_cap_g_per_m2(params.crop.target_Ca_g_per_g, params, crop, 1.0);
+    sim::Ledger ledger;
+    (void)step(crop, strong, params, abundant_availability(), kNightSolar_W_per_m2, ledger);
+    CHECK(ledger.Ca_uptake_g > 0.0);
+    CHECK(crop.antagonism_Ca_factor < params.antagonism.min_demand_factor);  // 능력 배율은 하한 없이 더 낮아요
+}
+
+// 길항은 흡수 능력에도 걸리지만 하한은 능력에 적용되지 않는다 (능력 배율 = 곡선값 그대로)
+TEST_CASE("Antagonism factor scales capacity without the floor", "[unit][crop][m3]") {
+    const sim::Params params = test::test_params();
+    const double index = 3.0;
+    const double curve_ca = params.antagonism.ca_curve(index);
+    REQUIRE(curve_ca < params.antagonism.min_demand_factor);
+    sim::SoilCell cell = cell_with_antagonism_index(params, index, 30.0, 10.0);
+    sim::Crop crop = make_crop(params);
+    crop.plant_Ca_g_per_m2 = 0.0;
+    const sim::process::NutrientAvailability available{
+        .nh4_N = 0.0, .no3_N = 0.0, .p = 0.0, .k = 0.0, .ca = 10.0, .mg = 0.0, .mn = 0.0};
+    sim::Ledger ledger;
+    (void)step(crop, cell, params, available, kNightSolar_W_per_m2, ledger);
+    const double root = test::test_crop_init().root_g_per_m2;
+    CHECK(crop.antagonism_Ca_factor == Catch::Approx(curve_ca));
+    CHECK(ledger.Ca_uptake_g ==
+          Catch::Approx(10.0 * std::min(1.0, params.crop.ca_uptake_rate_per_g_root_per_hour * root) * curve_ca));
+}
+
+// 길항 지수의 분자에는 K뿐 아니라 NH4도 들어간다 (같은 당량이면 같은 길항)
+TEST_CASE("Antagonism counts NH4 like K by equivalents", "[unit][crop][m3]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell with_k = cell_with_antagonism_index(params, 0.8, 30.0, 10.0, 0.0);
+    sim::SoilCell with_nh4 = cell_with_antagonism_index(params, 0.8, 30.0, 10.0, 1.0);
+    sim::Crop crop_k = make_crop(params);
+    sim::Crop crop_nh4 = make_crop(params);
+    sim::Ledger ledger;
+    (void)step(crop_k, with_k, params, abundant_availability(), kNightSolar_W_per_m2, ledger);
+    (void)step(crop_nh4, with_nh4, params, abundant_availability(), kNightSolar_W_per_m2, ledger);
+    CHECK(crop_k.antagonism_Ca_factor < 1.0);
+    CHECK(crop_nh4.antagonism_Ca_factor == Catch::Approx(crop_k.antagonism_Ca_factor));
+    CHECK(crop_nh4.antagonism_Mg_factor == Catch::Approx(crop_k.antagonism_Mg_factor));
+}
+
+// 분모(용액 Ca + Mg)가 0이면 길항 없음 (배율 1), NaN 없음
+TEST_CASE("Antagonism is absent when there is no divalent cation in solution", "[unit][crop][m3][extreme]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell cell = test::test_cell();
+    cell.ca_solution_g_per_m2 = 0.0;
+    cell.mg_solution_g_per_m2 = 0.0;
+    cell.k_solution_g_per_m2 = 10.0;
+    sim::Crop crop = make_crop(params);
+    crop.antagonism_Ca_factor = 0.123;  // 이전 값이 남아 있어도 이번 틱 값으로 덮어써요
+    sim::Ledger ledger;
+    (void)step(crop, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger);
+    CHECK(crop.antagonism_Ca_factor == 1.0);
+    CHECK(crop.antagonism_Mg_factor == 1.0);
+}
+
+// 흡수는 용액 상태에서: 총량과 용액이 같은 양 줄고 흡수량 = 장부. NO3는 총량만
+TEST_CASE("Cation uptake draws the same amount from total and solution", "[unit][crop][m3]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell cell = test::test_cell();
+    const sim::SoilCell before = cell;
+    sim::Crop crop = make_crop(params);
+    crop.plant_N_g_per_m2 = 0.0;
+    crop.plant_K_g_per_m2 = 0.0;
+    crop.plant_Ca_g_per_m2 = 0.0;
+    crop.plant_Mg_g_per_m2 = 0.0;
+    crop.plant_Mn_g_per_m2 = 0.0;
+    sim::Ledger ledger;
+    (void)step(crop, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger);
+
+    const double nh4_drop = before.nh4_N_g_per_m2 - cell.nh4_N_g_per_m2;
+    const double no3_drop = before.no3_N_g_per_m2 - cell.no3_N_g_per_m2;
+    CHECK(nh4_drop > 0.0);
+    CHECK(before.nh4_solution_N_g_per_m2 - cell.nh4_solution_N_g_per_m2 == Catch::Approx(nh4_drop));
+    CHECK(no3_drop > 0.0);
+    CHECK(ledger.N_uptake_g == Catch::Approx(nh4_drop + no3_drop));
+
+    CHECK(ledger.K_uptake_g > 0.0);
+    CHECK(before.k_g_per_m2 - cell.k_g_per_m2 == Catch::Approx(ledger.K_uptake_g));
+    CHECK(before.k_solution_g_per_m2 - cell.k_solution_g_per_m2 == Catch::Approx(ledger.K_uptake_g));
+    CHECK(ledger.Ca_uptake_g > 0.0);
+    CHECK(before.ca_g_per_m2 - cell.ca_g_per_m2 == Catch::Approx(ledger.Ca_uptake_g));
+    CHECK(before.ca_solution_g_per_m2 - cell.ca_solution_g_per_m2 == Catch::Approx(ledger.Ca_uptake_g));
+    CHECK(ledger.Mg_uptake_g > 0.0);
+    CHECK(before.mg_g_per_m2 - cell.mg_g_per_m2 == Catch::Approx(ledger.Mg_uptake_g));
+    CHECK(before.mg_solution_g_per_m2 - cell.mg_solution_g_per_m2 == Catch::Approx(ledger.Mg_uptake_g));
+    CHECK(ledger.Mn_uptake_g > 0.0);
+    CHECK(before.mn_g_per_m2 - cell.mn_g_per_m2 == Catch::Approx(ledger.Mn_uptake_g));
+    CHECK(before.mn_solution_g_per_m2 - cell.mn_solution_g_per_m2 == Catch::Approx(ledger.Mn_uptake_g));
+}
+
+// 용액이 모자라면 능력·수요가 커도 용액까지만 흡수 (용액은 0 아래로 안 감)
+TEST_CASE("Cation uptake never exceeds the solution amount", "[unit][crop][m3][extreme]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell cell = test::test_cell();
+    cell.k_solution_g_per_m2 = 0.01;
+    sim::Crop crop = make_crop(params);
+    crop.plant_K_g_per_m2 = 0.0;
+    auto available = full_availability(cell);
+    available.k = 1000.0;  // 유효량 입력이 용액보다 커도
+    sim::Ledger ledger;
+    (void)step(crop, cell, params, available, kNightSolar_W_per_m2, ledger);
+    CHECK(ledger.K_uptake_g <= 0.01);
+    CHECK(cell.k_solution_g_per_m2 >= 0.0);
+    CHECK(cell.k_g_per_m2 >= 0.0);
+    CHECK(cell.k_solution_g_per_m2 <= cell.k_g_per_m2);
+}
+
+// product 모드: 각 양분 계수(Mn 결핍·독성 포함)를 모두 곱한다. minimum은 가장 작은 것 하나
+TEST_CASE("Product mode multiplies every nutrient and toxicity factor", "[unit][crop][m3]") {
+    const sim::Params params = test::test_params();
+    const sim::CropParams& cp = params.crop;
+    const sim::process::NutrientAvailability none{};
+    const auto growth = [&](const std::function<void(sim::Crop&)>& tweak, sim::StressCombination mode) {
+        sim::SoilCell cell = test::test_cell();
+        sim::Crop crop = make_crop(params);
+        tweak(crop);
+        sim::Ledger ledger;
+        (void)step(crop, cell, params, none, kDaySolar_W_per_m2, ledger, mode);
+        return crop.last_growth_g_per_m2;
+    };
+    const auto required = [&](double target_g_per_g) {
+        const sim::Crop crop = make_crop(params);
+        return target_g_per_g * (crop.leaf_g_per_m2 + crop.root_g_per_m2);
+    };
+    const double reference = growth([](sim::Crop&) {}, sim::StressCombination::Product);
+    REQUIRE(reference > 0.0);
+
+    // K 0.8, Ca 0.8, Mn 0.9 충족: 곱 = f(0.8) × f(0.8) × f(0.9), 최소 = 가장 작은 f
+    const auto deficient = [&](sim::Crop& crop) {
+        crop.plant_K_g_per_m2 = 0.8 * required(cp.target_K_g_per_g);
+        crop.plant_Ca_g_per_m2 = 0.8 * required(cp.target_Ca_g_per_g);
+        crop.plant_Mn_g_per_m2 = 0.9 * required(cp.target_Mn_g_per_g);
+    };
+    const double f_k = cp.nutrient_stress_curve(0.8);
+    const double f_mn = cp.nutrient_stress_curve(0.9);
+    REQUIRE(f_k < 1.0);
+    REQUIRE(f_mn < 1.0);
+    CHECK(growth(deficient, sim::StressCombination::Product) == Catch::Approx(reference * f_k * f_k * f_mn));
+    CHECK(growth(deficient, sim::StressCombination::Minimum) == Catch::Approx(reference * std::min(f_k, f_mn)));
+
+    // Mn 독성(체내 비율 10 → 0.7)과 K 결핍(0.8)이 함께: 곱 = 0.7 × f(0.8)
+    const auto toxic_and_deficient = [&](sim::Crop& crop) {
+        crop.plant_K_g_per_m2 = 0.8 * required(cp.target_K_g_per_g);
+        crop.plant_Mn_g_per_m2 = 10.0 * required(cp.target_Mn_g_per_g);
+    };
+    const double tox = cp.mn_toxicity_curve(10.0);
+    CHECK(growth(toxic_and_deficient, sim::StressCombination::Product) == Catch::Approx(reference * tox * f_k));
+    CHECK(growth(toxic_and_deficient, sim::StressCombination::Minimum) ==
+          Catch::Approx(reference * std::min(tox, f_k)));
+}
+
+// 뿌리 고사: 죽은 뿌리 몫의 K·Ca·Mg·Mn이 토양 총량과 용액에 함께 돌아간다. N은 이분해성 유기 N, P는 유효 풀로
+TEST_CASE("Root dieback returns K Ca Mg and Mn to both the total and the solution",
+          "[unit][crop][conservation][m3]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell cell = test::test_cell();
+    cell.aeration_index = 0.0;  // 과습 손상 (waterlog_curve(0) > 0) → 뿌리 고사
+    const sim::SoilCell before = cell;
+    sim::Crop crop = make_crop(params);
+    const sim::Crop crop_before = crop;
+    const double damage = params.root_damage.waterlog_curve(0.0);
+    REQUIRE(damage > 0.0);
+    const double biomass = crop.leaf_g_per_m2 + crop.root_g_per_m2;
+    const double dead_root = crop.root_g_per_m2 * std::min(1.0, damage) * params.crop.root_dieback_per_damage;
+    const double share = dead_root / biomass;
+    REQUIRE(dead_root > 0.0);
+
+    sim::Ledger ledger;
+    // 흡수는 0이도록 유효량 0 (밤이라 생장도 0)
+    (void)step(crop, cell, params, sim::process::NutrientAvailability{}, kNightSolar_W_per_m2, ledger);
+    REQUIRE(crop.root_g_per_m2 == Catch::Approx(crop_before.root_g_per_m2 - dead_root));
+
+    struct Row {
+        double plant_before, plant_after, total_before, total_after, solution_before, solution_after;
+    };
+    const Row rows[] = {
+        {crop_before.plant_K_g_per_m2, crop.plant_K_g_per_m2, before.k_g_per_m2, cell.k_g_per_m2,
+         before.k_solution_g_per_m2, cell.k_solution_g_per_m2},
+        {crop_before.plant_Ca_g_per_m2, crop.plant_Ca_g_per_m2, before.ca_g_per_m2, cell.ca_g_per_m2,
+         before.ca_solution_g_per_m2, cell.ca_solution_g_per_m2},
+        {crop_before.plant_Mg_g_per_m2, crop.plant_Mg_g_per_m2, before.mg_g_per_m2, cell.mg_g_per_m2,
+         before.mg_solution_g_per_m2, cell.mg_solution_g_per_m2},
+        {crop_before.plant_Mn_g_per_m2, crop.plant_Mn_g_per_m2, before.mn_g_per_m2, cell.mn_g_per_m2,
+         before.mn_solution_g_per_m2, cell.mn_solution_g_per_m2},
+    };
+    for (const Row& row : rows) {
+        const double returned = row.plant_before * share;
+        CHECK(returned > 0.0);
+        CHECK(row.plant_before - row.plant_after == Catch::Approx(returned));
+        CHECK(row.total_after - row.total_before == Catch::Approx(returned));
+        CHECK(row.solution_after - row.solution_before == Catch::Approx(returned));
+        CHECK(row.solution_after <= row.total_after);
+    }
+    // N은 이분해성 유기 N으로, P는 유효 풀로 (M2 규칙 그대로)
+    CHECK(cell.labile_N_g_per_m2 - before.labile_N_g_per_m2 == Catch::Approx(crop_before.plant_N_g_per_m2 * share));
+    CHECK(cell.nh4_solution_N_g_per_m2 == before.nh4_solution_N_g_per_m2);
+    CHECK(cell.p_g_per_m2 - before.p_g_per_m2 == Catch::Approx(crop_before.plant_P_g_per_m2 * share));
 }

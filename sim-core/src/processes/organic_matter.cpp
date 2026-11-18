@@ -110,10 +110,15 @@ void decompose_organic_matter(SoilCell& cell, const OrganicMatterParams& params,
 
     double respired_C_g_per_m2 = 0.0;
     // 이분해성 → 난분해성 순서. 난분해성 단계는 이분해성 단계에서 부식화된 C·N까지 포함한 값에서 시작해요.
+    // M3: 풀마다 NH4 총량 변화를 용액에 반영 (무기화 → 용액, 부동화 → 비례 차감)
+    double nh4_before = cell.nh4_N_g_per_m2;
     respired_C_g_per_m2 += decompose_pool(cell, cell.labile_C_g_per_m2, cell.labile_N_g_per_m2,
                                           params.labile_decay_rate_per_hour, environment_factor, params);
+    sync_nh4_solution(cell, nh4_before);
+    nh4_before = cell.nh4_N_g_per_m2;
     respired_C_g_per_m2 += decompose_pool(cell, cell.stable_C_g_per_m2, cell.stable_N_g_per_m2,
                                           params.stable_decay_rate_per_hour, environment_factor, params);
+    sync_nh4_solution(cell, nh4_before);
 
     ledger.C_respired_g += respired_C_g_per_m2;
     // 분해 발열 (docs/spec/soil-temperature.md "분해 발열")

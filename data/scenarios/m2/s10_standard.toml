@@ -1,6 +1,6 @@
 # S10 표준 시비 (질산칼슘 30, 황산칼륨 20 g/m2), 14일 — docs/spec/m2-overview.md "시나리오 테스트 (M2)" 표. 값은 전부 게임용 임의값이에요.
 
-schema_version = 3
+schema_version = 4
 
 [scenario]
 name = "s10_standard"
@@ -27,7 +27,12 @@ stable_N_g_per_m2 = 360.0
 # M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
 saturation_mm = 110.0
 compaction_index = 0.3
-base_buffer_eq_per_m2_per_pH = 5.0
+base_buffer_eq_per_m2_per_pH = 1.25      # M3부터 "CEC 밖 완충". 5.0 − 0.15 × 25 (총 완충력 M2와 동일)
+# M3 항목: 전부 게임용 임의값 (docs/spec/m3-overview.md "시나리오 TOML")
+cec_mineral_eq_per_m2 = 25.0             # 양토 약 10 cmol/kg
+mn_g_per_m2 = 5.0                        # 교환성 Mn 약 20 mg/kg
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0                 # 유효 25 g의 약 6배 (적정 pH 평형)
 k_g_per_m2 = 60.0
 ca_g_per_m2 = 400.0
 mg_g_per_m2 = 60.0
