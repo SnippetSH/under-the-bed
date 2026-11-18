@@ -9,6 +9,7 @@
 // 명령 일정표([[schedule]])는 해당 틱을 처리하기 직전에 enqueue해요.
 // 표준 출력에는 이벤트 종류별 횟수와 최종 상태 해시를 찍어요.
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -38,27 +39,6 @@ constexpr int kExitUsage = 2;
 constexpr std::string_view kUsage =
     "usage: sim-cli --params <params.toml> --scenario <scenario.toml> --ticks <N> "
     "[--out <file.csv>]";
-
-constexpr std::string_view kCsvHeader =
-    "tick,elapsed_days,day_of_year,hour,outside_air_temp_degC,solar_radiation_W_per_m2,"
-    "outside_rh_percent,pending_commands,house_air_temp_degC,"
-    "water_mm,drained_mm_this_tick,soil_temp_degC,labile_C_g_per_m2,labile_N_g_per_m2,"
-    "stable_C_g_per_m2,stable_N_g_per_m2,nh4_N_g_per_m2,no2_N_g_per_m2,no3_N_g_per_m2,ph,"
-    "compaction_index,aeration_index,k_g_per_m2,ca_g_per_m2,mg_g_per_m2,p_g_per_m2,s_g_per_m2,"
-    "lime_undissolved_eq_per_m2,ec_dS_per_m,"
-    "crop_alive_fraction,leaf_g_per_m2,root_g_per_m2,root_health,last_growth_g_per_m2,"
-    "sufficiency_N,sufficiency_P,sufficiency_K,sufficiency_Ca,sufficiency_Mg,leaf_area_index,"
-    "ledger_water_in_mm,ledger_water_evaporated_mm,ledger_water_drained_mm,"
-    "ledger_N_in_g,ledger_N_leached_g,ledger_N_gas_g,ledger_C_in_g,ledger_C_respired_g,"
-    "ledger_water_transpired_mm,ledger_N_uptake_g,"
-    "ledger_P_in_g,ledger_P_leached_g,ledger_P_uptake_g,"
-    "ledger_K_in_g,ledger_K_leached_g,ledger_K_uptake_g,"
-    "ledger_Ca_in_g,ledger_Ca_leached_g,ledger_Ca_uptake_g,"
-    "ledger_Mg_in_g,ledger_Mg_leached_g,ledger_Mg_uptake_g,"
-    "ledger_S_in_g,ledger_S_leached_g,ledger_H_eq_net,ledger_C_root_litter_g,"
-    "state_hash";
-
-constexpr std::size_t kCropColumnCount = 11;
 
 struct Options {
     fs::path params;
@@ -101,175 +81,224 @@ std::optional<Options> parse_args(int argc, char** argv) {
     return opt;
 }
 
-// 셀 평균 토양 상태 (열 순서는 kCsvHeader와 같아요)
-struct SoilMeans {
-    double water_mm = 0.0;
-    double drained_mm_this_tick = 0.0;
-    double soil_temp_degC = 0.0;
-    double labile_C_g_per_m2 = 0.0;
-    double labile_N_g_per_m2 = 0.0;
-    double stable_C_g_per_m2 = 0.0;
-    double stable_N_g_per_m2 = 0.0;
-    double nh4_N_g_per_m2 = 0.0;
-    double no2_N_g_per_m2 = 0.0;
-    double no3_N_g_per_m2 = 0.0;
-    double ph = 0.0;
-    double compaction_index = 0.0;
-    double aeration_index = 0.0;
-    double k_g_per_m2 = 0.0;
-    double ca_g_per_m2 = 0.0;
-    double mg_g_per_m2 = 0.0;
-    double p_g_per_m2 = 0.0;
-    double s_g_per_m2 = 0.0;
-    double lime_undissolved_eq_per_m2 = 0.0;
-    double ec_dS_per_m = 0.0;
+// CSV 열: 이름과 값을 같은 함수에서 만들어 순서가 어긋나지 않게 해요 (M3 프로토타입).
+struct Row {
+    std::vector<std::string> names;
+    std::vector<std::string> values;
+    void add(std::string_view name, double v) {
+        names.emplace_back(name);
+        values.push_back(std::format("{}", v));
+    }
+    void add_blank(std::string_view name) {
+        names.emplace_back(name);
+        values.emplace_back();
+    }
+    void add_text(std::string_view name, std::string v) {
+        names.emplace_back(name);
+        values.push_back(std::move(v));
+    }
 };
 
-SoilMeans mean_soil(const std::vector<sim::SoilCell>& cells) {
-    SoilMeans m;
+template <typename Fn>
+double mean_of(const std::vector<sim::SoilCell>& cells, Fn&& fn) {
+    if (cells.empty()) {
+        return 0.0;
+    }
+    double sum = 0.0;
     for (const sim::SoilCell& c : cells) {
-        m.water_mm += c.water_mm;
-        m.drained_mm_this_tick += c.drained_mm_this_tick;
-        m.soil_temp_degC += c.soil_temp_degC;
-        m.labile_C_g_per_m2 += c.labile_C_g_per_m2;
-        m.labile_N_g_per_m2 += c.labile_N_g_per_m2;
-        m.stable_C_g_per_m2 += c.stable_C_g_per_m2;
-        m.stable_N_g_per_m2 += c.stable_N_g_per_m2;
-        m.nh4_N_g_per_m2 += c.nh4_N_g_per_m2;
-        m.no2_N_g_per_m2 += c.no2_N_g_per_m2;
-        m.no3_N_g_per_m2 += c.no3_N_g_per_m2;
-        m.ph += c.ph;
-        m.compaction_index += c.compaction_index;
-        m.aeration_index += c.aeration_index;
-        m.k_g_per_m2 += c.k_g_per_m2;
-        m.ca_g_per_m2 += c.ca_g_per_m2;
-        m.mg_g_per_m2 += c.mg_g_per_m2;
-        m.p_g_per_m2 += c.p_g_per_m2;
-        m.s_g_per_m2 += c.s_g_per_m2;
-        m.lime_undissolved_eq_per_m2 += c.lime_undissolved_eq_per_m2;
-        m.ec_dS_per_m += c.ec_dS_per_m;
+        sum += fn(c);
     }
-    if (!cells.empty()) {
-        const double n = static_cast<double>(cells.size());
-        m.water_mm /= n;
-        m.drained_mm_this_tick /= n;
-        m.soil_temp_degC /= n;
-        m.labile_C_g_per_m2 /= n;
-        m.labile_N_g_per_m2 /= n;
-        m.stable_C_g_per_m2 /= n;
-        m.stable_N_g_per_m2 /= n;
-        m.nh4_N_g_per_m2 /= n;
-        m.no2_N_g_per_m2 /= n;
-        m.no3_N_g_per_m2 /= n;
-        m.ph /= n;
-        m.compaction_index /= n;
-        m.aeration_index /= n;
-        m.k_g_per_m2 /= n;
-        m.ca_g_per_m2 /= n;
-        m.mg_g_per_m2 /= n;
-        m.p_g_per_m2 /= n;
-        m.s_g_per_m2 /= n;
-        m.lime_undissolved_eq_per_m2 /= n;
-        m.ec_dS_per_m /= n;
-    }
-    return m;
+    return sum / static_cast<double>(cells.size());
 }
 
-// 작물이 있는 타일의 평균 (열 순서는 kCsvHeader와 같아요). 작물이 하나도 없으면 present = false.
-// crop_alive_fraction은 작물이 있는 타일 중 살아 있는 비율이고, 나머지는 present 타일 평균이에요.
-struct CropMeans {
-    bool present = false;
-    double alive_fraction = 0.0;
-    double leaf_g_per_m2 = 0.0;
-    double root_g_per_m2 = 0.0;
-    double root_health = 0.0;
-    double last_growth_g_per_m2 = 0.0;
-    double sufficiency_N = 0.0;
-    double sufficiency_P = 0.0;
-    double sufficiency_K = 0.0;
-    double sufficiency_Ca = 0.0;
-    double sufficiency_Mg = 0.0;
-    double leaf_area_index = 0.0;
-};
-
-CropMeans mean_crops(const std::vector<sim::Crop>& crops, const sim::CropParams& params) {
-    CropMeans m;
-    std::size_t count = 0;
-    std::size_t alive = 0;
-    for (const sim::Crop& c : crops) {
-        if (!c.present) {
-            continue;
-        }
-        ++count;
-        alive += c.alive ? 1 : 0;
-        m.leaf_g_per_m2 += c.leaf_g_per_m2;
-        m.root_g_per_m2 += c.root_g_per_m2;
-        m.root_health += c.root_health;
-        m.last_growth_g_per_m2 += c.last_growth_g_per_m2;
-        const sim::process::NutrientStatus st = sim::process::nutrient_status(c, params);
-        m.sufficiency_N += st.sufficiency_N;
-        m.sufficiency_P += st.sufficiency_P;
-        m.sufficiency_K += st.sufficiency_K;
-        m.sufficiency_Ca += st.sufficiency_Ca;
-        m.sufficiency_Mg += st.sufficiency_Mg;
-        m.leaf_area_index += c.leaf_g_per_m2 * params.specific_leaf_area_m2_per_g;
-    }
-    if (count > 0) {
-        const double n = static_cast<double>(count);
-        m.present = true;
-        m.alive_fraction = static_cast<double>(alive) / n;
-        m.leaf_g_per_m2 /= n;
-        m.root_g_per_m2 /= n;
-        m.root_health /= n;
-        m.last_growth_g_per_m2 /= n;
-        m.sufficiency_N /= n;
-        m.sufficiency_P /= n;
-        m.sufficiency_K /= n;
-        m.sufficiency_Ca /= n;
-        m.sufficiency_Mg /= n;
-        m.leaf_area_index /= n;
-    }
-    return m;
-}
-
-// 작물 열 11개를 쉼표로 이어 붙인 문자열. 작물이 없으면 빈 칸이에요 (쉼표 개수는 같아요).
-std::string crop_columns(const CropMeans& c) {
-    if (!c.present) {
-        return std::string(kCropColumnCount - 1, ',');
-    }
-    // {}는 최단 왕복 표현이라 같은 값이면 항상 같은 문자열이 나와요.
-    return std::format("{},{},{},{},{},{},{},{},{},{},{}", c.alive_fraction, c.leaf_g_per_m2, c.root_g_per_m2,
-                       c.root_health, c.last_growth_g_per_m2, c.sufficiency_N, c.sufficiency_P, c.sufficiency_K,
-                       c.sufficiency_Ca, c.sufficiency_Mg, c.leaf_area_index);
-}
-
-void write_row(std::ofstream& csv, const sim::World& world) {
+Row build_row(const sim::World& world) {
     const sim::Snapshot s = world.snapshot();
-    const SoilMeans m = mean_soil(s.soil);
-    const CropMeans crop = mean_crops(s.crops, world.params().crop);
+    const sim::CropParams& cp = world.params().crop;
+    Row row;
+    row.add("tick", static_cast<double>(s.tick));
+    row.add("elapsed_days", static_cast<double>(s.time.elapsed_days));
+    row.add("day_of_year", s.time.day_of_year);
+    row.add("hour", s.time.hour);
+    row.add("outside_air_temp_degC", s.weather.outside_air_temp_degC);
+    row.add("solar_radiation_W_per_m2", s.weather.solar_radiation_W_per_m2);
+    row.add("outside_rh_percent", s.weather.outside_rh_percent);
+    row.add("pending_commands", static_cast<double>(s.pending_command_count));
+    row.add("house_air_temp_degC", s.house_air_temp_degC);
+
+#define SOIL_COL(field) row.add(#field, mean_of(s.soil, [](const sim::SoilCell& c) { return c.field; }))
+    SOIL_COL(water_mm);
+    SOIL_COL(drained_mm_this_tick);
+    SOIL_COL(soil_temp_degC);
+    SOIL_COL(labile_C_g_per_m2);
+    SOIL_COL(labile_N_g_per_m2);
+    SOIL_COL(stable_C_g_per_m2);
+    SOIL_COL(stable_N_g_per_m2);
+    SOIL_COL(nh4_N_g_per_m2);
+    SOIL_COL(no2_N_g_per_m2);
+    SOIL_COL(no3_N_g_per_m2);
+    SOIL_COL(ph);
+    SOIL_COL(compaction_index);
+    SOIL_COL(aeration_index);
+    SOIL_COL(k_g_per_m2);
+    SOIL_COL(ca_g_per_m2);
+    SOIL_COL(mg_g_per_m2);
+    SOIL_COL(p_g_per_m2);
+    SOIL_COL(s_g_per_m2);
+    SOIL_COL(lime_undissolved_eq_per_m2);
+    SOIL_COL(ec_dS_per_m);
+    // M3
+    SOIL_COL(cec_mineral_eq_per_m2);
+    SOIL_COL(cec_eq_per_m2);
+    SOIL_COL(exchange_free_site_index);
+    SOIL_COL(nh4_solution_N_g_per_m2);
+    SOIL_COL(k_solution_g_per_m2);
+    SOIL_COL(ca_solution_g_per_m2);
+    SOIL_COL(mg_solution_g_per_m2);
+    SOIL_COL(mn_solution_g_per_m2);
+    SOIL_COL(mn_g_per_m2);
+    SOIL_COL(mn_oxide_g_per_m2);
+    SOIL_COL(mn_oxidized_this_tick_g_per_m2);
+    SOIL_COL(mn_reduced_this_tick_g_per_m2);
+    SOIL_COL(p_fixed_g_per_m2);
+#undef SOIL_COL
+    row.add("p_total_g_per_m2",
+            mean_of(s.soil, [](const sim::SoilCell& c) { return c.p_g_per_m2 + c.p_fixed_g_per_m2; }));
+    row.add("nh4_exchangeable_N_g_per_m2",
+            mean_of(s.soil, [](const sim::SoilCell& c) { return c.nh4_N_g_per_m2 - c.nh4_solution_N_g_per_m2; }));
+    row.add("k_exchangeable_g_per_m2",
+            mean_of(s.soil, [](const sim::SoilCell& c) { return c.k_g_per_m2 - c.k_solution_g_per_m2; }));
+    row.add("ca_exchangeable_g_per_m2",
+            mean_of(s.soil, [](const sim::SoilCell& c) { return c.ca_g_per_m2 - c.ca_solution_g_per_m2; }));
+    row.add("mg_exchangeable_g_per_m2",
+            mean_of(s.soil, [](const sim::SoilCell& c) { return c.mg_g_per_m2 - c.mg_solution_g_per_m2; }));
+    row.add("mn_exchangeable_g_per_m2",
+            mean_of(s.soil, [](const sim::SoilCell& c) { return c.mn_g_per_m2 - c.mn_solution_g_per_m2; }));
+    row.add("mn_retention_factor", mean_of(s.soil, [&](const sim::SoilCell& c) {
+                return sim::process::manganese_retention(c, world.params().manganese);
+            }));
+
+    // 작물 (작물이 있는 타일 평균; 없으면 빈 칸)
+    std::vector<const sim::Crop*> present;
+    std::size_t alive = 0;
+    for (const sim::Crop& c : s.crops) {
+        if (c.present) {
+            present.push_back(&c);
+            alive += c.alive ? 1 : 0;
+        }
+    }
+    const bool has_crop = !present.empty();
+    const double n_crop = static_cast<double>(present.size());
+    auto crop_col = [&](std::string_view name, auto&& fn) {
+        if (!has_crop) {
+            row.add_blank(name);
+            return;
+        }
+        double sum = 0.0;
+        for (const sim::Crop* c : present) {
+            sum += fn(*c);
+        }
+        row.add(name, sum / n_crop);
+    };
+    if (has_crop) {
+        row.add("crop_alive_fraction", static_cast<double>(alive) / n_crop);
+    } else {
+        row.add_blank("crop_alive_fraction");
+    }
+#define CROP_COL(field) crop_col(#field, [](const sim::Crop& c) { return c.field; })
+#define STATUS_COL(name, field) \
+    crop_col(name, [&](const sim::Crop& c) { return sim::process::nutrient_status(c, cp).field; })
+    CROP_COL(leaf_g_per_m2);
+    CROP_COL(root_g_per_m2);
+    CROP_COL(root_health);
+    CROP_COL(last_growth_g_per_m2);
+    STATUS_COL("sufficiency_N", sufficiency_N);
+    STATUS_COL("sufficiency_P", sufficiency_P);
+    STATUS_COL("sufficiency_K", sufficiency_K);
+    STATUS_COL("sufficiency_Ca", sufficiency_Ca);
+    STATUS_COL("sufficiency_Mg", sufficiency_Mg);
+    crop_col("leaf_area_index", [&](const sim::Crop& c) { return c.leaf_g_per_m2 * cp.specific_leaf_area_m2_per_g; });
+    // M3
+    STATUS_COL("sufficiency_Mn", sufficiency_Mn);
+    STATUS_COL("excess_index_Mn", excess_Mn);
+    STATUS_COL("plant_Mn_ratio", ratio_Mn);
+    STATUS_COL("excess_index_K", excess_K);
+    STATUS_COL("excess_index_Ca", excess_Ca);
+    CROP_COL(plant_N_g_per_m2);
+    CROP_COL(plant_P_g_per_m2);
+    CROP_COL(plant_K_g_per_m2);
+    CROP_COL(plant_Ca_g_per_m2);
+    CROP_COL(plant_Mg_g_per_m2);
+    CROP_COL(plant_Mn_g_per_m2);
+    CROP_COL(antagonism_Ca_factor);
+    CROP_COL(antagonism_Mg_factor);
+    CROP_COL(diag_demand_K_g_per_m2);
+    CROP_COL(diag_capacity_K_g_per_m2);
+    CROP_COL(diag_demand_Ca_g_per_m2);
+    CROP_COL(diag_capacity_Ca_g_per_m2);
+    CROP_COL(diag_demand_Mg_g_per_m2);
+    CROP_COL(diag_capacity_Mg_g_per_m2);
+    CROP_COL(diag_demand_Mn_g_per_m2);
+    CROP_COL(diag_capacity_Mn_g_per_m2);
+#undef CROP_COL
+#undef STATUS_COL
+    constexpr std::array<std::string_view, sim::kStressFactorCount> kStressNames = {
+        "stress_hours_water", "stress_hours_salt", "stress_hours_N", "stress_hours_P", "stress_hours_K",
+        "stress_hours_Ca", "stress_hours_Mg", "stress_hours_root", "stress_hours_Mn_deficiency",
+        "stress_hours_Mn_toxicity"};
+    for (std::size_t i = 0; i < sim::kStressFactorCount; ++i) {
+        crop_col(kStressNames[i], [i](const sim::Crop& c) { return c.stress_hours[i]; });
+    }
+
     const sim::Ledger& l = s.ledger;
-    std::println(csv,
-                 "{},{},{},{},{},{},{},{},{},"
-                 "{},{},{},{},{},{},{},{},{},{},{},"
-                 "{},{},{},{},{},{},{},{},{},"
-                 "{},"
-                 "{},{},{},{},{},{},{},{},"
-                 "{},{},"
-                 "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},"
-                 "0x{:016x}",
-                 s.tick, s.time.elapsed_days, s.time.day_of_year, s.time.hour, s.weather.outside_air_temp_degC,
-                 s.weather.solar_radiation_W_per_m2, s.weather.outside_rh_percent, s.pending_command_count,
-                 s.house_air_temp_degC, m.water_mm, m.drained_mm_this_tick, m.soil_temp_degC, m.labile_C_g_per_m2,
-                 m.labile_N_g_per_m2, m.stable_C_g_per_m2, m.stable_N_g_per_m2, m.nh4_N_g_per_m2, m.no2_N_g_per_m2,
-                 m.no3_N_g_per_m2, m.ph, m.compaction_index, m.aeration_index, m.k_g_per_m2, m.ca_g_per_m2,
-                 m.mg_g_per_m2, m.p_g_per_m2, m.s_g_per_m2, m.lime_undissolved_eq_per_m2, m.ec_dS_per_m,
-                 crop_columns(crop), l.water_in_mm, l.water_evaporated_mm, l.water_drained_mm, l.N_in_g,
-                 l.N_leached_g, l.N_gas_g, l.C_in_g, l.C_respired_g, l.water_transpired_mm, l.N_uptake_g, l.P_in_g,
-                 l.P_leached_g, l.P_uptake_g, l.K_in_g, l.K_leached_g, l.K_uptake_g, l.Ca_in_g, l.Ca_leached_g,
-                 l.Ca_uptake_g, l.Mg_in_g, l.Mg_leached_g, l.Mg_uptake_g, l.S_in_g, l.S_leached_g, l.H_eq_net,
-                 l.C_root_litter_g,
-                 world.state_hash());
+#define LEDGER_COL(field) row.add("ledger_" #field, l.field)
+    LEDGER_COL(water_in_mm);
+    LEDGER_COL(water_evaporated_mm);
+    LEDGER_COL(water_drained_mm);
+    LEDGER_COL(N_in_g);
+    LEDGER_COL(N_leached_g);
+    LEDGER_COL(N_gas_g);
+    LEDGER_COL(C_in_g);
+    LEDGER_COL(C_respired_g);
+    LEDGER_COL(water_transpired_mm);
+    LEDGER_COL(N_uptake_g);
+    LEDGER_COL(P_in_g);
+    LEDGER_COL(P_leached_g);
+    LEDGER_COL(P_uptake_g);
+    LEDGER_COL(K_in_g);
+    LEDGER_COL(K_leached_g);
+    LEDGER_COL(K_uptake_g);
+    LEDGER_COL(Ca_in_g);
+    LEDGER_COL(Ca_leached_g);
+    LEDGER_COL(Ca_uptake_g);
+    LEDGER_COL(Mg_in_g);
+    LEDGER_COL(Mg_leached_g);
+    LEDGER_COL(Mg_uptake_g);
+    LEDGER_COL(S_in_g);
+    LEDGER_COL(S_leached_g);
+    LEDGER_COL(H_eq_net);
+    LEDGER_COL(C_root_litter_g);
+    LEDGER_COL(Mn_in_g);
+    LEDGER_COL(Mn_leached_g);
+    LEDGER_COL(Mn_uptake_g);
+#undef LEDGER_COL
+    row.add_text("state_hash", std::format("0x{:016x}", world.state_hash()));
+    return row;
 }
+
+std::string join(const std::vector<std::string>& parts) {
+    std::string out;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) {
+            out += ',';
+        }
+        out += parts[i];
+    }
+    return out;
+}
+
+void write_header(std::ofstream& csv, const sim::World& world) { std::println(csv, "{}", join(build_row(world).names)); }
+
+void write_row(std::ofstream& csv, const sim::World& world) { std::println(csv, "{}", join(build_row(world).values)); }
 
 }  // namespace
 
@@ -312,7 +341,7 @@ int main(int argc, char** argv) {
             std::println(stderr, "error: cannot open output file");
             return kExitRuntimeError;
         }
-        std::println(csv, "{}", kCsvHeader);
+        write_header(csv, *world);
     }
 
     const auto started = std::chrono::steady_clock::now();

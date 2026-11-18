@@ -47,6 +47,23 @@ double transfer_g_per_m2(double& soil_pool_g_per_m2, double& plant_pool_g_per_m2
     return moved_g_per_m2;
 }
 
+// M3: 용액에서 흡수. 총량과 용액에서 같은 양을 빼요. 용액·총량을 넘지 않아요.
+double transfer_from_solution(double& soil_total_g_per_m2, double& soil_solution_g_per_m2, double& plant_pool_g_per_m2,
+                              double amount_g_per_m2) {
+    const double moved_g_per_m2 = std::min({non_negative(amount_g_per_m2), non_negative(soil_solution_g_per_m2),
+                                            non_negative(soil_total_g_per_m2)});
+    soil_total_g_per_m2 -= moved_g_per_m2;
+    soil_solution_g_per_m2 =
+        std::clamp(soil_solution_g_per_m2 - moved_g_per_m2, 0.0, non_negative(soil_total_g_per_m2));
+    plant_pool_g_per_m2 += moved_g_per_m2;
+    return moved_g_per_m2;
+}
+
+[[nodiscard]] double demand_g_per_m2(double plant_g_per_m2, double target_g_per_g, double biomass,
+                                     const CropParams& params) {
+    return non_negative(target_g_per_g * params.luxury_uptake_ratio * biomass - plant_g_per_m2);
+}
+
 }  // namespace
 
 Crop plant_crop(const CropInit& init, const CropParams& params) {
@@ -62,6 +79,7 @@ Crop plant_crop(const CropInit& init, const CropParams& params) {
     crop.plant_K_g_per_m2 = params.target_K_g_per_g * biomass_g_per_m2;
     crop.plant_Ca_g_per_m2 = params.target_Ca_g_per_g * biomass_g_per_m2;
     crop.plant_Mg_g_per_m2 = params.target_Mg_g_per_g * biomass_g_per_m2;
+    crop.plant_Mn_g_per_m2 = params.target_Mn_g_per_g * biomass_g_per_m2;
     return crop;
 }
 
@@ -98,6 +116,7 @@ NutrientStatus nutrient_status(const Crop& crop, const CropParams& params) {
     const double ratio_K = nutrient_ratio(crop.plant_K_g_per_m2, params.target_K_g_per_g, biomass);
     const double ratio_Ca = nutrient_ratio(crop.plant_Ca_g_per_m2, params.target_Ca_g_per_g, biomass);
     const double ratio_Mg = nutrient_ratio(crop.plant_Mg_g_per_m2, params.target_Mg_g_per_g, biomass);
+    const double ratio_Mn = nutrient_ratio(crop.plant_Mn_g_per_m2, params.target_Mn_g_per_g, biomass);
     return NutrientStatus{
         .sufficiency_N = std::min(1.0, ratio_N),
         .sufficiency_P = std::min(1.0, ratio_P),
@@ -109,6 +128,9 @@ NutrientStatus nutrient_status(const Crop& crop, const CropParams& params) {
         .excess_K = non_negative(ratio_K - 1.0),
         .excess_Ca = non_negative(ratio_Ca - 1.0),
         .excess_Mg = non_negative(ratio_Mg - 1.0),
+        .sufficiency_Mn = std::min(1.0, ratio_Mn),
+        .excess_Mn = non_negative(ratio_Mn - 1.0),
+        .ratio_Mn = ratio_Mn,
     };
 }
 
@@ -134,6 +156,8 @@ std::optional<PlantDiedEvent> update_crop(Crop& crop, SoilCell& cell, const Para
         cp.nutrient_stress_curve(status.sufficiency_Ca),
         cp.nutrient_stress_curve(status.sufficiency_Mg),
         crop.root_health,
+        cp.nutrient_stress_curve(status.sufficiency_Mn),
+        cp.mn_toxicity_curve(status.ratio_Mn),
     };
     std::size_t limiting_index = 0;
     for (std::size_t i = 1; i < factors.size(); ++i) {
@@ -170,6 +194,23 @@ std::optional<PlantDiedEvent> update_crop(Crop& crop, SoilCell& cell, const Para
         std::min(1.0, cp.uptake_rate_per_g_root_per_hour * non_negative(crop.root_g_per_m2) * crop.root_health) *
         water_salt.water * water_salt.salt;
 
+    // M3 길항: h 시작 시점 용액 상태 (당량)
+    {
+        const IonParams& ions = params.ions;
+        const double monovalent_eq = non_negative(cell.k_solution_g_per_m2) / ions.k_g_per_eq +
+                                     non_negative(cell.nh4_solution_N_g_per_m2) / ions.nh4_N_g_per_eq;
+        const double divalent_eq = non_negative(cell.ca_solution_g_per_m2) / ions.ca_g_per_eq +
+                                   non_negative(cell.mg_solution_g_per_m2) / ions.mg_g_per_eq;
+        if (divalent_eq > 0.0) {
+            const double antagonism_index = monovalent_eq / divalent_eq;
+            crop.antagonism_Ca_factor = params.antagonism.ca_curve(antagonism_index);
+            crop.antagonism_Mg_factor = params.antagonism.mg_curve(antagonism_index);
+        } else {
+            crop.antagonism_Ca_factor = 1.0;
+            crop.antagonism_Mg_factor = 1.0;
+        }
+    }
+
     // N: NH4+와 NO3- 유효량 비율대로 나눠 가져감
     {
         const double available_nh4_g_per_m2 = non_negative(available.nh4_N);
@@ -180,8 +221,8 @@ std::optional<PlantDiedEvent> update_crop(Crop& crop, SoilCell& cell, const Para
         double nh4_uptake_g_per_m2 = 0.0;
         double no3_uptake_g_per_m2 = 0.0;
         if (available_N_g_per_m2 > 0.0) {
-            nh4_uptake_g_per_m2 = transfer_g_per_m2(
-                cell.nh4_N_g_per_m2, crop.plant_N_g_per_m2,
+            nh4_uptake_g_per_m2 = transfer_from_solution(
+                cell.nh4_N_g_per_m2, cell.nh4_solution_N_g_per_m2, crop.plant_N_g_per_m2,
                 uptake_N_g_per_m2 * (available_nh4_g_per_m2 / available_N_g_per_m2));
             no3_uptake_g_per_m2 = transfer_g_per_m2(
                 cell.no3_N_g_per_m2, crop.plant_N_g_per_m2,
@@ -198,18 +239,50 @@ std::optional<PlantDiedEvent> update_crop(Crop& crop, SoilCell& cell, const Para
         cell.p_g_per_m2, crop.plant_P_g_per_m2,
         element_uptake_g_per_m2(crop.plant_P_g_per_m2, cp.target_P_g_per_g, biomass, available.p,
                                 root_capacity_factor, cp));
-    ledger.K_uptake_g += transfer_g_per_m2(
-        cell.k_g_per_m2, crop.plant_K_g_per_m2,
+    // K·Ca·Mg: 용액에서 (M3), Ca·Mg 능력에 길항 배율
+    // 프로토타입 점검 A: Ca·Mg는 전용 흡수 비율 (N·P·K는 일반 비율)
+    const double root_mass_health = non_negative(crop.root_g_per_m2) * crop.root_health;
+    const double ca_capacity_factor = std::min(1.0, cp.ca_uptake_rate_per_g_root_per_hour * root_mass_health) *
+                                      water_salt.water * water_salt.salt * crop.antagonism_Ca_factor;
+    const double mg_capacity_factor = std::min(1.0, cp.mg_uptake_rate_per_g_root_per_hour * root_mass_health) *
+                                      water_salt.water * water_salt.salt * crop.antagonism_Mg_factor;
+    crop.diag_demand_K_g_per_m2 = demand_g_per_m2(crop.plant_K_g_per_m2, cp.target_K_g_per_g, biomass, cp);
+    crop.diag_capacity_K_g_per_m2 = non_negative(available.k) * root_capacity_factor;
+    // E1 (2026-11-18 개정): 길항 배율이 Ca·Mg 수요 상한에도 걸려요. 체내 양은 빼앗지 않아요.
+    const double demand_Ca = non_negative(cp.target_Ca_g_per_g * cp.luxury_uptake_ratio *
+                                              std::max(params.antagonism.min_demand_factor, crop.antagonism_Ca_factor) *
+                                              biomass - crop.plant_Ca_g_per_m2);
+    const double demand_Mg = non_negative(cp.target_Mg_g_per_g * cp.luxury_uptake_ratio *
+                                              std::max(params.antagonism.min_demand_factor, crop.antagonism_Mg_factor) *
+                                              biomass - crop.plant_Mg_g_per_m2);
+    crop.diag_demand_Ca_g_per_m2 = demand_Ca;
+    crop.diag_capacity_Ca_g_per_m2 = non_negative(available.ca) * ca_capacity_factor;
+    crop.diag_demand_Mg_g_per_m2 = demand_Mg;
+    crop.diag_capacity_Mg_g_per_m2 = non_negative(available.mg) * mg_capacity_factor;
+    ledger.K_uptake_g += transfer_from_solution(
+        cell.k_g_per_m2, cell.k_solution_g_per_m2, crop.plant_K_g_per_m2,
         element_uptake_g_per_m2(crop.plant_K_g_per_m2, cp.target_K_g_per_g, biomass, available.k,
                                 root_capacity_factor, cp));
-    ledger.Ca_uptake_g += transfer_g_per_m2(
-        cell.ca_g_per_m2, crop.plant_Ca_g_per_m2,
-        element_uptake_g_per_m2(crop.plant_Ca_g_per_m2, cp.target_Ca_g_per_g, biomass, available.ca,
-                                root_capacity_factor, cp));
-    ledger.Mg_uptake_g += transfer_g_per_m2(
-        cell.mg_g_per_m2, crop.plant_Mg_g_per_m2,
-        element_uptake_g_per_m2(crop.plant_Mg_g_per_m2, cp.target_Mg_g_per_g, biomass, available.mg,
-                                root_capacity_factor, cp));
+    ledger.Ca_uptake_g += transfer_from_solution(
+        cell.ca_g_per_m2, cell.ca_solution_g_per_m2, crop.plant_Ca_g_per_m2,
+        std::min(demand_Ca, crop.diag_capacity_Ca_g_per_m2));
+    ledger.Mg_uptake_g += transfer_from_solution(
+        cell.mg_g_per_m2, cell.mg_solution_g_per_m2, crop.plant_Mg_g_per_m2,
+        std::min(demand_Mg, crop.diag_capacity_Mg_g_per_m2));
+
+    // Mn (manganese.md): 별도 흡수 속도, 높은 상한, 길항 없음
+    {
+        const double demand_Mn =
+            non_negative(cp.target_Mn_g_per_g * cp.mn_max_uptake_ratio * biomass - crop.plant_Mn_g_per_m2);
+        const double capacity_Mn = non_negative(available.mn) *
+                                   std::min(1.0, cp.mn_uptake_rate_per_g_root_per_hour *
+                                                     non_negative(crop.root_g_per_m2) * crop.root_health) *
+                                   water_salt.water * water_salt.salt;
+        crop.diag_demand_Mn_g_per_m2 = demand_Mn;
+        crop.diag_capacity_Mn_g_per_m2 = capacity_Mn;
+        ledger.Mn_uptake_g += transfer_from_solution(cell.mn_g_per_m2, cell.mn_solution_g_per_m2,
+                                                     crop.plant_Mn_g_per_m2, std::min(demand_Mn, capacity_Mn));
+    }
 
     // ---- 4. 뿌리 건강도 ----
     const RootDamageParams& rd = params.root_damage;
@@ -250,12 +323,15 @@ std::optional<PlantDiedEvent> update_crop(Crop& crop, SoilCell& cell, const Para
                 const double moved_g_per_m2 = non_negative(plant_pool_g_per_m2) * share;
                 plant_pool_g_per_m2 -= moved_g_per_m2;
                 soil_pool_g_per_m2 += moved_g_per_m2;
+                return moved_g_per_m2;
             };
             release(crop.plant_N_g_per_m2, cell.labile_N_g_per_m2);
             release(crop.plant_P_g_per_m2, cell.p_g_per_m2);
-            release(crop.plant_K_g_per_m2, cell.k_g_per_m2);
-            release(crop.plant_Ca_g_per_m2, cell.ca_g_per_m2);
-            release(crop.plant_Mg_g_per_m2, cell.mg_g_per_m2);
+            // M3: 양이온은 총량과 용액에
+            cell.k_solution_g_per_m2 += release(crop.plant_K_g_per_m2, cell.k_g_per_m2);
+            cell.ca_solution_g_per_m2 += release(crop.plant_Ca_g_per_m2, cell.ca_g_per_m2);
+            cell.mg_solution_g_per_m2 += release(crop.plant_Mg_g_per_m2, cell.mg_g_per_m2);
+            cell.mn_solution_g_per_m2 += release(crop.plant_Mn_g_per_m2, cell.mn_g_per_m2);
             const double litter_C_g_per_m2 = dead_root_g_per_m2 * cp.dry_matter_C_fraction;
             cell.labile_C_g_per_m2 += litter_C_g_per_m2;
             ledger.C_root_litter_g += litter_C_g_per_m2;

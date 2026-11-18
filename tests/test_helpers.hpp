@@ -62,7 +62,24 @@ inline sim::Params test_params() {
         .nitrite_toxicity_ph_curve = {{{{4.5, 8.0}}, {{5.5, 3.0}}, {{6.5, 1.3}}, {{7.0, 1.0}}, {{9.0, 1.0}}}},
     };
 
-    p.leaching = {.nh4_solution_fraction = 0.1};
+    p.cation_exchange = {.cec_organic_eq_per_g_C = 0.0015, .exchange_rate_per_hour = 0.3, .nh4_retention_factor = 70.0,
+                         .k_retention_factor = 250.0, .ca_retention_factor = 760.0, .mg_retention_factor = 380.0,
+                         .solver_iterations = 60, .buffer_eq_per_pH_per_eq_cec = 0.15};
+    p.antagonism = {.ca_curve = {{{{0.0, 1.0}}, {{0.3, 1.0}}, {{0.6, 0.5}}, {{1.0, 0.2}}, {{2.0, 0.05}}}},
+                    .mg_curve = {{{{0.0, 1.0}}, {{0.25, 1.0}}, {{0.5, 0.4}}, {{1.0, 0.15}}, {{2.0, 0.05}}}},
+                    .min_demand_factor = 0.6};
+    p.phosphorus = {.fixation_rate_per_hour = 0.0015,
+                    .fixation_ph_curve = {{{{4.5, 1.0}}, {{5.5, 0.6}}, {{6.3, 0.2}}, {{6.8, 0.2}}, {{7.5, 0.6}}, {{8.5, 1.0}}}},
+                    .release_rate_per_hour = 0.00005};
+    p.manganese = {
+        .retention_ph_curve = {{{{4.5, 450.0}}, {{5.0, 500.0}}, {{5.5, 800.0}}, {{6.0, 1200.0}}, {{6.5, 1500.0}}, {{7.5, 1800.0}}, {{8.5, 2000.0}}}},
+        .oxidation_rate_per_hour = 0.002,
+        .oxidation_ph_curve = {{{{4.5, 0.005}}, {{5.0, 0.02}}, {{5.3, 0.06}}, {{5.5, 0.12}}, {{5.8, 0.3}}, {{6.0, 0.5}}, {{6.5, 1.0}}, {{7.0, 2.0}}, {{7.5, 4.0}}, {{8.5, 10.0}}}},
+        .oxidation_o2_curve = {{{{0, 0.0}}, {{0.3, 0.2}}, {{0.6, 0.8}}, {{0.8, 1.0}}, {{1, 1.0}}}},
+        .reduction_rate_per_hour = 0.00006,
+        .reduction_ph_curve = {{{{4.5, 6.0}}, {{5.0, 3.0}}, {{5.5, 1.8}}, {{6.5, 1.0}}, {{7.5, 0.5}}, {{8.5, 0.3}}}},
+        .reduction_o2_curve = {{{{0, 20.0}}, {{0.2, 10.0}}, {{0.4, 4.0}}, {{0.6, 1.5}}, {{0.8, 1.0}}, {{1, 1.0}}}},
+    };
 
     // ---- M2 (docs/spec/aeration.md, soil-chemistry.md, strawberry-minimal.md) ----
     p.aeration = {
@@ -73,11 +90,9 @@ inline sim::Params test_params() {
         .till_root_damage_fraction = 0.5,
     };
     p.ions = {.nh4_N_g_per_eq = 14.007, .no3_N_g_per_eq = 14.007, .no2_N_g_per_eq = 14.007, .k_g_per_eq = 39.098,
-              .ca_g_per_eq = 20.039, .mg_g_per_eq = 12.153, .p_g_per_eq = 30.974, .s_g_per_eq = 16.03};
+              .ca_g_per_eq = 20.039, .mg_g_per_eq = 12.153, .p_g_per_eq = 30.974, .s_g_per_eq = 16.03,
+              .mn_g_per_eq = 27.469};
     p.soil_chemistry = {
-        .k_solution_fraction = 0.03,
-        .ca_solution_fraction = 0.01,
-        .mg_solution_fraction = 0.02,
         .p_solution_fraction = 0.002,
         .s_solution_fraction = 0.8,
         .nitrification_H_eq_per_eq_N = 2.0,
@@ -122,11 +137,17 @@ inline sim::Params test_params() {
         .target_Mg_g_per_g = 0.004,
         .luxury_uptake_ratio = 1.3,
         .uptake_rate_per_g_root_per_hour = 0.002,
+        .ca_uptake_rate_per_g_root_per_hour = 0.0001,
+        .mg_uptake_rate_per_g_root_per_hour = 0.0001,
         .transpiration_mm_per_hour_per_W_per_m2 = 0.0015,
         .root_recovery_rate_per_hour = 0.002,
         .death_root_health = 0.05,
         .root_dieback_per_damage = 1.0,
         .dry_matter_C_fraction = 0.45,
+        .target_Mn_g_per_g = 0.0001,
+        .mn_uptake_rate_per_g_root_per_hour = 0.0002,
+        .mn_max_uptake_ratio = 30.0,
+        .mn_toxicity_curve = {{{{0, 1}}, {{5, 1}}, {{10, 0.7}}, {{20, 0.3}}, {{30, 0.1}}}},
     };
 
     p.composts = {
@@ -171,12 +192,16 @@ inline sim::SoilInit test_soil() {
         .stable_N_g_per_m2 = 360.0,
         .saturation_mm = 110.0,
         .compaction_index = 0.3,
-        .base_buffer_eq_per_m2_per_pH = 5.0,
+        .base_buffer_eq_per_m2_per_pH = 1.25,
         .k_g_per_m2 = 60.0,
         .ca_g_per_m2 = 400.0,
         .mg_g_per_m2 = 60.0,
         .p_g_per_m2 = 25.0,
         .s_g_per_m2 = 3.0,
+        .cec_mineral_eq_per_m2 = 25.0,
+        .mn_g_per_m2 = 5.0,
+        .mn_oxide_g_per_m2 = 100.0,
+        .p_fixed_g_per_m2 = 150.0,
     };
 }
 
@@ -207,6 +232,10 @@ inline sim::SoilCell test_cell() {
     cell.mg_g_per_m2 = s.mg_g_per_m2;
     cell.p_g_per_m2 = s.p_g_per_m2;
     cell.s_g_per_m2 = s.s_g_per_m2;
+    cell.cec_mineral_eq_per_m2 = s.cec_mineral_eq_per_m2;
+    cell.mn_g_per_m2 = s.mn_g_per_m2;
+    cell.mn_oxide_g_per_m2 = s.mn_oxide_g_per_m2;
+    cell.p_fixed_g_per_m2 = s.p_fixed_g_per_m2;
     return cell;
 }
 

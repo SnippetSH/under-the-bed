@@ -90,7 +90,8 @@ void apply_lime(SoilCell& cell, const LimeDef& lime, double g_per_m2);
 // 셀 단계 g: 석회 용해(Ca·Mg를 풀과 장부 *_in_g에) → net_H = acid_H_eq_this_tick + pending_H − 용해 당량 →
 //   pH −= net_H / (base_buffer + organic_C_buffer × 유기 C), ph_min~ph_max로 제한.
 //   acid_H_eq_this_tick, pending_H를 0으로, 장부 H_eq_net += net_H
-void update_lime_and_ph(SoilCell& cell, const SoilChemistryParams& params, const IonParams& ions, Ledger& ledger);
+// M3: 석회 Ca·Mg는 총량과 용액에, 완충력에 cation_exchange.buffer_eq_per_pH_per_eq_cec × cec_mineral 항
+void update_lime_and_ph(SoilCell& cell, const Params& params, Ledger& ledger);
 
 // 작물이 이번 틱 가져갈 수 있는 유효량 (g/m²): 용액 부분 × pH 유효도
 struct NutrientAvailability {
@@ -100,6 +101,7 @@ struct NutrientAvailability {
     double k = 0.0;
     double ca = 0.0;
     double mg = 0.0;
+    double mn = 0.0;  // M3: 용액 Mn 그대로
 };
 [[nodiscard]] NutrientAvailability available_nutrients(const SoilCell& cell, const Params& params);
 
@@ -109,7 +111,32 @@ struct NutrientAvailability {
 // ---- leaching.cpp (docs/spec/nitrogen.md "용탈" + soil-chemistry "용탈 확장") ----
 
 // 셀 단계 i: 배수 비율 f로 NO3·NO2·(NH4 × nh4_solution_fraction)·(X × X_solution_fraction) 제거, 원소별 *_leached_g
-void leach(SoilCell& cell, const LeachingParams& params, const SoilChemistryParams& chemistry, Ledger& ledger);
+// M3: NH4·K·Ca·Mg·Mn은 용액 상태 × f (총량과 용액에서 함께 뺌)
+void leach(SoilCell& cell, const Params& params, Ledger& ledger);
+
+// ---- cation_exchange.cpp (docs/spec/cation-exchange.md, manganese.md, M3) ----
+
+[[nodiscard]] double cec_eq_per_m2(const SoilCell& cell, const CationExchangeParams& params);
+[[nodiscard]] double manganese_retention(const SoilCell& cell, const ManganeseParams& params);
+// f2 앞부분: Mn2+ ↔ 산화물 (산화는 용액 비례 차감, 환원은 용액으로)
+void redox_manganese(SoilCell& cell, const ManganeseParams& params);
+
+struct ExchangeEquilibrium {
+    double cec_eq_per_m2 = 0.0;
+    double free_site_index = 0.0;  // φ
+    double nh4_N = 0.0, k = 0.0, ca = 0.0, mg = 0.0, mn = 0.0;  // 평형 용액 g/m²
+};
+[[nodiscard]] ExchangeEquilibrium exchange_equilibrium(const SoilCell& cell, const Params& params);
+
+// 셀 단계 f2: CEC → 망간 이동성 → φ → 평형 → 완화
+void update_cation_exchange(SoilCell& cell, const Params& params);
+// 월드 생성: 용액을 평형값으로 (완화 없이)
+void set_solution_to_equilibrium(SoilCell& cell, const Params& params);
+// NH4 총량이 다른 프로세스로 바뀐 뒤 용액 맞추기: 증가분은 용액에 더하고, 감소는 비례 차감
+void sync_nh4_solution(SoilCell& cell, double old_nh4_N_g_per_m2);
+
+// ---- phosphorus.cpp (docs/spec/phosphorus.md, M3) ----
+void fix_phosphorus(SoilCell& cell, const PhosphorusParams& params);
 
 // ---- crop.cpp (docs/spec/strawberry-minimal.md) ----
 
@@ -134,6 +161,7 @@ struct WaterSaltFactors {
 struct NutrientStatus {
     double sufficiency_N = 0.0, sufficiency_P = 0.0, sufficiency_K = 0.0, sufficiency_Ca = 0.0, sufficiency_Mg = 0.0;
     double excess_N = 0.0, excess_P = 0.0, excess_K = 0.0, excess_Ca = 0.0, excess_Mg = 0.0;
+    double sufficiency_Mn = 0.0, excess_Mn = 0.0, ratio_Mn = 0.0;  // M3
 };
 [[nodiscard]] NutrientStatus nutrient_status(const Crop& crop, const CropParams& params);
 

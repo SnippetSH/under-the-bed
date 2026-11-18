@@ -21,7 +21,7 @@ namespace sim {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> kMagic = {'F', 'G', 'S', 'V'};
-constexpr std::uint32_t kSaveFormatVersion = 4;
+constexpr std::uint32_t kSaveFormatVersion = 5;
 
 constexpr std::size_t kWeatherHourBytes = 24;       // f64 × 3
 constexpr std::size_t kCurvePointBytes = 16;        // f64 × 2
@@ -99,6 +99,19 @@ void write_cell(detail::ByteWriter& w, const SoilCell& c) {
     w.f64(c.acid_H_eq_this_tick);
     w.f64(c.pending_H_eq_per_m2);
     w.f64(c.ec_dS_per_m);
+    w.f64(c.cec_mineral_eq_per_m2);
+    w.f64(c.mn_g_per_m2);
+    w.f64(c.mn_oxide_g_per_m2);
+    w.f64(c.mn_oxidized_this_tick_g_per_m2);
+    w.f64(c.mn_reduced_this_tick_g_per_m2);
+    w.f64(c.p_fixed_g_per_m2);
+    w.f64(c.nh4_solution_N_g_per_m2);
+    w.f64(c.k_solution_g_per_m2);
+    w.f64(c.ca_solution_g_per_m2);
+    w.f64(c.mg_solution_g_per_m2);
+    w.f64(c.mn_solution_g_per_m2);
+    w.f64(c.cec_eq_per_m2);
+    w.f64(c.exchange_free_site_index);
     w.u8(c.nitrite_alarm ? 1 : 0);
 }
 
@@ -130,6 +143,19 @@ void read_cell(detail::ByteReader& r, SoilCell& c) {
     c.acid_H_eq_this_tick = r.f64();
     c.pending_H_eq_per_m2 = r.f64();
     c.ec_dS_per_m = r.f64();
+    c.cec_mineral_eq_per_m2 = r.f64();
+    c.mn_g_per_m2 = r.f64();
+    c.mn_oxide_g_per_m2 = r.f64();
+    c.mn_oxidized_this_tick_g_per_m2 = r.f64();
+    c.mn_reduced_this_tick_g_per_m2 = r.f64();
+    c.p_fixed_g_per_m2 = r.f64();
+    c.nh4_solution_N_g_per_m2 = r.f64();
+    c.k_solution_g_per_m2 = r.f64();
+    c.ca_solution_g_per_m2 = r.f64();
+    c.mg_solution_g_per_m2 = r.f64();
+    c.mn_solution_g_per_m2 = r.f64();
+    c.cec_eq_per_m2 = r.f64();
+    c.exchange_free_site_index = r.f64();
     const std::uint8_t alarm = r.u8();
     if (alarm > 1) {
         r.fail();
@@ -152,6 +178,17 @@ void write_crop(detail::ByteWriter& w, const Crop& c) {
         w.f64(hours);
     }
     w.f64(c.last_growth_g_per_m2);
+    w.f64(c.plant_Mn_g_per_m2);
+    w.f64(c.antagonism_Ca_factor);
+    w.f64(c.antagonism_Mg_factor);
+    w.f64(c.diag_demand_K_g_per_m2);
+    w.f64(c.diag_capacity_K_g_per_m2);
+    w.f64(c.diag_demand_Ca_g_per_m2);
+    w.f64(c.diag_capacity_Ca_g_per_m2);
+    w.f64(c.diag_demand_Mg_g_per_m2);
+    w.f64(c.diag_capacity_Mg_g_per_m2);
+    w.f64(c.diag_demand_Mn_g_per_m2);
+    w.f64(c.diag_capacity_Mn_g_per_m2);
 }
 
 void read_crop(detail::ByteReader& r, Crop& c) {
@@ -174,6 +211,17 @@ void read_crop(detail::ByteReader& r, Crop& c) {
         hours = r.f64();
     }
     c.last_growth_g_per_m2 = r.f64();
+    c.plant_Mn_g_per_m2 = r.f64();
+    c.antagonism_Ca_factor = r.f64();
+    c.antagonism_Mg_factor = r.f64();
+    c.diag_demand_K_g_per_m2 = r.f64();
+    c.diag_capacity_K_g_per_m2 = r.f64();
+    c.diag_demand_Ca_g_per_m2 = r.f64();
+    c.diag_capacity_Ca_g_per_m2 = r.f64();
+    c.diag_demand_Mg_g_per_m2 = r.f64();
+    c.diag_capacity_Mg_g_per_m2 = r.f64();
+    c.diag_demand_Mn_g_per_m2 = r.f64();
+    c.diag_capacity_Mn_g_per_m2 = r.f64();
 }
 
 // ---- 정적 입력 ----
@@ -210,7 +258,6 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     write_curve(w, p.nitrification.step1_o2_curve);
     write_curve(w, p.nitrification.step2_o2_curve);
     write_curve(w, p.nitrification.nitrite_toxicity_ph_curve);
-    w.f64(p.leaching.nh4_solution_fraction);
     write_curve(w, p.aeration.compaction_cap_curve);
     w.f64(p.aeration.organic_C_cap_bonus_per_g_C);
     w.f64(p.aeration.compaction_per_mm_irrigation);
@@ -224,9 +271,6 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.ions.mg_g_per_eq);
     w.f64(p.ions.p_g_per_eq);
     w.f64(p.ions.s_g_per_eq);
-    w.f64(p.soil_chemistry.k_solution_fraction);
-    w.f64(p.soil_chemistry.ca_solution_fraction);
-    w.f64(p.soil_chemistry.mg_solution_fraction);
     w.f64(p.soil_chemistry.p_solution_fraction);
     w.f64(p.soil_chemistry.s_solution_fraction);
     w.f64(p.soil_chemistry.nitrification_H_eq_per_eq_N);
@@ -270,6 +314,34 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.crop.death_root_health);
     w.f64(p.crop.root_dieback_per_damage);
     w.f64(p.crop.dry_matter_C_fraction);
+    w.f64(p.crop.target_Mn_g_per_g);
+    w.f64(p.crop.ca_uptake_rate_per_g_root_per_hour);
+    w.f64(p.crop.mg_uptake_rate_per_g_root_per_hour);
+    w.f64(p.crop.mn_uptake_rate_per_g_root_per_hour);
+    w.f64(p.crop.mn_max_uptake_ratio);
+    write_curve(w, p.crop.mn_toxicity_curve);
+    w.f64(p.ions.mn_g_per_eq);
+    w.f64(p.cation_exchange.cec_organic_eq_per_g_C);
+    w.f64(p.cation_exchange.exchange_rate_per_hour);
+    w.f64(p.cation_exchange.nh4_retention_factor);
+    w.f64(p.cation_exchange.k_retention_factor);
+    w.f64(p.cation_exchange.ca_retention_factor);
+    w.f64(p.cation_exchange.mg_retention_factor);
+    w.i64(p.cation_exchange.solver_iterations);
+    w.f64(p.cation_exchange.buffer_eq_per_pH_per_eq_cec);
+    write_curve(w, p.antagonism.ca_curve);
+    write_curve(w, p.antagonism.mg_curve);
+    w.f64(p.antagonism.min_demand_factor);
+    w.f64(p.phosphorus.fixation_rate_per_hour);
+    write_curve(w, p.phosphorus.fixation_ph_curve);
+    w.f64(p.phosphorus.release_rate_per_hour);
+    write_curve(w, p.manganese.retention_ph_curve);
+    w.f64(p.manganese.oxidation_rate_per_hour);
+    write_curve(w, p.manganese.oxidation_ph_curve);
+    write_curve(w, p.manganese.oxidation_o2_curve);
+    w.f64(p.manganese.reduction_rate_per_hour);
+    write_curve(w, p.manganese.reduction_ph_curve);
+    write_curve(w, p.manganese.reduction_o2_curve);
     w.u64(p.composts.size());
     for (const auto& c : p.composts) {
         w.str(c.id);
@@ -283,6 +355,7 @@ void write_params(detail::ByteWriter& w, const Params& p) {
         w.f64(c.mg_g_per_kg);
         w.f64(c.p_g_per_kg);
         w.f64(c.s_g_per_kg);
+        w.f64(c.mn_g_per_kg);
         w.f64(c.direct_acid_eq_per_kg);
     }
     w.u64(p.fertilizers.size());
@@ -296,6 +369,7 @@ void write_params(detail::ByteWriter& w, const Params& p) {
         w.f64(f.mg_g_per_kg);
         w.f64(f.p_g_per_kg);
         w.f64(f.s_g_per_kg);
+        w.f64(f.mn_g_per_kg);
         w.f64(f.direct_acid_eq_per_kg);
     }
     w.u64(p.limes.size());
@@ -340,7 +414,6 @@ void read_params(detail::ByteReader& r, Params& p) {
     read_curve(r, p.nitrification.step1_o2_curve);
     read_curve(r, p.nitrification.step2_o2_curve);
     read_curve(r, p.nitrification.nitrite_toxicity_ph_curve);
-    p.leaching.nh4_solution_fraction = r.f64();
     read_curve(r, p.aeration.compaction_cap_curve);
     p.aeration.organic_C_cap_bonus_per_g_C = r.f64();
     p.aeration.compaction_per_mm_irrigation = r.f64();
@@ -354,9 +427,6 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.ions.mg_g_per_eq = r.f64();
     p.ions.p_g_per_eq = r.f64();
     p.ions.s_g_per_eq = r.f64();
-    p.soil_chemistry.k_solution_fraction = r.f64();
-    p.soil_chemistry.ca_solution_fraction = r.f64();
-    p.soil_chemistry.mg_solution_fraction = r.f64();
     p.soil_chemistry.p_solution_fraction = r.f64();
     p.soil_chemistry.s_solution_fraction = r.f64();
     p.soil_chemistry.nitrification_H_eq_per_eq_N = r.f64();
@@ -400,6 +470,34 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.crop.death_root_health = r.f64();
     p.crop.root_dieback_per_damage = r.f64();
     p.crop.dry_matter_C_fraction = r.f64();
+    p.crop.target_Mn_g_per_g = r.f64();
+    p.crop.ca_uptake_rate_per_g_root_per_hour = r.f64();
+    p.crop.mg_uptake_rate_per_g_root_per_hour = r.f64();
+    p.crop.mn_uptake_rate_per_g_root_per_hour = r.f64();
+    p.crop.mn_max_uptake_ratio = r.f64();
+    read_curve(r, p.crop.mn_toxicity_curve);
+    p.ions.mn_g_per_eq = r.f64();
+    p.cation_exchange.cec_organic_eq_per_g_C = r.f64();
+    p.cation_exchange.exchange_rate_per_hour = r.f64();
+    p.cation_exchange.nh4_retention_factor = r.f64();
+    p.cation_exchange.k_retention_factor = r.f64();
+    p.cation_exchange.ca_retention_factor = r.f64();
+    p.cation_exchange.mg_retention_factor = r.f64();
+    p.cation_exchange.solver_iterations = r.i64();
+    p.cation_exchange.buffer_eq_per_pH_per_eq_cec = r.f64();
+    read_curve(r, p.antagonism.ca_curve);
+    read_curve(r, p.antagonism.mg_curve);
+    p.antagonism.min_demand_factor = r.f64();
+    p.phosphorus.fixation_rate_per_hour = r.f64();
+    read_curve(r, p.phosphorus.fixation_ph_curve);
+    p.phosphorus.release_rate_per_hour = r.f64();
+    read_curve(r, p.manganese.retention_ph_curve);
+    p.manganese.oxidation_rate_per_hour = r.f64();
+    read_curve(r, p.manganese.oxidation_ph_curve);
+    read_curve(r, p.manganese.oxidation_o2_curve);
+    p.manganese.reduction_rate_per_hour = r.f64();
+    read_curve(r, p.manganese.reduction_ph_curve);
+    read_curve(r, p.manganese.reduction_o2_curve);
     const std::uint64_t composts_count = r.u64();
     if (!r.ok() || composts_count > r.remaining() / (2 * kMinStringBytes)) {
         r.fail();
@@ -418,6 +516,7 @@ void read_params(detail::ByteReader& r, Params& p) {
         c.mg_g_per_kg = r.f64();
         c.p_g_per_kg = r.f64();
         c.s_g_per_kg = r.f64();
+        c.mn_g_per_kg = r.f64();
         c.direct_acid_eq_per_kg = r.f64();
     }
     const std::uint64_t fertilizers_count = r.u64();
@@ -436,6 +535,7 @@ void read_params(detail::ByteReader& r, Params& p) {
         f.mg_g_per_kg = r.f64();
         f.p_g_per_kg = r.f64();
         f.s_g_per_kg = r.f64();
+        f.mn_g_per_kg = r.f64();
         f.direct_acid_eq_per_kg = r.f64();
     }
     const std::uint64_t limes_count = r.u64();
@@ -480,6 +580,10 @@ void write_scenario(detail::ByteWriter& w, const Scenario& s) {
     w.f64(soil.mg_g_per_m2);
     w.f64(soil.p_g_per_m2);
     w.f64(soil.s_g_per_m2);
+    w.f64(soil.cec_mineral_eq_per_m2);
+    w.f64(soil.mn_g_per_m2);
+    w.f64(soil.mn_oxide_g_per_m2);
+    w.f64(soil.p_fixed_g_per_m2);
 
     w.u8(s.crop.has_value() ? 1 : 0);
     if (s.crop) {
@@ -523,6 +627,10 @@ void read_scenario(detail::ByteReader& r, Scenario& s) {
     soil.mg_g_per_m2 = r.f64();
     soil.p_g_per_m2 = r.f64();
     soil.s_g_per_m2 = r.f64();
+    soil.cec_mineral_eq_per_m2 = r.f64();
+    soil.mn_g_per_m2 = r.f64();
+    soil.mn_oxide_g_per_m2 = r.f64();
+    soil.p_fixed_g_per_m2 = r.f64();
 
     const std::uint8_t has_crop = r.u8();
     if (has_crop > 1) {
@@ -675,6 +783,9 @@ void World::write_dynamic(detail::ByteWriter& w) const {
     w.f64(ledger_.S_leached_g);
     w.f64(ledger_.H_eq_net);
     w.f64(ledger_.C_root_litter_g);
+    w.f64(ledger_.Mn_in_g);
+    w.f64(ledger_.Mn_leached_g);
+    w.f64(ledger_.Mn_uptake_g);
 }
 
 std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
@@ -744,6 +855,9 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     ledger_.S_leached_g = r.f64();
     ledger_.H_eq_net = r.f64();
     ledger_.C_root_litter_g = r.f64();
+    ledger_.Mn_in_g = r.f64();
+    ledger_.Mn_leached_g = r.f64();
+    ledger_.Mn_uptake_g = r.f64();
 
     if (!r.ok()) {
         return fail(ErrorCode::Truncated, "save data ends inside the dynamic state");

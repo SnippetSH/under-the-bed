@@ -37,6 +37,10 @@ SoilCell make_cell(const SoilInit& init) {
     cell.mg_g_per_m2 = init.mg_g_per_m2;
     cell.p_g_per_m2 = init.p_g_per_m2;
     cell.s_g_per_m2 = init.s_g_per_m2;
+    cell.cec_mineral_eq_per_m2 = init.cec_mineral_eq_per_m2;
+    cell.mn_g_per_m2 = init.mn_g_per_m2;
+    cell.mn_oxide_g_per_m2 = init.mn_oxide_g_per_m2;
+    cell.p_fixed_g_per_m2 = init.p_fixed_g_per_m2;
     return cell;
 }
 
@@ -56,6 +60,11 @@ World::World(Params params, Scenario scenario)
     const CalendarTime t0 = calendar_at(scenario_.start_day_of_year, 0);
     house_air_temp_degC_ =
         process::house_air_temp_degC(params_.house, scenario_.weather_hourly[weather_index(t0.day_of_year, t0.hour)]);
+    // M3: 용액은 평형값으로 시작 (통기 지수가 Mn 이동성에 필요해서 먼저 계산)
+    for (Tile& tile : tiles_) {
+        tile.soil.aeration_index = process::aeration_index(tile.soil, params_.aeration);
+        process::set_solution_to_equilibrium(tile.soil, params_);
+    }
     refresh_derived_cell_values();
 }
 
@@ -246,8 +255,12 @@ void World::tick_once() {
         process::decompose_organic_matter(cell, params_.organic_matter, params_.soil_temperature, ledger_);
         // f. 질산화
         process::nitrify(cell, params_.nitrification, params_.soil_chemistry, params_.ions);
+        // f2. 양이온 교환 (M3)
+        process::update_cation_exchange(cell, params_);
+        // f3. 인산 고정 (M3)
+        process::fix_phosphorus(cell, params_.phosphorus);
         // g. 석회 용해 → pH
-        process::update_lime_and_ph(cell, params_.soil_chemistry, params_.ions, ledger_);
+        process::update_lime_and_ph(cell, params_, ledger_);
         // h. 작물
         if (crop_alive) {
             const process::NutrientAvailability available = process::available_nutrients(cell, params_);
@@ -257,7 +270,7 @@ void World::tick_once() {
             }
         }
         // i. 용탈
-        process::leach(cell, params_.leaching, params_.soil_chemistry, ledger_);
+        process::leach(cell, params_, ledger_);
         // j. 파생값
         cell.ec_dS_per_m = process::soil_ec_dS_per_m(cell, params_);
         // k. 이벤트 판정 (작물 고사는 h에서)

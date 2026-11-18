@@ -1,0 +1,56 @@
+# S9 무처리 (pH 5.0), 14일 — docs/spec/m2-overview.md "시나리오 테스트 (M2)" 표. 값은 전부 게임용 임의값이에요.
+
+schema_version = 4
+
+[scenario]
+name = "proto/proto_acid_cano3"
+seed = 20261118
+start_day_of_year = 244                          # 9월 1일, 게임용 임의값
+weather_csv = "../../data/weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 50.0
+soil_temp_degC = 20.0
+ph = 5.0
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 10.0
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 5.0
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 360.0
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.3
+base_buffer_eq_per_m2_per_pH = 1.25      # M3부터 "CEC 밖 완충". 5.0 − 0.15 × 25 (총 완충력 M2와 동일)
+# M3 항목: 전부 게임용 임의값 (docs/spec/m3-overview.md "시나리오 TOML")
+cec_mineral_eq_per_m2 = 25.0             # 양토 약 10 cmol/kg
+mn_g_per_m2 = 5.0                        # 교환성 Mn 약 20 mg/kg
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0                 # 유효 25 g의 약 6배 (적정 pH 평형)
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[difficulty]
+stress_combination = "minimum"
+
+[[schedule]]
+tick = 8
+action = "irrigate"
+amount_mm = 6.0
+repeat_every_ticks = 24
+repeat_count = 14
+
+[[schedule]]
+tick = 0
+action = "add_fertilizer"
+fertilizer = "calcium_nitrate"
+g_per_m2 = 632.811

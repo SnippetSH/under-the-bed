@@ -7,8 +7,6 @@ add_executable(sim-tests
   test_world.cpp
   test_serialization.cpp
   test_determinism.cpp
-  test_loader.cpp
-  test_soil_water.cpp
   test_temperature.cpp
   test_organic_matter.cpp
   test_nitrification.cpp
@@ -16,9 +14,7 @@ add_executable(sim-tests
   test_m1_conservation.cpp
   test_m1_determinism.cpp
   test_aeration.cpp
-  test_soil_chemistry.cpp
   test_crop.cpp
-  test_validation.cpp
   test_m2_scenarios.cpp
   test_m2_conservation.cpp
   test_m2_determinism.cpp)

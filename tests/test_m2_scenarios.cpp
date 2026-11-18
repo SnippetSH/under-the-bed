@@ -36,7 +36,7 @@ void record(Series& s, const sim::Snapshot& snap, const sim::CropParams& crop_pa
     for (std::size_t i = 0; i < snap.soil.size(); ++i) {
         const sim::SoilCell& c = snap.soil[i];
         const sim::Crop& crop = snap.crops[i];
-        p += c.p_g_per_m2;
+        p += c.p_g_per_m2 + c.p_fixed_g_per_m2;  // M3: 토양 P 총량 (유효 + 고정), 디렉터 결정 2번
         aer += c.aeration_index;
         ph += c.ph;
         ec += c.ec_dS_per_m;

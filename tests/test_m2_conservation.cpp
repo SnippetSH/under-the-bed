@@ -32,6 +32,7 @@ struct Totals {
     double mg = 0.0;
     double s = 0.0;
     double carbon = 0.0;
+    double mn = 0.0;  // M3
 };
 
 Totals totals_of(const sim::Snapshot& snap) {
@@ -41,7 +42,8 @@ Totals totals_of(const sim::Snapshot& snap) {
         const sim::Crop& crop = snap.crops[i];
         t.water += c.water_mm;
         t.nitrogen += c.total_N_g_per_m2() + crop.plant_N_g_per_m2;
-        t.p += c.p_g_per_m2 + crop.plant_P_g_per_m2;
+        t.p += c.p_g_per_m2 + c.p_fixed_g_per_m2 + crop.plant_P_g_per_m2;  // M3: 유효 + 고정
+        t.mn += c.mn_g_per_m2 + c.mn_oxide_g_per_m2 + crop.plant_Mn_g_per_m2;
         t.k += c.k_g_per_m2 + crop.plant_K_g_per_m2;
         t.ca += c.ca_g_per_m2 + crop.plant_Ca_g_per_m2;
         t.mg += c.mg_g_per_m2 + crop.plant_Mg_g_per_m2;
@@ -58,11 +60,21 @@ bool state_valid(const sim::Snapshot& snap, const sim::SoilChemistryParams& chem
         const double pools[] = {c.water_mm,        c.labile_C_g_per_m2, c.labile_N_g_per_m2, c.stable_C_g_per_m2,
                                 c.stable_N_g_per_m2, c.nh4_N_g_per_m2,  c.no2_N_g_per_m2,    c.no3_N_g_per_m2,
                                 c.k_g_per_m2,      c.ca_g_per_m2,       c.mg_g_per_m2,       c.p_g_per_m2,
-                                c.s_g_per_m2,      c.lime_undissolved_eq_per_m2, c.ec_dS_per_m};
+                                c.s_g_per_m2,      c.lime_undissolved_eq_per_m2, c.ec_dS_per_m,
+                                c.mn_g_per_m2, c.mn_oxide_g_per_m2, c.p_fixed_g_per_m2, c.nh4_solution_N_g_per_m2, c.k_solution_g_per_m2,
+                                c.ca_solution_g_per_m2, c.mg_solution_g_per_m2, c.mn_solution_g_per_m2,
+                                c.cec_eq_per_m2};
         for (double p : pools) {
             if (!finite_nonneg(p)) {
                 return false;
             }
+        }
+        // M3: 용액 ≤ 총량, 0 ≤ φ ≤ 1
+        if (c.nh4_solution_N_g_per_m2 > c.nh4_N_g_per_m2 || c.k_solution_g_per_m2 > c.k_g_per_m2 ||
+            c.ca_solution_g_per_m2 > c.ca_g_per_m2 || c.mg_solution_g_per_m2 > c.mg_g_per_m2 ||
+            c.mn_solution_g_per_m2 > c.mn_g_per_m2 || !(c.exchange_free_site_index >= 0.0) ||
+            !(c.exchange_free_site_index <= 1.0)) {
+            return false;
         }
         if (!std::isfinite(c.soil_temp_degC) || !std::isfinite(c.ph) || c.ph < chem.ph_min || c.ph > chem.ph_max) {
             return false;
@@ -71,7 +83,7 @@ bool state_valid(const sim::Snapshot& snap, const sim::SoilChemistryParams& chem
     for (const sim::Crop& crop : snap.crops) {
         const double v[] = {crop.leaf_g_per_m2,    crop.root_g_per_m2,    crop.plant_N_g_per_m2,
                             crop.plant_P_g_per_m2, crop.plant_K_g_per_m2, crop.plant_Ca_g_per_m2,
-                            crop.plant_Mg_g_per_m2};
+                            crop.plant_Mg_g_per_m2, crop.plant_Mn_g_per_m2};
         for (double x : v) {
             if (!finite_nonneg(x)) {
                 return false;
@@ -93,10 +105,10 @@ struct Loaded {
     simdata::ScenarioBundle bundle;
 };
 
-Loaded load(const std::string& name) {
+Loaded load(const std::string& name, const std::string& dir = "m2") {
     auto params = simdata::load_params(test::repo_path("data/params.toml"));
     REQUIRE(params.has_value());
-    auto bundle = simdata::load_scenario_bundle(test::repo_path("data/scenarios/m2/" + name + ".toml"));
+    auto bundle = simdata::load_scenario_bundle(test::repo_path("data/scenarios/" + dir + "/" + name + ".toml"));
     REQUIRE(bundle.has_value());
     return Loaded{std::move(*params), std::move(*bundle)};
 }
@@ -137,7 +149,7 @@ double run_and_check(Loaded loaded, std::vector<simdata::ScheduledCommand> extra
         const sim::Snapshot snap = world->snapshot();
         const Totals now = totals_of(snap);
         const sim::Ledger& l = snap.ledger;
-        const std::array<double, 8> errs = {
+        const std::array<double, 9> errs = {
             rel_err(now.water, init.water + l.water_in_mm - l.water_evaporated_mm - l.water_transpired_mm -
                                    l.water_drained_mm),
             rel_err(now.nitrogen, init.nitrogen + l.N_in_g - l.N_leached_g - l.N_gas_g),
@@ -147,8 +159,9 @@ double run_and_check(Loaded loaded, std::vector<simdata::ScheduledCommand> extra
             rel_err(now.mg, init.mg + l.Mg_in_g - l.Mg_leached_g),
             rel_err(now.s, init.s + l.S_in_g - l.S_leached_g),
             rel_err(now.carbon, init.carbon + l.C_in_g + l.C_root_litter_g - l.C_respired_g),
+            rel_err(now.mn, init.mn + l.Mn_in_g - l.Mn_leached_g),
         };
-        static constexpr const char* kNames[8] = {"water", "N", "P", "K", "Ca", "Mg", "S", "C"};
+        static constexpr const char* kNames[9] = {"water", "N", "P", "K", "Ca", "Mg", "S", "C", "Mn"};
         const double worst = *std::max_element(errs.begin(), errs.end());
         max_err = std::max(max_err, worst);
         const bool valid = state_valid(snap, chem);
@@ -231,4 +244,46 @@ TEST_CASE("M2 extreme daily tillage keeps conservation", "[conservation][m2][ext
 // 극한: 관수 없이 60일 (24틱마다 검사)
 TEST_CASE("M2 extreme 60 days without irrigation keeps conservation", "[conservation][m2][extreme]") {
     report("60 days dry", run_and_check(load("s4_optimal"), {}, 60 * 24, 24, true));
+}
+
+// ---- M3 프로토타입: M3 시나리오와 극한 (m3-overview "보존" 행) ----
+TEST_CASE("M3 scenarios conserve every budget every tick", "[conservation][m3]") {
+    const char* names[] = {"s5_standard", "s5_k_excess", "s6_loam",     "s6_sand",     "s11_neutral", "s11_acid",
+                           "s11_wet",     "s11_alkaline", "s12_neutral", "s12_acid",    "s12_alkaline"};
+    for (const char* name : names) {
+        report(name, run_and_check(load(name, "m3"), {}, 28 * 24, 1));
+    }
+}
+
+TEST_CASE("M3 extreme 100x potassium sulfate keeps conservation", "[conservation][m3][extreme]") {
+    Loaded l = load("s5_standard", "m3");
+    const sim::TileArea area = grid_of(l);
+    report("100x K2SO4", run_and_check(std::move(l), {at(0, sim::AddFertilizerCommand{area, "potassium_sulfate", 2000.0})},
+                                       21 * 24, 1));
+}
+
+TEST_CASE("M3 extreme 100x lime on sand keeps conservation", "[conservation][m3][extreme]") {
+    Loaded l = load("s6_sand", "m3");
+    const sim::TileArea area = grid_of(l);
+    report("100x lime sand", run_and_check(std::move(l), {at(0, sim::AddLimeCommand{area, "calcium_carbonate", 30000.0})},
+                                           21 * 24, 1));
+}
+
+TEST_CASE("M3 extreme 100x manganese sulfate keeps conservation", "[conservation][m3][extreme]") {
+    Loaded l = load("s11_neutral", "m3");
+    const sim::TileArea area = grid_of(l);
+    report("100x MnSO4", run_and_check(std::move(l), {at(0, sim::AddFertilizerCommand{area, "manganese_sulfate", 1000.0})},
+                                       21 * 24, 1));
+}
+
+TEST_CASE("M3 extreme mineral CEC 0.01 keeps conservation", "[conservation][m3][extreme]") {
+    Loaded l = load("s6_sand", "m3");
+    l.bundle.scenario.soil.cec_mineral_eq_per_m2 = 0.01;
+    l.bundle.scenario.soil.stable_C_g_per_m2 = 0.0;
+    l.bundle.scenario.soil.stable_N_g_per_m2 = 0.0;
+    report("CEC 0.01", run_and_check(std::move(l), {}, 21 * 24, 1));
+}
+
+TEST_CASE("M3 extreme no irrigation keeps conservation", "[conservation][m3][extreme]") {
+    report("S5 dry 60 days", run_and_check(load("s5_k_excess", "m3"), {}, 60 * 24, 24, true));
 }
