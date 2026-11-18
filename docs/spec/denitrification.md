@@ -1,6 +1,6 @@
 # 탈질
 
-- 상태: 승인 (2026-11-18)
+- 상태: 승인 (2026-11-18, 프로토타입 점검 결과 반영본 최종 승인)
 - 마일스톤: M4
 - 관련: [m4-overview](m4-overview.md), [nitrogen](nitrogen.md), [aeration](aeration.md), [soil-chemistry](soil-chemistry.md), 계획서 4장 6번
 
@@ -55,6 +55,8 @@ acid_H_eq_this_tick += lost / no3_N_g_per_eq × H_eq_per_eq_N
 ## 시나리오 (S13, [m4-overview](m4-overview.md))
 
 `s13_proper`(M2 S8 적정 조건) 대 `s13_waterlogged`(S8 과습 조건), 14일: 과습 쪽 `N_gas_g`가 크고, 적정 쪽은 0에 가까워요.
+
+프로토타입 점검에서 확정한 시나리오(2026-11-18): day 244(9월 1일) 시작, 모종 B 8포기/m², `initial_establishment_index` 1, 시작 때 질산칼슘 96.8 g/m², 매일 08시 관수 14일(적정 6 mm, 과습 25 mm). 두 시나리오는 관수량만 달라요. 탈질 파라미터(`rate_per_hour` 0.004 등)는 초안 그대로 두고 점검을 통과했어요.
 
 ## 단순화와 비목표
 

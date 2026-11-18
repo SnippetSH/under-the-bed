@@ -22,7 +22,7 @@
 | --- | --- | --- | --- | --- |
 | `aeration.compaction_cap_curve` | x = compaction_index, y = 통기 지수 상한 | - | `[[0,1.0],[0.5,0.8],[1.0,0.35]]` | 게임용 임의값 |
 | `aeration.organic_C_cap_bonus_per_g_C` | 유기 C 1 g/m²당 상한 증가 | 1/(g/m²) | 0.00004 | 게임용 임의값 (유기 C 3,600 g/m²에서 +0.14) |
-| `aeration.compaction_per_mm_irrigation` | 관수 1 mm당 다짐 증가 (빗물·관수에 의한 표면 굳음, 가라앉음) | 1/mm | 0.0015 | 게임용 임의값 |
+| `aeration.compaction_per_mm_irrigation` | 관수 1 mm당 다짐 증가 (빗물·관수에 의한 표면 굳음, 가라앉음) | 1/mm | 0.001 | 게임용 임의값 (2026-11-18 M4 프로토타입 점검으로 조정: 이전 0.0015) |
 | `aeration.tilled_compaction_index` | 경운 직후 다짐 지수 | - | 0.1 | 게임용 임의값 |
 | `aeration.till_root_damage_fraction` | 작물이 있을 때 경운하면 깎이는 뿌리 건강도 비율 | - | 0.5 | 게임용 임의값 |
 | `soil_water.drainage_compaction_curve` | x = compaction_index, y = 배수 속도 배율 | - | `[[0,1.0],[0.5,0.6],[1.0,0.1]]` | 게임용 임의값 |

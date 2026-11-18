@@ -2,6 +2,7 @@
 
 - 상태: 승인 (2026-11-18)
 - M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
+- M4 프로토타입 점검 반영: 2026-11-18 (아래 `(M4 점검)` 표시 항목만. 생장·분배·호흡의 M4 변경은 [strawberry-fruit](strawberry-fruit.md)와 [m4-overview](m4-overview.md) "M1~M3 명세 변경"에서 M4 승인 때 반영. 최종 승인 대기)
 - 마일스톤: M2
 - 관련: [m2-overview](m2-overview.md), [soil-chemistry](soil-chemistry.md), [aeration](aeration.md), 계획서 5장
 
@@ -35,7 +36,7 @@
 | `crop.specific_leaf_area_m2_per_g` | 잎 1 g당 잎 면적 | 0.02 | 200 cm²/g |
 | `crop.light_interception_curve` | x = LAI, y = 받는 빛 비율 | `[[0,0],[0.5,0.3],[1,0.5],[2,0.75],[3,0.88],[4,0.94]]` | 지수 감쇠(k≈0.7) 모양 |
 | `crop.par_fraction` | 일사 중 광합성 유효광 비율 | 0.48 | 일반값 |
-| `crop.light_use_efficiency_g_per_MJ` | 받은 PAR 1 MJ당 건물 생산 | 2.5 | 작물 일반 범위 |
+| `crop.light_use_efficiency_g_per_MJ` | 받은 PAR 1 MJ당 건물 생산 | 2.25 | 작물 일반 범위 (M4 점검, 2026-11-18 프로토타입 점검으로 조정: 이전 2.5. 5차 디렉터 승인) |
 | `crop.temp_curve` | x = 하우스 기온 °C | `[[3,0],[8,0.3],[15,0.8],[20,1.0],[25,1.0],[30,0.6],[35,0.2],[40,0]]` | 딸기 생장 적온 대략 18~25 °C |
 | `crop.leaf_allocation_fraction` | 생장량 중 잎으로 가는 비율 (나머지 뿌리) | 0.7 | |
 | `crop.water_stress_curve` | x = relative_water | `[[0.2,0],[0.4,0.3],[0.6,0.9],[0.75,1.0],[2.0,1.0]]` | |
@@ -48,16 +49,18 @@
 | `crop.target_Mg_g_per_g` | | 0.004 | 대략 0.25~0.45% |
 | `crop.target_Mn_g_per_g` (M3, 2026-11-18) | | 0.0001 | 대략 50~200 mg/kg ([manganese](manganese.md)) |
 | `crop.luxury_uptake_ratio` | 적정 농도의 몇 배까지 더 먹는지 (과잉 지수의 원천) | 1.3 | |
-| `crop.uptake_rate_per_g_root_per_hour` | 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율. (M3) N·P·K에 써요. Ca·Mg·Mn은 아래 전용 속도 | 0.002 | |
+| `crop.uptake_rate_per_g_root_per_hour` | 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율. (M3) N·P·K에 써요. Ca·Mg·Mn은 아래 전용 속도. (M4 점검) **N도 전용 속도로 옮겨서 P·K에만 써요** | 0.002 | |
 | `crop.ca_uptake_rate_per_g_root_per_hour`, `crop.mg_uptake_rate_per_g_root_per_hour` (M3, 2026-11-18) | Ca·Mg 전용 흡수 속도. 일반 속도(0.002)는 Ca·Mg 흡수 능력이 필요량의 30~100배가 돼 길항이 무효였어요 | 0.00019, 0.00021 | 게임용 임의값. [cation-exchange](cation-exchange.md) |
-| `crop.mn_uptake_rate_per_g_root_per_hour`, `crop.mn_max_uptake_ratio`, `crop.mn_toxicity_curve` (M3, 2026-11-18) | Mn 전용 흡수 속도, 수요 상한 배수, 독성 곡선 | 0.00004, 30, 곡선은 [manganese](manganese.md) | 게임용 임의값 |
+| `crop.mn_uptake_rate_per_g_root_per_hour`, `crop.mn_max_uptake_ratio`, `crop.mn_toxicity_curve` (M3, 2026-11-18) | Mn 전용 흡수 속도, 수요 상한 배수, 독성 곡선 | 0.00001, 30, 곡선은 [manganese](manganese.md) | 게임용 임의값 (M4 점검, 2026-11-18 프로토타입 점검으로 조정: 속도 이전 0.00004) |
+| `crop.n_luxury_uptake_ratio` (M4 점검, 신설) | N 전용 사치 흡수 상한 (적정 대비 배수). N 체내 비율이 공급을 따라가게 (Ca·Mg 전용 속도와 같은 패턴) | 1.2 | 게임용 임의값 (2026-11-18 프로토타입 점검으로 신설, 점검 중 1.5 → 1.2로 조정) |
+| `crop.n_uptake_rate_per_g_root_per_hour` (M4 점검, 신설) | N 전용 흡수 속도 (N은 일반 속도 0.002를 더 이상 쓰지 않아요) | 0.00006 | 게임용 임의값 (2026-11-18 프로토타입 점검으로 신설, 점검 중 0.0005 → 0.00006으로 조정) |
 | `antagonism.ca_curve`, `antagonism.mg_curve`, `antagonism.min_demand_factor` (M3, 2026-11-18) | Ca·Mg 길항 배율 곡선, 수요 상한 배율의 하한 | 곡선과 하한 0.6은 [cation-exchange](cation-exchange.md) | 게임용 임의값 |
 | `crop.transpiration_mm_per_hour_per_W_per_m2` | 하우스 안 일사 × 받는 빛 비율 1 W/m²당 증산 | 0.0015 | 맑은 날 하루 약 1.5~2.5 mm |
 | `crop.root_recovery_rate_per_hour` | 손상이 없을 때 뿌리 건강도 회복 (1까지 남은 양의 비율) | 0.002 | |
 | `crop.death_root_health` | 이 아래로 내려가면 고사 | 0.05 | |
 | `crop.root_dieback_per_damage` | 뿌리 건강도 손상 비율 1당 죽는 뿌리 건물 비율 (0~1) | 1.0 | 게임용 임의값 (2026-11-18 추가: 과습 손상이 생장에 남도록) |
 | `crop.dry_matter_C_fraction` | 건물 중 탄소 비율 (죽은 뿌리가 토양 유기물로 갈 때) | 0.45 | 식물 건물 일반값 |
-| `root_damage.waterlog_curve` | x = aeration_index, y = 시간당 손상 비율 | `[[0,0.01],[0.2,0.004],[0.4,0.0005],[0.5,0]]` | |
+| `root_damage.waterlog_curve` | x = aeration_index, y = 시간당 손상 비율 | `[[0,0.015],[0.2,0.006],[0.4,0.001],[0.5,0]]` | (M4 점검, 2026-11-18 프로토타입 점검으로 조정: 이전 `[[0,0.01],[0.2,0.004],[0.4,0.0005],[0.5,0]]`) |
 | `root_damage.heat_curve` | x = 토양 온도 °C | `[[32,0],[35,0.002],[40,0.01],[45,0.03]]` | 환기가 없는 M2 하우스 기준. M7에서 다시 봐요 (balancing.md 1번) |
 | `root_damage.nitrite_curve` | x = 유효 아질산(g N/m², pH 배율 적용 후) | `[[0,0],[2,0],[4,0.004],[8,0.015]]` | |
 | `root_damage.acid_curve` | x = pH | soil-chemistry 참고 | ADR-0007 |
@@ -111,6 +114,12 @@ uptake_X   = min(demand_X, capacity_X)
   ```
   `min_demand_factor` = 0.6이고 흡수 능력에는 하한이 없어요. 길항 지수 `(용액 K + 용액 NH4) / (용액 Ca + 용액 Mg)`(당량)와 근거는 [cation-exchange](cation-exchange.md) "흡수 길항". N·P·K는 길항을 받지 않아요.
 - (M3, 2026-11-18) Mn: `demand_Mn = max(0, target_Mn × mn_max_uptake_ratio × (leaf + root) − plant_Mn)`, `capacity_Mn = 용액 Mn × min(1, mn_uptake_rate × root × root_health) × water × salt`. 길항은 적용하지 않아요. 식과 독성은 [manganese](manganese.md) "흡수"·"스트레스".
+- (M4 점검, 2026-11-18 프로토타입 점검으로 신설) **N은 자기 사치 흡수 상한과 흡수 속도를 가져요**(Ca·Mg 패턴). 일반 `luxury_uptake_ratio`(1.3)·`uptake_rate_per_g_root`(0.002)로는 체내 N 비율이 쉽게 포화해 화아분화가 막혔어요(프로토타입 1차 점검). N 비율이 공급 수준을 따라가도록 전용 값으로 나눴어요. 흡수 능력에는 활착 배율(`growth_factor_establish`)이 들어가요([strawberry-phenology](strawberry-phenology.md)):
+  ```
+  demand_N   = max(0, target_N × n_luxury_uptake_ratio × (요구 건물) − plant_N)          (요구 건물은 strawberry-fruit 8번: 관부·과실 포함)
+  capacity_N = (NH4 유효량 + NO3 유효량) × min(1, n_uptake_rate_per_g_root × root × root_health) × water × salt × growth_factor_establish
+  ```
+  P·K의 능력식에도 `growth_factor_establish`가 곱해져요. Ca·Mg·Mn도 같아요(길항 배율 등은 위 식 그대로).
 - N은 NH4+와 NO3- 유효량 비율대로 나눠 가져가요. NH4+ 흡수는 H+, NO3- 흡수는 OH-를 `pending_H`에 기록해요(다음 틱 pH 갱신).
 - 방향: 뿌리가 적거나 상하면, 마르거나 짜면 덜 먹어요. 유효량이 많으면 적정 농도의 1.3배까지 더 먹어요(질소 과잉의 원천, M4에서 화아분화 지연 등에 사용).
 

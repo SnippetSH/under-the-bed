@@ -1,6 +1,6 @@
 # 딸기 생물계절: 활착, 화아분화, 화방 발달, 개화·착과, 모종 등급
 
-- 상태: 승인 (2026-11-18)
+- 상태: 승인 (2026-11-18, 프로토타입 점검 결과 반영본 최종 승인)
 - 마일스톤: M4
 - 관련: [m4-overview](m4-overview.md), [strawberry-fruit](strawberry-fruit.md), [strawberry-minimal](strawberry-minimal.md), [ADR-0006](../decisions/0006-off-season-and-disinfection.md), 계획서 5장
 
@@ -20,7 +20,7 @@
 | 이름 | 의미 | 단위 |
 | --- | --- | --- |
 | `plants_per_m2` (정식 시 고정) | 재식 밀도 | 포기/m² |
-| `establishment_index` | 활착 정도 | 0~1 |
+| `establishment_index` | 활착 정도. 시작값은 시나리오 `[crop] initial_establishment_index`(필수, 0~1)예요. 작기 시나리오는 0(막 정식), 이미 자란 작물을 가정하는 M2·M3 시나리오·테스트는 1 (2026-11-18 프로토타입 점검으로 신설) | 0~1 |
 | `induction_index` | 다음 화방 분화까지 누적된 진행도 | 0~1 |
 | `trusses` | 화방 목록 (아래) | - |
 
@@ -32,6 +32,12 @@
 | `development_index` | 분화 → 개화 진행도 | 0~1 |
 | `flowers_per_m2` | 이 화방의 꽃 수 (분화 시 정해짐) | 개/m² |
 | `opened` | 개화했는지. 개화 시 개별 꽃(과실)이 생김([strawberry-fruit](strawberry-fruit.md)) | bool |
+| `opened_tick` (진단) | 개화한 틱 | 틱 |
+| `harvested_fruits`, `harvested_fresh_g` (진단) | 이 화방에서 딴 정상과·기형과 개수, 생체중 합 | 개, g |
+| `aborted_fruits` (진단) | 이 화방에서 낙과한 과실 수 | 개 |
+| `first_harvest_tick`, `last_harvest_tick` (진단) | 이 화방의 첫·마지막 수확 틱 | 틱 |
+
+(진단 항목은 시뮬레이션 결과를 바꾸지 않고 작기 리포트(M7)와 점검용으로만 기록해요. [m4-overview](m4-overview.md) "진단·리포트용 기록")
 
 ### 하우스 (월드)
 
@@ -50,21 +56,22 @@
 | `phenology.induction_rate_per_hour` | 최적 조건에서 화아분화 진행 속도 | 0.002 | 약 21일에 화방 1개 |
 | `phenology.induction_day_length_curve` | x = 낮 길이 h | `[[8,1],[11.5,1],[12.5,0.6],[13.5,0.1],[14,0]]` | 단일 식물. 봄 장일에서 분화가 멈춰 작기가 자연히 끝나요 |
 | `phenology.induction_temp_curve` | x = 하우스 기온 °C | `[[3,0],[8,0.5],[12,1],[22,1],[26,0.3],[30,0]]` | 저온(10~20 °C)에서 촉진, 고온에서 억제 |
-| `phenology.induction_nitrogen_curve` | x = 체내 N 비율(체내 N / 요구량) | `[[0,1],[1.0,1],[1.15,0.6],[1.3,0.25]]` | 질소 과다로 분화 지연 (계획서 5장) |
+| `phenology.induction_nitrogen_curve` | x = 체내 N 비율(체내 N / 요구량, 요구량에는 관부·과실 포함) | `[[0,1],[1.1,1],[1.3,0.6],[1.5,0.25]]` | 질소 과다로 분화 지연 (계획서 5장). (2026-11-18 프로토타입 점검으로 조정: 이전 `[[0,1],[1.0,1],[1.15,0.6],[1.3,0.25]]`. 체내 N 비율이 쉽게 포화해 분화를 막던 문제(1차 점검)에 맞춘 조정) |
 | `phenology.truss_base_temp_degC` | 화방 발달 적산온도 기준 | 5 | |
-| `phenology.truss_degree_days_to_anthesis` | 분화 → 개화 적산온도 | 600 | °C·일. 가을 약 35~40일 |
+| `phenology.truss_degree_days_to_anthesis` | 분화 → 개화 적산온도 | 350 | °C·일. 가을 약 35~40일 (2026-11-18 프로토타입 점검으로 조정: 이전 600. 화방이 너무 느려 수확이 늦었어요) |
 | `phenology.flowers_per_truss_curve` | x = 포기당 관부 건물 g, y = 포기당 꽃 수 | `[[1,6],[3,12],[6,18],[10,22]]` | 관부가 굵을수록 꽃이 많아요 |
 | `house.temp_mean_relax_rate_per_hour` | 이동 평균의 시간당 완화 비율 | 0.042 | 약 1/24 |
 
 ### 모종 등급 (`[[seedling_grade]]`, ADR-0006)
 
-| id | 포기당 잎 g | 포기당 관부 g | 포기당 뿌리 g | 초기 화아분화 진행도 | 근거 |
+| id | 포기당 잎 g | 포기당 관부 g | 포기당 뿌리 g | 초기 화아분화 진행도 `initial_induction_index` | 근거 |
 | --- | --- | --- | --- | --- | --- |
-| `A` | 4.0 | 3.0 | 2.0 | 0.8 | 화아분화가 거의 된 큰 모종. 게임용 임의값 |
-| `B` | 3.5 | 2.0 | 1.5 | 0.4 | 보통 모종 |
-| `C` | 2.5 | 1.2 | 1.0 | 0.0 | 작고 늦은 모종 |
+| `A` | 4.0 | 3.0 | 2.0 | 1.0 | 화아분화가 끝난 큰 모종. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정: 이전 0.8) |
+| `B` | 3.5 | 2.0 | 1.5 | 0.8 | 보통 모종 (2026-11-18 프로토타입 점검으로 조정: 이전 0.4) |
+| `C` | 2.5 | 1.2 | 1.0 | 0.3 | 작고 늦은 모종 (2026-11-18 프로토타입 점검으로 조정: 이전 0.0) |
 
 - 모종 가격은 경제(M7)에서 붙여요.
+- `initial_induction_index`의 검증 범위는 [0, 1]이에요. 1은 "분화 완료 모종"이라 활착이 끝나면 곧바로 첫 화방이 생겨요. 촉성 재배 모종은 정식 때 이미 꽃눈이 분화돼 있어서 점검에서 값을 올렸어요(A·B·C가 1.0·0.8·0.3).
 - 시나리오 `[crop]`은 M2의 `leaf_g_per_m2`, `root_g_per_m2` 대신 `seedling_grade`, `plants_per_m2`를 받아요. 정식 시 기관별 건물 = 포기당 값 × 재식 밀도, 체내 양분 = 적정 농도 × 건물(M2 규칙 그대로).
 
 ## 프로세스 (셀 단계 h1, 작물이 살아 있을 때, 생장 계산 앞)
@@ -76,7 +83,8 @@ establishment += establishment_rate × establishment_temp_curve(house_air)     (
 growth_factor_establish = establishment_growth_curve(establishment)
 ```
 
-- `growth_factor_establish`는 생장과 흡수 능력에 곱해요([strawberry-fruit](strawberry-fruit.md) 생장, strawberry-minimal 흡수). 활착 전에는 화아분화가 진행되지 않아요.
+- `growth_factor_establish`는 생장과 흡수 능력에 곱해요([strawberry-fruit](strawberry-fruit.md) 생장, [strawberry-minimal](strawberry-minimal.md) 흡수). **N·P·K·Ca·Mg·Mn 모든 원소의 흡수 능력**에 곱해져요(N 전용 능력 포함). 활착 전에는 화아분화가 진행되지 않아요.
+- 활착 시작값이 시나리오마다 달라요: `initial_establishment_index`는 시나리오 `[crop]`의 필수 키예요([m4-overview](m4-overview.md) "시나리오 TOML"). 작기 시나리오는 0에서 시작하고, M2·M3 시나리오와 이미 자란 작물 테스트는 1이에요.
 
 ### 2. 화아분화
 
@@ -120,8 +128,10 @@ if development ≥ 1 and not opened: 개화 → 꽃 만들기 ([strawberry-fruit
 | 체내 N 비율 1.0 대 1.3 | 1.3에서 진행이 느림 |
 | 진행도가 1을 넘음 | 화방 1개 추가, 남는 진행도 이월 |
 | 관부가 큼 | 새 화방의 꽃 수가 많음 |
-| 적산온도 600 °C·일 도달 | 개화, 꽃(과실) 생성 |
+| 적산온도 350 °C·일 도달 | 개화, 꽃(과실) 생성 |
 | 모종 A 대 C | 초기 화아분화 진행도·건물이 A가 큼 |
+| `initial_induction_index` 1.2 또는 −0.1 | 검증에서 거부 (범위 [0, 1]) |
+| 활착 시작값 1 대 0 | 1 쪽은 활착 배율 1로 바로 생장·흡수, 0 쪽은 약 10일에 걸쳐 올라감 |
 
 ## 단순화와 비목표
 
