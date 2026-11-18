@@ -288,6 +288,18 @@ inline sim::Params test_params() {
     return p;
 }
 
+// 호흡·낙엽을 끈 파라미터 (M4). M4 작물 갱신은 낙엽, 뿌리 고사, 음의 순생장 수축, 낙과를 한 호출 안에서 차례로 하므로
+// (strawberry-fruit 7번) 단위 테스트가 흡수·분배·고사 중 하나만 따로 보려면 나머지를 0으로 둬야 해요.
+inline sim::Params quiet_params() {
+    sim::Params p = test_params();
+    p.crop.maintenance_rate_leaf_per_hour = 0.0;
+    p.crop.maintenance_rate_crown_per_hour = 0.0;
+    p.crop.maintenance_rate_root_per_hour = 0.0;
+    p.crop.maintenance_rate_fruit_per_hour = 0.0;
+    p.crop.leaf_senescence_rate_per_hour = 0.0;
+    return p;
+}
+
 // m1-overview.md "시나리오 TOML" 예시와 같은 균일 토양
 inline sim::SoilInit test_soil() {
     return sim::SoilInit{
@@ -401,6 +413,22 @@ inline std::uint64_t must_enqueue(sim::World& world, sim::Command command) {
         throw std::runtime_error(seq.error().message);
     }
     return *seq;
+}
+
+// M4 작물 갱신용 환경 (이동 평균 = 기온, CO2 400 ppm = 배율 1). 일사 0이면 밤
+inline sim::process::CropEnvironment crop_env(double inside_solar_W_per_m2, double air_degC, int day_of_year = 1,
+                                              std::uint64_t tick = 0) {
+    return sim::process::CropEnvironment{.inside_solar_W_per_m2 = inside_solar_W_per_m2,
+                                         .house_air_temp_degC = air_degC,
+                                         .house_air_temp_mean_degC = air_degC,
+                                         .house_co2_ppm = 400.0,
+                                         .day_of_year = day_of_year,
+                                         .tick = tick};
+}
+
+// 시나리오 시드의 생물 변이 스트림 (ADR-0004)
+inline sim::Pcg32 biology_rng(std::uint64_t seed) {
+    return sim::make_stream(seed, static_cast<std::uint64_t>(sim::RngStream::Biology));
 }
 
 }  // namespace test

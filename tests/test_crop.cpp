@@ -2,6 +2,7 @@
 // 작물: docs/spec/strawberry-minimal.md "테스트 (단위)"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
@@ -70,14 +71,15 @@ std::optional<sim::PlantDiedEvent> run_until_death(sim::Crop& crop, sim::SoilCel
     return std::nullopt;
 }
 
-// 체내 양분을 사치 흡수 한도(적정 농도 x 배율)에 맞춰 흡수가 0이 되게 해요
+// 체내 양분을 사치 흡수 한도(요구량 x 배율)에 맞춰 흡수가 0이 되게 해요.
+// M4: 요구량에 관부·과실이 들어가고(strawberry-fruit 8번), N은 자기 상한(n_luxury_uptake_ratio)을 가져요.
 void fill_to_luxury(sim::Crop& crop, const sim::CropParams& cp) {
-    const double biomass = crop.leaf_g_per_m2 + crop.root_g_per_m2;
-    crop.plant_N_g_per_m2 = cp.target_N_g_per_g * cp.luxury_uptake_ratio * biomass;
-    crop.plant_P_g_per_m2 = cp.target_P_g_per_g * cp.luxury_uptake_ratio * biomass;
-    crop.plant_K_g_per_m2 = cp.target_K_g_per_g * cp.luxury_uptake_ratio * biomass;
-    crop.plant_Ca_g_per_m2 = cp.target_Ca_g_per_g * cp.luxury_uptake_ratio * biomass;
-    crop.plant_Mg_g_per_m2 = cp.target_Mg_g_per_g * cp.luxury_uptake_ratio * biomass;
+    const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(crop, cp);
+    crop.plant_N_g_per_m2 = required.N * cp.n_luxury_uptake_ratio;
+    crop.plant_P_g_per_m2 = required.P * cp.luxury_uptake_ratio;
+    crop.plant_K_g_per_m2 = required.K * cp.luxury_uptake_ratio;
+    crop.plant_Ca_g_per_m2 = required.Ca * cp.luxury_uptake_ratio;
+    crop.plant_Mg_g_per_m2 = required.Mg * cp.luxury_uptake_ratio;
 }
 
 bool finite_non_negative(double v) { return std::isfinite(v) && v >= 0.0; }
@@ -119,23 +121,64 @@ TEST_CASE("Crop water and salt factors fall with drought and salinity", "[unit][
     CHECK(stressed.salt < wet.salt);
 }
 
-// 밤 (일사 0): 생장 0, 증산 0
-TEST_CASE("Crop at night has zero growth and zero transpiration", "[unit][crop]") {
-    const sim::Params params = test::test_params();
+// 밤 (일사 0, M4): 총생산 0이고 순생장은 유지 호흡만큼 음수예요. 잎·관부·뿌리가 건물 비율대로 줄고,
+// 과실은 줄지 않고, 체내 양분은 그대로예요. 증산은 0. (이전: 밤 생장 0, 기관 건물 그대로)
+TEST_CASE("Crop at night has negative net growth shrinking vegetative organs and zero transpiration",
+          "[unit][crop]") {
+    // 낙엽은 같은 호출 안에서 일어나므로 끄고 호흡 수축만 봐요
+    sim::Params params = test::test_params();
+    params.crop.leaf_senescence_rate_per_hour = 0.0;
     sim::SoilCell cell = test::test_cell();
     sim::Crop crop = make_crop(params);
-    const double leaf_before = crop.leaf_g_per_m2;
-    const double root_before = crop.root_g_per_m2;
+    sim::Fruit fruit;  // 진행도가 낙과 구간(0.35) 위인 착과 과실 하나: 줄어들지 않아야 해요
+    fruit.set = true;
+    fruit.rank = 0;
+    fruit.potential_fresh_g = 20.0;
+    fruit.development_index = 0.5;
+    fruit.dry_g = 0.7;
+    crop.fruits.push_back(fruit);
+    const sim::Crop before = crop;
+    const sim::SoilCell cell_before = cell;
     sim::Ledger ledger;
 
     const auto factors = sim::process::water_salt_factors(cell, params.crop);
     CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kNightSolar_W_per_m2, factors) == 0.0);
     CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kDaySolar_W_per_m2, factors) > 0.0);
 
-    CHECK_FALSE(step(crop, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger));
-    CHECK(crop.last_growth_g_per_m2 == 0.0);
-    CHECK(crop.leaf_g_per_m2 == leaf_before);
-    CHECK(crop.root_g_per_m2 == root_before);
+    // 유효량 0: 흡수 없음
+    CHECK_FALSE(step(crop, cell, params, sim::process::NutrientAvailability{}, kNightSolar_W_per_m2, ledger));
+    const sim::CropParams& cp = params.crop;
+    const double expected_respiration =
+        (before.leaf_g_per_m2 * cp.maintenance_rate_leaf_per_hour +
+         before.crown_g_per_m2 * cp.maintenance_rate_crown_per_hour +
+         before.root_g_per_m2 * cp.maintenance_rate_root_per_hour +
+         before.fruit_g_per_m2() * cp.maintenance_rate_fruit_per_hour) *
+        cp.maintenance_temp_curve(kOptimalAir_degC);
+    REQUIRE(expected_respiration > 0.0);
+    CHECK(crop.last_gross_g_per_m2 == 0.0);
+    CHECK_THAT(crop.last_respiration_g_per_m2, WithinRel(expected_respiration, kRelTol));
+    CHECK_THAT(crop.last_growth_g_per_m2, WithinRel(-expected_respiration, kRelTol));
+    CHECK(crop.last_growth_g_per_m2 < 0.0);
+
+    // 부족분은 영양 기관에서 건물 비율대로: 세 기관이 같은 비율로 줄어요
+    const double vegetative_before = before.leaf_g_per_m2 + before.crown_g_per_m2 + before.root_g_per_m2;
+    const double keep = 1.0 - expected_respiration / vegetative_before;
+    CHECK_THAT(crop.leaf_g_per_m2, WithinRel(before.leaf_g_per_m2 * keep, kRelTol));
+    CHECK_THAT(crop.crown_g_per_m2, WithinRel(before.crown_g_per_m2 * keep, kRelTol));
+    CHECK_THAT(crop.root_g_per_m2, WithinRel(before.root_g_per_m2 * keep, kRelTol));
+    // 과실은 줄이지 않아요
+    REQUIRE(crop.fruits.size() == 1);
+    CHECK(crop.fruits[0].dry_g == before.fruits[0].dry_g);
+    // 체내 양분은 그대로, 토양도 그대로 (탄소는 공기로 나가 장부 밖)
+    CHECK(crop.plant_N_g_per_m2 == before.plant_N_g_per_m2);
+    CHECK(crop.plant_P_g_per_m2 == before.plant_P_g_per_m2);
+    CHECK(crop.plant_K_g_per_m2 == before.plant_K_g_per_m2);
+    CHECK(crop.plant_Ca_g_per_m2 == before.plant_Ca_g_per_m2);
+    CHECK(crop.plant_Mg_g_per_m2 == before.plant_Mg_g_per_m2);
+    CHECK(cell.labile_C_g_per_m2 == cell_before.labile_C_g_per_m2);
+    CHECK(ledger.C_leaf_litter_g == 0.0);
+    // 크기 충족도 이동 평균은 순생장 <= 0인 틱에 그대로예요
+    CHECK(crop.size_satisfaction_mean == before.size_satisfaction_mean);
 }
 
 // 같은 조건에서 잎이 많으면 받는 빛이 늘어 생장량 증가
@@ -194,7 +237,10 @@ TEST_CASE("Crop product stress combination grows no more than minimum", "[unit][
 
 // 유효 P만 부족: 자라면서 P 충족도가 떨어지고 stress_hours의 P만 증가
 TEST_CASE("Crop with only P unavailable loses P sufficiency and records P stress", "[unit][crop]") {
-    const sim::Params params = test::test_params();
+    // M4: N은 느린 전용 흡수 속도(0.00006)를 가져서 자라는 동안 N 충족도도 내려갈 수 있어요.
+    // 이 테스트는 P만 따로 보려고 N 속도를 일반 속도와 같게 둬요 (N 전용 속도는 "N uptake uses its own rate" 테스트).
+    sim::Params params = test::test_params();
+    params.crop.n_uptake_rate_per_g_root_per_hour = params.crop.uptake_rate_per_g_root_per_hour;
     sim::SoilCell cell = test::test_cell();
     sim::Crop crop = make_crop(params);
     sim::Ledger ledger;
@@ -246,18 +292,18 @@ TEST_CASE("Crop stress hours tie goes to the earlier factor", "[unit][crop]") {
     CHECK(crop.stress_hours[idx(sim::StressFactor::Root)] == 0.0);
 }
 
-// 체내 양분이 목표의 1.3배면 흡수 0
+// 체내 양분이 요구량의 사치 상한이면 흡수 0 (M4: 요구량에 관부·과실 포함, N 상한은 1.2배·나머지 1.3배)
 TEST_CASE("Crop at luxury nutrient content takes up nothing", "[unit][crop]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();  // 낙엽·호흡이 체내 비율을 흔들지 않게
     sim::SoilCell cell = test::test_cell();
     sim::Crop crop = make_crop(params);
-    const double biomass = crop.leaf_g_per_m2 + crop.root_g_per_m2;
-    const double luxury = params.crop.luxury_uptake_ratio;
-    crop.plant_N_g_per_m2 = params.crop.target_N_g_per_g * luxury * biomass;
-    crop.plant_P_g_per_m2 = params.crop.target_P_g_per_g * luxury * biomass;
-    crop.plant_K_g_per_m2 = params.crop.target_K_g_per_g * luxury * biomass;
-    crop.plant_Ca_g_per_m2 = params.crop.target_Ca_g_per_g * luxury * biomass;
-    crop.plant_Mg_g_per_m2 = params.crop.target_Mg_g_per_g * luxury * biomass;
+    sim::Fruit fruit;  // 과실 K 요구량도 요구량에 들어가요
+    fruit.set = true;
+    fruit.potential_fresh_g = 20.0;
+    fruit.development_index = 0.5;
+    fruit.dry_g = 1.0;
+    crop.fruits.push_back(fruit);
+    fill_to_luxury(crop, params.crop);
     const sim::SoilCell cell_before = cell;
     sim::Ledger ledger;
 
@@ -273,7 +319,52 @@ TEST_CASE("Crop at luxury nutrient content takes up nothing", "[unit][crop]") {
 
     const auto status = sim::process::nutrient_status(crop, params.crop);
     CHECK(status.sufficiency_N == 1.0);
-    CHECK_THAT(status.excess_N, WithinRel(luxury - 1.0, 1e-9));
+    // N 과잉 지수는 N 전용 상한 0.2, 나머지는 일반 사치 상한 0.3
+    CHECK_THAT(status.excess_N, WithinRel(params.crop.n_luxury_uptake_ratio - 1.0, 1e-9));
+    CHECK_THAT(status.excess_K, WithinRel(params.crop.luxury_uptake_ratio - 1.0, 1e-9));
+    CHECK_THAT(status.excess_Ca, WithinRel(params.crop.luxury_uptake_ratio - 1.0, 1e-9));
+}
+
+// N은 자기 흡수 속도와 활착 배율을 가진다 (strawberry-fruit 8번, strawberry-minimal 3번)
+TEST_CASE("N uptake uses its own rate the establishment factor and its own luxury cap", "[unit][crop]") {
+    const sim::Params params = test::quiet_params();
+    const sim::CropParams& cp = params.crop;
+    const auto run = [&](const sim::Params& p, double establishment_index) {
+        sim::SoilCell cell = test::test_cell();
+        sim::Crop crop = make_crop(p);
+        crop.establishment_index = establishment_index;
+        crop.plant_N_g_per_m2 = 0.0;  // 수요가 충분히 큼
+        sim::Ledger ledger;
+        const sim::process::NutrientAvailability available{.nh4_N = 0.0, .no3_N = 0.5, .p = 0.0, .k = 0.0,
+                                                           .ca = 0.0, .mg = 0.0, .mn = 0.0};
+        (void)step(crop, cell, p, available, kNightSolar_W_per_m2, ledger);
+        return ledger.N_uptake_g;
+    };
+    const double root = make_crop(params).root_g_per_m2;
+    // 식: 유효량 x min(1, N 전용 속도 x 뿌리 x 건강도) x water x salt x 활착 배율 (활착 1: 배율 1)
+    const double base = run(params, 1.0);
+    CHECK(base == Catch::Approx(0.5 * std::min(1.0, cp.n_uptake_rate_per_g_root_per_hour * root)));
+    CHECK(cp.n_uptake_rate_per_g_root_per_hour < cp.uptake_rate_per_g_root_per_hour);
+    // N 전용 속도만 2배 -> 2배, 일반 속도를 바꿔도 N 흡수는 그대로
+    sim::Params fast_n = params;
+    fast_n.crop.n_uptake_rate_per_g_root_per_hour *= 2.0;
+    CHECK(run(fast_n, 1.0) == Catch::Approx(2.0 * base));
+    sim::Params fast_general = params;
+    fast_general.crop.uptake_rate_per_g_root_per_hour *= 3.0;
+    CHECK(run(fast_general, 1.0) == base);
+    // 활착 0에서 시작: 이번 틱 활착 정도가 0.0042 올라간 뒤의 활착 배율이 능력에 곱해져요
+    const double index = params.phenology.establishment_rate_per_hour *
+                         params.phenology.establishment_temp_curve(kOptimalAir_degC);
+    const double factor = params.phenology.establishment_growth_curve(index);
+    REQUIRE(factor < 0.5);
+    CHECK(run(params, 0.0) == Catch::Approx(base * factor));
+    // 체내 N이 요구량의 n_luxury_uptake_ratio(1.2)에 닿으면 수요 0
+    sim::SoilCell cell = test::test_cell();
+    sim::Crop capped = make_crop(params);
+    capped.plant_N_g_per_m2 = sim::process::nutrient_requirement(capped, cp).N * cp.n_luxury_uptake_ratio;
+    sim::Ledger ledger;
+    (void)step(capped, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger);
+    CHECK(ledger.N_uptake_g == 0.0);
 }
 
 // 뿌리 건강도 0.5: 흡수 능력 절반
@@ -354,7 +445,8 @@ TEST_CASE("Crop with zero N availability takes up no N", "[unit][crop]") {
     CHECK(std::isfinite(crop.plant_N_g_per_m2));
 }
 
-// 원소별 보존: 토양 풀 + 체내 풀이 update_crop 전후로 같음, 장부 흡수량 = 체내 증가량
+// 원소별 보존 (M4): 토양 풀 + 체내 풀이 update_crop 전후로 같고, 낙엽(토양으로 돌아감)이 수지에 들어가요.
+// 체내 증가량 = 장부 흡수량 - 낙엽으로 돌려준 양 (이전: 체내 증가량 = 장부 흡수량)
 TEST_CASE("Crop uptake conserves soil plus plant pools for every element", "[unit][crop][conservation]") {
     const sim::Params params = test::test_params();
     sim::SoilCell cell = test::test_cell();
@@ -362,6 +454,7 @@ TEST_CASE("Crop uptake conserves soil plus plant pools for every element", "[uni
     sim::Ledger ledger;
     const ElementTotals initial = soil_plus_plant(cell, crop);
     const sim::Crop crop_initial = crop;
+    const sim::SoilCell cell_initial = cell;
 
     for (int t = 0; t < 240; ++t) {
         const double solar = (t % 24 >= 6 && t % 24 < 18) ? kDaySolar_W_per_m2 : kNightSolar_W_per_m2;
@@ -374,23 +467,36 @@ TEST_CASE("Crop uptake conserves soil plus plant pools for every element", "[uni
         REQUIRE_THAT(now.Mg, WithinRel(initial.Mg, kRelTol));
     }
     REQUIRE(ledger.N_uptake_g > 0.0);
-    CHECK_THAT(crop.plant_N_g_per_m2 - crop_initial.plant_N_g_per_m2, WithinRel(ledger.N_uptake_g, 1e-9));
-    CHECK_THAT(crop.plant_P_g_per_m2 - crop_initial.plant_P_g_per_m2, WithinRel(ledger.P_uptake_g, 1e-9));
-    CHECK_THAT(crop.plant_K_g_per_m2 - crop_initial.plant_K_g_per_m2, WithinRel(ledger.K_uptake_g, 1e-9));
-    CHECK_THAT(crop.plant_Ca_g_per_m2 - crop_initial.plant_Ca_g_per_m2, WithinRel(ledger.Ca_uptake_g, 1e-9));
-    CHECK_THAT(crop.plant_Mg_g_per_m2 - crop_initial.plant_Mg_g_per_m2, WithinRel(ledger.Mg_uptake_g, 1e-9));
+    // 240틱 안에 수확은 없어요 (화방이 아직 안 핌)
+    CHECK(ledger.N_harvested_g == 0.0);
+    CHECK(ledger.K_harvested_g == 0.0);
+    // N: 낙엽 N은 이분해성 유기 N으로만 돌아가므로 따로 셀 수 있어요
+    const double litter_N = cell.labile_N_g_per_m2 - cell_initial.labile_N_g_per_m2;
+    CHECK(litter_N > 0.0);
+    CHECK_THAT(crop.plant_N_g_per_m2 - crop_initial.plant_N_g_per_m2, WithinRel(ledger.N_uptake_g - litter_N, 1e-9));
+    // 낙엽 C가 장부와 토양 이분해성 C에 같은 양으로 들어가요
+    CHECK(ledger.C_leaf_litter_g > 0.0);
+    CHECK(ledger.C_root_litter_g == 0.0);
+    CHECK_THAT(cell.labile_C_g_per_m2 - cell_initial.labile_C_g_per_m2, WithinRel(ledger.C_leaf_litter_g, 1e-9));
+    // 토양에서 빠진 양 = 흡수량 - 돌려받은 양: 총량이 보존되므로 체내 변화와 토양 변화의 합은 0
+    CHECK_THAT((crop.plant_P_g_per_m2 - crop_initial.plant_P_g_per_m2) + (cell.p_g_per_m2 - cell_initial.p_g_per_m2),
+               Catch::Matchers::WithinAbs(0.0, 1e-9));
+    CHECK_THAT((crop.plant_K_g_per_m2 - crop_initial.plant_K_g_per_m2) + (cell.k_g_per_m2 - cell_initial.k_g_per_m2),
+               Catch::Matchers::WithinAbs(0.0, 1e-9));
 }
 
-// 흡수량은 유효량·요구량·토양 풀을 넘지 않음
+// 흡수량은 유효량·요구량·토양 풀을 넘지 않음 (M4: 요구량에 관부·과실 포함, N 상한 1.2배)
 TEST_CASE("Crop uptake never exceeds availability, demand or the soil pool", "[unit][crop]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();  // 호흡·낙엽이 요구량을 틱 안에서 바꾸지 않게
     const auto check_bounds = [&](sim::Crop crop, sim::SoilCell cell,
                                   const sim::process::NutrientAvailability& available) {
-        const double biomass = crop.leaf_g_per_m2 + crop.root_g_per_m2;
-        const double luxury = params.crop.luxury_uptake_ratio;
-        const double demand_N = std::max(0.0, params.crop.target_N_g_per_g * luxury * biomass - crop.plant_N_g_per_m2);
-        const double demand_P = std::max(0.0, params.crop.target_P_g_per_g * luxury * biomass - crop.plant_P_g_per_m2);
-        const double demand_K = std::max(0.0, params.crop.target_K_g_per_g * luxury * biomass - crop.plant_K_g_per_m2);
+        const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(crop, params.crop);
+        const double demand_N =
+            std::max(0.0, required.N * params.crop.n_luxury_uptake_ratio - crop.plant_N_g_per_m2);
+        const double demand_P =
+            std::max(0.0, required.P * params.crop.luxury_uptake_ratio - crop.plant_P_g_per_m2);
+        const double demand_K =
+            std::max(0.0, required.K * params.crop.luxury_uptake_ratio - crop.plant_K_g_per_m2);
         const sim::SoilCell before = cell;
         sim::Ledger ledger;
         (void)step(crop, cell, params, available, kNightSolar_W_per_m2, ledger);
@@ -414,7 +520,7 @@ TEST_CASE("Crop uptake never exceeds availability, demand or the soil pool", "[u
 
     SECTION("availability limits a hungry crop with a huge root") {
         sim::Crop crop = make_crop(params);
-        crop.root_g_per_m2 = 5000.0;  // rate × root ≥ 1 → 능력 = 유효량 전체
+        crop.root_g_per_m2 = 5000.0;  // 능력 = 속도 x 뿌리가 1 이상 -> 유효량 전체 (N은 0.00006 x 5000 = 0.3)
         crop.plant_N_g_per_m2 = 0.0;
         crop.plant_P_g_per_m2 = 0.0;
         crop.plant_K_g_per_m2 = 0.0;
@@ -424,12 +530,11 @@ TEST_CASE("Crop uptake never exceeds availability, demand or the soil pool", "[u
     SECTION("demand limits a well-fed crop in rich soil") {
         sim::Crop crop = make_crop(params);
         crop.root_g_per_m2 = 5000.0;
-        // 사치 흡수 상한 바로 아래: 요구량이 유효량보다 훨씬 작음
-        const double biomass = crop.leaf_g_per_m2 + crop.root_g_per_m2;
-        const double near_luxury = 0.999 * params.crop.luxury_uptake_ratio * biomass;
-        crop.plant_N_g_per_m2 = params.crop.target_N_g_per_g * near_luxury;
-        crop.plant_P_g_per_m2 = params.crop.target_P_g_per_g * near_luxury;
-        crop.plant_K_g_per_m2 = params.crop.target_K_g_per_g * near_luxury;
+        // 사치 흡수 상한 바로 아래: 요구량이 유효량보다 훨씬 작음 (N 상한 1.2, 나머지 1.3)
+        const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(crop, params.crop);
+        crop.plant_N_g_per_m2 = 0.999 * params.crop.n_luxury_uptake_ratio * required.N;
+        crop.plant_P_g_per_m2 = 0.999 * params.crop.luxury_uptake_ratio * required.P;
+        crop.plant_K_g_per_m2 = 0.999 * params.crop.luxury_uptake_ratio * required.K;
         const sim::SoilCell cell = test::test_cell();
         check_bounds(crop, cell, full_availability(cell));
     }
@@ -544,25 +649,53 @@ TEST_CASE("Crop root health recovers toward one without damage", "[unit][crop]")
     CHECK(crop.root_health > 0.99);
 }
 
-// 손상 없음: 뿌리 건물은 줄지 않음 (밤이라 생장도 없음)
-TEST_CASE("Crop root mass does not shrink without damage", "[unit][crop][dieback]") {
-    const sim::Params params = test::test_params();
-    sim::SoilCell cell = test::test_cell();
-    sim::Crop crop = make_crop(params);
-    crop.root_health = 0.5;
-    const double root_before = crop.root_g_per_m2;
-    sim::Ledger ledger;
-    (void)step(crop, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger);
-    CHECK(crop.root_g_per_m2 == root_before);
-    CHECK(ledger.C_root_litter_g == 0.0);
+// 손상 없음 (M4): 뿌리가 고사하지 않아요. 호흡·낙엽을 끄면 뿌리 건물이 그대로이고, 켜면 호흡 수축만 있어요.
+// 수축은 탄소가 공기로 나가는 것이라 뿌리 낙엽 C 장부는 0이에요. (이전: 밤에 뿌리 건물이 그대로)
+TEST_CASE("Crop root mass does not die back without damage", "[unit][crop][dieback]") {
+    {
+        const sim::Params params = test::quiet_params();
+        sim::SoilCell cell = test::test_cell();
+        sim::Crop crop = make_crop(params);
+        crop.root_health = 0.5;
+        const double root_before = crop.root_g_per_m2;
+        sim::Ledger ledger;
+        (void)step(crop, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger);
+        CHECK(crop.root_g_per_m2 == root_before);
+        CHECK(ledger.C_root_litter_g == 0.0);
+    }
+    {
+        const sim::Params params = test::test_params();
+        sim::SoilCell cell = test::test_cell();
+        sim::Crop crop = make_crop(params);
+        crop.root_health = 0.5;
+        const sim::Crop before = crop;
+        sim::Ledger ledger;
+        (void)step(crop, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger);
+        // 호흡 수축뿐: 건물 비율대로 줄고 토양으로 가지 않아요
+        const double keep = 1.0 - crop.last_respiration_g_per_m2 / (before.leaf_g_per_m2 + before.crown_g_per_m2 +
+                                                                      before.root_g_per_m2);
+        CHECK_THAT(crop.root_g_per_m2, WithinRel(before.root_g_per_m2 * keep, kRelTol));
+        CHECK(ledger.C_root_litter_g == 0.0);
+    }
 }
 
 // 손상 있음: 뿌리 건물이 root x min(1, damage) x dieback만큼 줄고, 그 몫의 양분·C가 토양으로 (원소·C 보존)
+// M4: 몫(share)의 분모에 관부·과실이 들어가요. 호흡·낙엽은 끄고 고사만 봐요. (이전: 분모 = 잎 + 뿌리)
 TEST_CASE("Crop root dieback moves root mass nutrients and carbon to the soil", "[unit][crop][dieback][conservation]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();
     sim::SoilCell cell = test::test_cell();
     cell.aeration_index = 0.0;  // 과습 손상
     sim::Crop crop = make_crop(params);
+    const bool with_fruit = GENERATE(false, true);
+    INFO("with fruit " << with_fruit);
+    if (with_fruit) {
+        sim::Fruit fruit;
+        fruit.set = true;
+        fruit.potential_fresh_g = 20.0;
+        fruit.development_index = 0.5;
+        fruit.dry_g = 2.0;
+        crop.fruits.push_back(fruit);
+    }
     fill_to_luxury(crop, params.crop);  // 흡수 0: 변화는 뿌리 고사만
     const sim::Crop before = crop;
     const sim::SoilCell cell_before = cell;
@@ -573,9 +706,11 @@ TEST_CASE("Crop root dieback moves root mass nutrients and carbon to the soil", 
     const double damage = params.root_damage.waterlog_curve(cell_before.aeration_index);
     REQUIRE(damage > 0.0);
     const double dead_root = before.root_g_per_m2 * std::min(1.0, damage) * params.crop.root_dieback_per_damage;
-    const double share = dead_root / (before.leaf_g_per_m2 + before.root_g_per_m2);
+    const double share = dead_root / (before.leaf_g_per_m2 + before.crown_g_per_m2 + before.root_g_per_m2 +
+                                      before.fruit_g_per_m2());
     CHECK_THAT(crop.root_g_per_m2, WithinRel(before.root_g_per_m2 - dead_root, kRelTol));
     CHECK(crop.leaf_g_per_m2 == before.leaf_g_per_m2);
+    CHECK(crop.crown_g_per_m2 == before.crown_g_per_m2);
     CHECK_THAT(crop.plant_N_g_per_m2, WithinRel(before.plant_N_g_per_m2 * (1.0 - share), 1e-9));
     CHECK_THAT(crop.plant_Mg_g_per_m2, WithinRel(before.plant_Mg_g_per_m2 * (1.0 - share), 1e-9));
     // 밤이라 흡수 없음: 토양 풀이 정확히 그 몫만큼 늘어요
@@ -616,8 +751,9 @@ TEST_CASE("Crop root dieback is applied on the tick the plant dies", "[unit][cro
 }
 
 // dieback = 0: 뿌리 건물 변화 없음 (M2 초안 동작)
+// M4: 호흡 수축·낙엽은 끄고 고사만 0으로 봐요
 TEST_CASE("Crop root mass is unchanged when dieback is zero", "[unit][crop][dieback]") {
-    sim::Params params = test::test_params();
+    sim::Params params = test::quiet_params();
     params.crop.root_dieback_per_damage = 0.0;
     sim::SoilCell cell = test::test_cell();
     cell.aeration_index = 0.0;
@@ -680,11 +816,20 @@ TEST_CASE("Dead crop does not grow, take up or transpire", "[unit][crop]") {
     CHECK(absent == sim::Crop{});
 }
 
-// 건물량 0이어도 충족도·과잉 지수가 유한
+// 건물량 0이어도 충족도·과잉 지수가 유한 (M4: 건물량 = 잎 + 관부 + 뿌리, 과실 포함 요구량)
 TEST_CASE("Crop nutrient status is finite with zero biomass", "[unit][crop]") {
     const sim::Params params = test::test_params();
     sim::Crop crop = make_crop(params);
+    // 관부만 남아도 요구량이 있어요 (요구량에 관부 포함): 체내 양분이 많으면 과잉 지수가 양수
+    sim::Crop crown_only = crop;
+    crown_only.leaf_g_per_m2 = 0.0;
+    crown_only.root_g_per_m2 = 0.0;
+    const auto crown_status = sim::process::nutrient_status(crown_only, params.crop);
+    CHECK_THAT(crown_status.excess_N, WithinRel(crop.plant_N_g_per_m2 / (params.crop.target_N_g_per_g * crop.crown_g_per_m2) - 1.0, 1e-9));
+    CHECK(crown_status.excess_N > 0.0);
+
     crop.leaf_g_per_m2 = 0.0;
+    crop.crown_g_per_m2 = 0.0;
     crop.root_g_per_m2 = 0.0;
     const auto status = sim::process::nutrient_status(crop, params.crop);
     CHECK(status.sufficiency_N == 1.0);
@@ -738,6 +883,7 @@ TEST_CASE("Crop stays finite and non-negative under extreme inputs", "[unit][cro
     }
 
     CHECK(finite_non_negative(crop.leaf_g_per_m2));
+    CHECK(finite_non_negative(crop.crown_g_per_m2));
     CHECK(finite_non_negative(crop.root_g_per_m2));
     CHECK(finite_non_negative(crop.root_health));
     CHECK(crop.root_health <= 1.0);
@@ -746,7 +892,14 @@ TEST_CASE("Crop stays finite and non-negative under extreme inputs", "[unit][cro
     CHECK(finite_non_negative(crop.plant_K_g_per_m2));
     CHECK(finite_non_negative(crop.plant_Ca_g_per_m2));
     CHECK(finite_non_negative(crop.plant_Mg_g_per_m2));
-    CHECK(finite_non_negative(crop.last_growth_g_per_m2));
+    // M4: 순생장은 음수일 수 있어요 (호흡이 총생산보다 큰 틱). 유한이면 돼요.
+    CHECK(std::isfinite(crop.last_growth_g_per_m2));
+    CHECK(finite_non_negative(crop.last_gross_g_per_m2));
+    CHECK(finite_non_negative(crop.last_respiration_g_per_m2));
+    CHECK(finite_non_negative(crop.size_satisfaction_mean));
+    for (const sim::Fruit& fruit : crop.fruits) {
+        CHECK(finite_non_negative(fruit.dry_g));
+    }
     for (const double hours : crop.stress_hours) {
         CHECK(finite_non_negative(hours));
     }
@@ -762,12 +915,13 @@ TEST_CASE("Crop stays finite and non-negative under extreme inputs", "[unit][cro
     CHECK(finite_non_negative(status.sufficiency_N));
     CHECK(finite_non_negative(status.excess_N));
 
+    // 보존: 2000틱 동안 익은 과실이 나갔을 수 있어요 (수확 반출). 토양 + 체내 + 반출 = 처음
     const ElementTotals now = soil_plus_plant(cell, crop);
-    CHECK_THAT(now.N, WithinRel(initial.N, kRelTol));
-    CHECK_THAT(now.P, WithinRel(initial.P, kRelTol));
-    CHECK_THAT(now.K, WithinRel(initial.K, kRelTol));
-    CHECK_THAT(now.Ca, WithinRel(initial.Ca, kRelTol));
-    CHECK_THAT(now.Mg, WithinRel(initial.Mg, kRelTol));
+    CHECK_THAT(now.N + ledger.N_harvested_g, WithinRel(initial.N, kRelTol));
+    CHECK_THAT(now.P + ledger.P_harvested_g, WithinRel(initial.P, kRelTol));
+    CHECK_THAT(now.K + ledger.K_harvested_g, WithinRel(initial.K, kRelTol));
+    CHECK_THAT(now.Ca + ledger.Ca_harvested_g, WithinRel(initial.Ca, kRelTol));
+    CHECK_THAT(now.Mg + ledger.Mg_harvested_g, WithinRel(initial.Mg, kRelTol));
 }
 
 // ---- M3: Ca·Mg 전용 흡수 속도, 길항(수요 상한과 하한), 용액 상태 흡수, 곱셈 모드, 뿌리 고사 반환 ----
@@ -797,16 +951,17 @@ sim::process::NutrientAvailability abundant_availability() {
     return {.nh4_N = 0.0, .no3_N = 0.0, .p = 0.0, .k = 0.0, .ca = 2000.0, .mg = 2000.0, .mn = 0.0};
 }
 
-// 목표 농도 × 사치 배율 × 길항 배율 × 건물량
-double luxury_cap_g_per_m2(double target_g_per_g, const sim::Params& params, const sim::Crop& crop, double factor) {
-    return target_g_per_g * params.crop.luxury_uptake_ratio * factor * (crop.leaf_g_per_m2 + crop.root_g_per_m2);
+// 요구량 × 사치 배율 × 길항 배율 (M4: 요구량에 관부·과실 포함)
+double luxury_cap_g_per_m2(double requirement_g_per_m2, const sim::Params& params, double factor) {
+    return requirement_g_per_m2 * params.crop.luxury_uptake_ratio * factor;
 }
 
 }  // namespace
 
 // Ca·Mg는 일반 흡수 속도가 아니라 전용 속도(ca_·mg_uptake_rate)로 능력이 정해진다
 TEST_CASE("Ca and Mg uptake capacity use their own uptake rates", "[unit][crop][m3]") {
-    const sim::Params params = test::test_params();
+    // M4: 밤 호흡이 뿌리를 줄이지 않게 호흡·낙엽을 꺼요 (흡수 능력은 줄어든 뿌리를 읽어요)
+    const sim::Params params = test::quiet_params();
     const auto run = [&](const sim::Params& p) {
         sim::SoilCell cell = cell_with_antagonism_index(p, 0.0, 30.0, 10.0);  // 길항 없음 (K·NH4 용액 0)
         sim::Crop crop = make_crop(p);
@@ -851,32 +1006,32 @@ TEST_CASE("Ca and Mg uptake capacity use their own uptake rates", "[unit][crop][
     CHECK(general.Mg_uptake_g == base.Mg_uptake_g);
 }
 
-// 길항은 수요 상한에도 걸린다: 상한 = 목표 × 1.3 × max(min_demand_factor, 배율) × 건물량. 하한 덕에 흡수가 완전히 멈추지 않는다
+// 길항은 수요 상한에도 걸린다: 상한 = 요구량 × 1.3 × max(min_demand_factor, 배율). 하한 덕에 흡수가 완전히 멈추지 않는다
+// (M4: 요구량에 관부 포함, 호흡·낙엽 끔)
 TEST_CASE("Antagonism lowers the Ca and Mg demand cap down to the minimum demand floor", "[unit][crop][m3]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();
     REQUIRE(params.antagonism.min_demand_factor > params.antagonism.ca_curve(3.0));  // 하한이 쓰이는 영역이 있어야 의미가 있어요
     for (const double index : {0.0, 0.3, 0.7, 3.0}) {
         INFO("antagonism index " << index);
         sim::SoilCell cell = cell_with_antagonism_index(params, index, 100.0, 20.0);
         sim::Crop crop = make_crop(params);
+        const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(crop, params.crop);
         const double ca_factor = std::max(params.antagonism.min_demand_factor, params.antagonism.ca_curve(index));
         const double mg_factor = std::max(params.antagonism.min_demand_factor, params.antagonism.mg_curve(index));
         // 시작 체내량은 어떤 상한보다도 낮게 (수요가 양수)
-        crop.plant_Ca_g_per_m2 = 0.3 * luxury_cap_g_per_m2(params.crop.target_Ca_g_per_g, params, crop, 1.0);
-        crop.plant_Mg_g_per_m2 = 0.3 * luxury_cap_g_per_m2(params.crop.target_Mg_g_per_g, params, crop, 1.0);
+        crop.plant_Ca_g_per_m2 = 0.3 * luxury_cap_g_per_m2(required.Ca, params, 1.0);
+        crop.plant_Mg_g_per_m2 = 0.3 * luxury_cap_g_per_m2(required.Mg, params, 1.0);
         sim::Ledger ledger;
         (void)step(crop, cell, params, abundant_availability(), kNightSolar_W_per_m2, ledger);
         // 능력이 충분하므로 수요 상한(하한 적용 후 배율)까지 정확히 채워져요
-        CHECK(crop.plant_Ca_g_per_m2 ==
-              Catch::Approx(luxury_cap_g_per_m2(params.crop.target_Ca_g_per_g, params, crop, ca_factor)));
-        CHECK(crop.plant_Mg_g_per_m2 ==
-              Catch::Approx(luxury_cap_g_per_m2(params.crop.target_Mg_g_per_g, params, crop, mg_factor)));
+        CHECK(crop.plant_Ca_g_per_m2 == Catch::Approx(luxury_cap_g_per_m2(required.Ca, params, ca_factor)));
+        CHECK(crop.plant_Mg_g_per_m2 == Catch::Approx(luxury_cap_g_per_m2(required.Mg, params, mg_factor)));
     }
 
     // 강한 길항에서도 하한 때문에 흡수가 0이 되지 않는다 (체내 양이 하한 상한보다 낮으면 계속 흡수)
     sim::SoilCell strong = cell_with_antagonism_index(params, 3.0, 100.0, 20.0);
     sim::Crop crop = make_crop(params);
-    crop.plant_Ca_g_per_m2 = 0.5 * luxury_cap_g_per_m2(params.crop.target_Ca_g_per_g, params, crop, 1.0);
+    crop.plant_Ca_g_per_m2 = 0.5 * luxury_cap_g_per_m2(sim::process::nutrient_requirement(crop, params.crop).Ca, params, 1.0);
     sim::Ledger ledger;
     (void)step(crop, strong, params, abundant_availability(), kNightSolar_W_per_m2, ledger);
     CHECK(ledger.Ca_uptake_g > 0.0);
@@ -885,7 +1040,7 @@ TEST_CASE("Antagonism lowers the Ca and Mg demand cap down to the minimum demand
 
 // 길항은 흡수 능력에도 걸리지만 하한은 능력에 적용되지 않는다 (능력 배율 = 곡선값 그대로)
 TEST_CASE("Antagonism factor scales capacity without the floor", "[unit][crop][m3]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();  // M4: 호흡·낙엽을 꺼서 뿌리가 그대로예요
     const double index = 3.0;
     const double curve_ca = params.antagonism.ca_curve(index);
     REQUIRE(curve_ca < params.antagonism.min_demand_factor);
@@ -934,7 +1089,7 @@ TEST_CASE("Antagonism is absent when there is no divalent cation in solution", "
 
 // 흡수는 용액 상태에서: 총량과 용액이 같은 양 줄고 흡수량 = 장부. NO3는 총량만
 TEST_CASE("Cation uptake draws the same amount from total and solution", "[unit][crop][m3]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();  // M4: 낙엽이 같은 호출에서 토양으로 돌려주지 않게
     sim::SoilCell cell = test::test_cell();
     const sim::SoilCell before = cell;
     sim::Crop crop = make_crop(params);
@@ -985,53 +1140,53 @@ TEST_CASE("Cation uptake never exceeds the solution amount", "[unit][crop][m3][e
 }
 
 // product 모드: 각 양분 계수(Mn 결핍·독성 포함)를 모두 곱한다. minimum은 가장 작은 것 하나
+// M4: 순생장 = 총생산 - 호흡이라 계수는 총생산(last_gross)에 곱해져요. 요구량에 관부·과실이 들어가요.
+// (이전: last_growth_g_per_m2에 곱해짐, 요구량 = 목표 x (잎 + 뿌리))
 TEST_CASE("Product mode multiplies every nutrient and toxicity factor", "[unit][crop][m3]") {
     const sim::Params params = test::test_params();
     const sim::CropParams& cp = params.crop;
     const sim::process::NutrientAvailability none{};
-    const auto growth = [&](const std::function<void(sim::Crop&)>& tweak, sim::StressCombination mode) {
+    const auto gross = [&](const std::function<void(sim::Crop&)>& tweak, sim::StressCombination mode) {
         sim::SoilCell cell = test::test_cell();
         sim::Crop crop = make_crop(params);
         tweak(crop);
         sim::Ledger ledger;
         (void)step(crop, cell, params, none, kDaySolar_W_per_m2, ledger, mode);
-        return crop.last_growth_g_per_m2;
+        return crop.last_gross_g_per_m2;
     };
-    const auto required = [&](double target_g_per_g) {
-        const sim::Crop crop = make_crop(params);
-        return target_g_per_g * (crop.leaf_g_per_m2 + crop.root_g_per_m2);
-    };
-    const double reference = growth([](sim::Crop&) {}, sim::StressCombination::Product);
+    const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(make_crop(params), cp);
+    const double reference = gross([](sim::Crop&) {}, sim::StressCombination::Product);
     REQUIRE(reference > 0.0);
 
     // K 0.8, Ca 0.8, Mn 0.9 충족: 곱 = f(0.8) × f(0.8) × f(0.9), 최소 = 가장 작은 f
     const auto deficient = [&](sim::Crop& crop) {
-        crop.plant_K_g_per_m2 = 0.8 * required(cp.target_K_g_per_g);
-        crop.plant_Ca_g_per_m2 = 0.8 * required(cp.target_Ca_g_per_g);
-        crop.plant_Mn_g_per_m2 = 0.9 * required(cp.target_Mn_g_per_g);
+        crop.plant_K_g_per_m2 = 0.8 * required.K;
+        crop.plant_Ca_g_per_m2 = 0.8 * required.Ca;
+        crop.plant_Mn_g_per_m2 = 0.9 * required.Mn;
     };
     const double f_k = cp.nutrient_stress_curve(0.8);
     const double f_mn = cp.nutrient_stress_curve(0.9);
     REQUIRE(f_k < 1.0);
     REQUIRE(f_mn < 1.0);
-    CHECK(growth(deficient, sim::StressCombination::Product) == Catch::Approx(reference * f_k * f_k * f_mn));
-    CHECK(growth(deficient, sim::StressCombination::Minimum) == Catch::Approx(reference * std::min(f_k, f_mn)));
+    CHECK(gross(deficient, sim::StressCombination::Product) == Catch::Approx(reference * f_k * f_k * f_mn));
+    CHECK(gross(deficient, sim::StressCombination::Minimum) == Catch::Approx(reference * std::min(f_k, f_mn)));
 
     // Mn 독성(체내 비율 10 → 0.7)과 K 결핍(0.8)이 함께: 곱 = 0.7 × f(0.8)
     const auto toxic_and_deficient = [&](sim::Crop& crop) {
-        crop.plant_K_g_per_m2 = 0.8 * required(cp.target_K_g_per_g);
-        crop.plant_Mn_g_per_m2 = 10.0 * required(cp.target_Mn_g_per_g);
+        crop.plant_K_g_per_m2 = 0.8 * required.K;
+        crop.plant_Mn_g_per_m2 = 10.0 * required.Mn;
     };
     const double tox = cp.mn_toxicity_curve(10.0);
-    CHECK(growth(toxic_and_deficient, sim::StressCombination::Product) == Catch::Approx(reference * tox * f_k));
-    CHECK(growth(toxic_and_deficient, sim::StressCombination::Minimum) ==
+    CHECK(gross(toxic_and_deficient, sim::StressCombination::Product) == Catch::Approx(reference * tox * f_k));
+    CHECK(gross(toxic_and_deficient, sim::StressCombination::Minimum) ==
           Catch::Approx(reference * std::min(tox, f_k)));
 }
 
 // 뿌리 고사: 죽은 뿌리 몫의 K·Ca·Mg·Mn이 토양 총량과 용액에 함께 돌아간다. N은 이분해성 유기 N, P는 유효 풀로
+// M4: 몫(share)의 분모에 관부·과실이 들어가요. 호흡·낙엽은 끄고 고사만 봐요.
 TEST_CASE("Root dieback returns K Ca Mg and Mn to both the total and the solution",
           "[unit][crop][conservation][m3]") {
-    const sim::Params params = test::test_params();
+    const sim::Params params = test::quiet_params();
     sim::SoilCell cell = test::test_cell();
     cell.aeration_index = 0.0;  // 과습 손상 (waterlog_curve(0) > 0) → 뿌리 고사
     const sim::SoilCell before = cell;
@@ -1039,7 +1194,7 @@ TEST_CASE("Root dieback returns K Ca Mg and Mn to both the total and the solutio
     const sim::Crop crop_before = crop;
     const double damage = params.root_damage.waterlog_curve(0.0);
     REQUIRE(damage > 0.0);
-    const double biomass = crop.leaf_g_per_m2 + crop.root_g_per_m2;
+    const double biomass = crop.leaf_g_per_m2 + crop.crown_g_per_m2 + crop.root_g_per_m2 + crop.fruit_g_per_m2();
     const double dead_root = crop.root_g_per_m2 * std::min(1.0, damage) * params.crop.root_dieback_per_damage;
     const double share = dead_root / biomass;
     REQUIRE(dead_root > 0.0);
