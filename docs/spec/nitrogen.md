@@ -1,10 +1,13 @@
 # 질소: 비료, 2단계 질산화, 용탈, 아질산 독성
 
 - 상태: 승인 (2026-11-18)
+- M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), [organic-matter](organic-matter.md), [soil-water](soil-water.md)
 
 > **M2 변경 (2026-11-18 승인)**: 1·2단계에 `step1_o2_curve`, `step2_o2_curve`(aeration_index) 곱함. 1단계로 질산화된 N 1 eq당 H+ `nitrification_H_eq_per_eq_N` eq를 이번 틱 산으로 기록([soil-chemistry](soil-chemistry.md)). 아질산 경보와 뿌리 손상은 `no2 × nitrite_toxicity_ph_curve(pH)`로 판정. 용탈 대상에 K·Ca·Mg·P·S(용액 부분) 추가. 비료 투입은 soil-chemistry로 옮김(성분 확장).
+
+> **M3 변경 (2026-11-18 승인)**: `leaching.nh4_solution_fraction`을 삭제하고 NH4+의 녹은 부분을 상태 `nh4_solution_N_g_per_m2`로 들어요([cation-exchange](cation-exchange.md)). 용탈은 이 용액 상태 기준이에요. 질산화 1단계로 NH4 총량이 줄 때 용액도 같은 비율로 줄여요(비례 차감). 비료의 NH4는 총량과 용액에 함께 더해요. 자세한 규칙은 [m3-overview](m3-overview.md).
 
 ## 목적
 
@@ -34,7 +37,7 @@
 | `nitrification.free_ammonia_inhibition_curve` | x = 유리 암모니아 지수 (g N/m²), y = 2단계 억제 계수 | - | `[[0,1],[0.05,0.9],[0.3,0.4],[1.0,0.1],[3.0,0.05]]` | 게임용 임의값 |
 | `nitrification.nitrite_toxicity_threshold_g_N_per_m2` | 아질산 독성 이벤트 임계치 | g N/m² | 2.0 | 게임용 임의값 |
 | `nitrification.nitrite_alarm_reset_fraction` | 임계치의 이 비율 아래로 내려가야 경보 해제 (깜빡임 방지) | - | 0.8 | 게임용 임의값 |
-| `leaching.nh4_solution_fraction` | NH4+ 중 용액에 있어 배수와 함께 빠질 수 있는 비율 | - | 0.1 | 게임용 임의값 (M3에서 양이온 교환으로 대체) |
+| (M3에서 삭제 → cation-exchange 용액 상태) `leaching.nh4_solution_fraction` | 옛 값 0.1. NH4+ 용액 부분은 `nh4_solution_N_g_per_m2`와 `cation_exchange.nh4_retention_factor`가 대신해요 | - | - | [cation-exchange](cation-exchange.md) |
 
 ### 비료 정의 (`[[fertilizer]]`)
 
@@ -59,6 +62,7 @@
 ```
 nh4_N += g_per_m2 / 1000 × nh4_N_g_per_kg
 no3_N += g_per_m2 / 1000 × no3_N_g_per_kg       → 장부 N_in_g
+(M3, 2026-11-18: NH4 투입분은 nh4_solution_N에도 같은 양을 더해요)
 ```
 
 ### 질산화 (셀 단계 f)
@@ -69,6 +73,7 @@ no3_N += g_per_m2 / 1000 × no3_N_g_per_kg       → 장부 N_in_g
 # 1단계
 n1     = nh4_N × min(1, step1_rate × env × step1_ph_curve(ph))
 nh4_N -= n1 ;  no2_N += n1
+(M3, 2026-11-18: nh4_solution_N ×= (새 nh4_N / 옛 nh4_N)   ← 비례 차감, 옛 nh4_N = 0이면 건너뜀)
 
 # 2단계 (1단계 이후의 NH4+로 유리 암모니아를 계산)
 free_ammonia = nh4_N × ammonia_fraction_ph_curve(ph)
@@ -95,10 +100,11 @@ no2_N -= n2 ;  no3_N += n2
 f = drained / (water + drained)      # drained = 0이면 f = 0
 no3_N −= no3_N × f
 no2_N −= no2_N × f
-nh4_N −= nh4_N × f × nh4_solution_fraction      → 합계를 장부 N_leached_g에
+nh4_N −= nh4_solution_N × f                     → 합계를 장부 N_leached_g에
+nh4_solution_N −= nh4_solution_N × f             (M3, 2026-11-18: M1·M2의 `nh4_N × f × nh4_solution_fraction`을 용액 상태로 대체)
 ```
 
-- 방향: 배수가 많을수록, 질산태 비율이 높을수록 손실이 커요. 암모늄은 잘 안 씻겨요.
+- 방향: 배수가 많을수록, 질산태 비율이 높을수록 손실이 커요. 암모늄은 흙에 붙어 있는 몫이 커서 잘 안 씻겨요(붙은 정도는 CEC와 경쟁에 따라 달라져요, M3).
 
 ### 아질산 독성 판정 (셀 단계 i)
 
@@ -139,4 +145,4 @@ S2, S3 (기대 방향은 [m1-overview](m1-overview.md) "시나리오 테스트")
 
 - 탈질, 암모니아 휘산 없음 (기체 손실 0, M4)
 - 질산화균 개체군 없음 (M5에서 1·2단계 균을 따로 둬요)
-- NH4+ 흡착은 고정 비율로만 표현 (M3 양이온 교환에서 대체)
+- NH4+ 흡착은 M1·M2에서는 고정 비율로만 표현했고, M3에서 양이온 교환([cation-exchange](cation-exchange.md))으로 대체됐어요 (2026-11-18)

@@ -47,7 +47,7 @@ step1_o2_curve = [[0, 0.05], [0.3, 0.5], [0.6, 1.0], [1, 1.0]]  # x = aeration_i
 step2_o2_curve = [[0, 0.0], [0.3, 0.2], [0.6, 0.8], [0.8, 1.0], [1, 1.0]]  # x = aeration_index. 게임용 임의값. 1단계보다 민감 -> 과습에서 아질산 축적
 nitrite_toxicity_ph_curve = [[4.5, 8.0], [5.5, 3.0], [6.5, 1.3], [7.0, 1.0], [9.0, 1.0]]  # x = pH, y = 독성 배율. 게임용 임의값 (산성일수록 HNO2 비율 증가, pKa 약 3.3)
 
-[cation_exchange]  # docs/spec/cation-exchange.md (M3 초안 초기값, 프로토타입 점검 대상)
+[cation_exchange]  # docs/spec/cation-exchange.md
 cec_organic_eq_per_g_C = 0.0015           # 난분해성(부식) C 1 g당 CEC. 게임용 임의값 (부식 CEC 약 90 cmol/kg OM, 일반 범위 하단)
 exchange_rate_per_hour = 0.3              # 용액 양이 평형값 쪽으로 움직이는 시간당 비율. 게임용 임의값 (시간 상수 약 3시간)
 nh4_retention_factor = 70.0               # 자리에 붙으려는 세기 w. 게임용 임의값 (기준 토양에서 M2 용액 비율 0.1과 같아지도록)
@@ -139,7 +139,7 @@ target_K_g_per_g = 0.020                  # 대략 1.1~2.5%
 target_Ca_g_per_g = 0.012                 # 대략 0.5~1.5%
 target_Mg_g_per_g = 0.004                 # 대략 0.25~0.45%
 luxury_uptake_ratio = 1.3                 # 적정 농도의 몇 배까지 더 먹는지. 게임용 임의값
-uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율. 게임용 임의값
+uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율 (N·P·K. Ca·Mg·Mn은 전용 속도). 게임용 임의값
 ca_uptake_rate_per_g_root_per_hour = 0.00019  # Ca 전용 흡수 비율 (s5_standard 낮 흡수 능력 여유 약 4배). 게임용 임의값, Ca는 뿌리 끝에서만 흡수돼 효율이 낮음, 2026-11-18 프로토타입 점검으로 신설
 mg_uptake_rate_per_g_root_per_hour = 0.00021  # Mg 전용 흡수 비율 (여유 약 4배). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015  # 하우스 안 일사 x 받는 빛 비율 1 W/m²당 증산. 게임용 임의값 (맑은 날 하루 약 1.5~2.5 mm)

@@ -30,7 +30,7 @@ ADR-0007 결정 2번을 구현하고, ADR-0010으로 보완해요. 망간은 **p
 
 | 이름 | 의미 | 단위 |
 | --- | --- | --- |
-| `plant_Mn_g_per_m2` | 체내 망간 | g/m² |
+| `plant_Mn_g_per_m2` | 체내 망간. 정식 시 `target_Mn × (잎 + 뿌리)`로 시작(다른 원소와 같은 규칙, 2026-11-18 구현 때 명시) | g/m² |
 | 파생 `plant_Mn_ratio` | `plant_Mn / (target_Mn × (leaf + root))`. 독성 곡선의 x | - |
 | 파생 `sufficiency_Mn`, `excess_index_Mn` | M2 원소와 같은 정의: `min(1, ratio)`, `max(0, ratio − 1)`. 과잉 지수는 상한 1.3배가 아니라 수요 상한 30배까지 커질 수 있어요 (2026-11-18 프로토타입 점검에서 명시) | - |
 | `stress_hours[NutrientMn]`, `stress_hours[ToxicityMn]` | 결핍·과잉이 생장을 가장 크게 제한한 시간 | h |

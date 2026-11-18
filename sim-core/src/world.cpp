@@ -60,7 +60,8 @@ World::World(Params params, Scenario scenario)
     const CalendarTime t0 = calendar_at(scenario_.start_day_of_year, 0);
     house_air_temp_degC_ =
         process::house_air_temp_degC(params_.house, scenario_.weather_hourly[weather_index(t0.day_of_year, t0.hour)]);
-    // M3: 용액은 평형값으로 시작 (통기 지수가 Mn 이동성에 필요해서 먼저 계산)
+    // M3 (cation-exchange "초기화 순서"): 통기 지수를 먼저 계산한 뒤 평형을 구해 용액 상태를 채워요(완화 없이).
+    // 세이브 로드(deserialize)는 이 뒤에 저장된 셀 상태로 덮어써서 평형을 다시 구하지 않아요.
     for (Tile& tile : tiles_) {
         tile.soil.aeration_index = process::aeration_index(tile.soil, params_.aeration);
         process::set_solution_to_equilibrium(tile.soil, params_);
@@ -214,7 +215,7 @@ void World::step(std::uint32_t ticks) {
     }
 }
 
-// 틱 처리 순서: docs/spec/m2-overview.md "틱 처리 순서 (M2)"
+// 틱 처리 순서: docs/spec/m3-overview.md "틱 처리 순서 (M3)"
 void World::tick_once() {
     // 1. 명령 적용
     for (const QueuedCommand& queued : pending_commands_) {
@@ -251,15 +252,15 @@ void World::tick_once() {
         // c. 통기
         cell.aeration_index = process::aeration_index(cell, params_.aeration);
         // d. 미생물: M5
-        // e. 유기물 분해
+        // e. 유기물 분해 (무기화 NH4 → 용액, 부동화 NH4 → 비례 차감)
         process::decompose_organic_matter(cell, params_.organic_matter, params_.soil_temperature, ledger_);
-        // f. 질산화
+        // f. 질산화 (NH4 용액 비례 차감)
         process::nitrify(cell, params_.nitrification, params_.soil_chemistry, params_.ions);
-        // f2. 양이온 교환 (M3)
+        // f2. 망간 산화·환원 → 양이온 교환: CEC → φ → 평형 → 완화 (M3)
         process::update_cation_exchange(cell, params_);
         // f3. 인산 고정 (M3)
         process::fix_phosphorus(cell, params_.phosphorus);
-        // g. 석회 용해 → pH
+        // g. 석회 용해(Ca·Mg → 총량과 용액) → pH (완충력에 광물 CEC 항)
         process::update_lime_and_ph(cell, params_, ledger_);
         // h. 작물
         if (crop_alive) {

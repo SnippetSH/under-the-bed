@@ -17,6 +17,25 @@ std::unexpected<Error> fail(ErrorCode code, std::string message) {
     return std::unexpected(Error{code, std::move(message)});
 }
 
+// validate_curve(점 2개 이상, x 엄격 오름차순, y ≥ 0) 다음에 쓰는 y 범위 검사
+std::expected<void, Error> curve_y_at_most_one(const PiecewiseLinear& curve, std::string_view name) {
+    for (const auto& point : curve.points) {
+        if (!(point[1] <= 1.0)) {
+            return fail(ErrorCode::InvalidArgument, std::format("curve '{}' y values must be within 0..1", name));
+        }
+    }
+    return {};
+}
+
+std::expected<void, Error> curve_y_positive(const PiecewiseLinear& curve, std::string_view name) {
+    for (const auto& point : curve.points) {
+        if (!(point[1] > 0.0)) {
+            return fail(ErrorCode::InvalidArgument, std::format("curve '{}' y values must be > 0", name));
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 std::expected<void, Error> require(bool ok, std::string_view what) {
@@ -86,6 +105,7 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(validate_curve(nit.step2_o2_curve, "nitrification.step2_o2_curve"));
     SIM_CHECK(validate_curve(nit.nitrite_toxicity_ph_curve, "nitrification.nitrite_toxicity_ph_curve"));
 
+    // M3: cation-exchange, phosphorus, manganese
     const CationExchangeParams& ce = p.cation_exchange;
     SIM_CHECK(non_negative(ce.cec_organic_eq_per_g_C, "cation_exchange.cec_organic_eq_per_g_C"));
     SIM_CHECK(non_negative(ce.exchange_rate_per_hour, "cation_exchange.exchange_rate_per_hour"));
@@ -96,26 +116,32 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(require(ce.solver_iterations >= 1 && ce.solver_iterations <= 200,
                       "cation_exchange.solver_iterations must be 1..200"));
     SIM_CHECK(non_negative(ce.buffer_eq_per_pH_per_eq_cec, "cation_exchange.buffer_eq_per_pH_per_eq_cec"));
+    // 길항 배율은 흡수 능력·수요 상한을 줄이기만 해요 (0~1)
     SIM_CHECK(validate_curve(p.antagonism.ca_curve, "antagonism.ca_curve"));
+    SIM_CHECK(curve_y_at_most_one(p.antagonism.ca_curve, "antagonism.ca_curve"));
     SIM_CHECK(validate_curve(p.antagonism.mg_curve, "antagonism.mg_curve"));
+    SIM_CHECK(curve_y_at_most_one(p.antagonism.mg_curve, "antagonism.mg_curve"));
     SIM_CHECK(fraction(p.antagonism.min_demand_factor, "antagonism.min_demand_factor"));
     SIM_CHECK(non_negative(p.phosphorus.fixation_rate_per_hour, "phosphorus.fixation_rate_per_hour"));
     SIM_CHECK(validate_curve(p.phosphorus.fixation_ph_curve, "phosphorus.fixation_ph_curve"));
     SIM_CHECK(non_negative(p.phosphorus.release_rate_per_hour, "phosphorus.release_rate_per_hour"));
     const ManganeseParams& mn = p.manganese;
+    // w_Mn는 다른 양이온 세기(> 0)와 같은 뜻이라 > 0
     SIM_CHECK(validate_curve(mn.retention_ph_curve, "manganese.retention_ph_curve"));
+    SIM_CHECK(curve_y_positive(mn.retention_ph_curve, "manganese.retention_ph_curve"));
     SIM_CHECK(non_negative(mn.oxidation_rate_per_hour, "manganese.oxidation_rate_per_hour"));
     SIM_CHECK(validate_curve(mn.oxidation_ph_curve, "manganese.oxidation_ph_curve"));
     SIM_CHECK(validate_curve(mn.oxidation_o2_curve, "manganese.oxidation_o2_curve"));
     SIM_CHECK(non_negative(mn.reduction_rate_per_hour, "manganese.reduction_rate_per_hour"));
     SIM_CHECK(validate_curve(mn.reduction_ph_curve, "manganese.reduction_ph_curve"));
     SIM_CHECK(validate_curve(mn.reduction_o2_curve, "manganese.reduction_o2_curve"));
-    SIM_CHECK(positive(p.ions.mn_g_per_eq, "ions.mn_g_per_eq"));
+    // 작물 망간 (manganese.md)
     SIM_CHECK(positive(p.crop.target_Mn_g_per_g, "crop.target_Mn_g_per_g"));
     SIM_CHECK(non_negative(p.crop.mn_uptake_rate_per_g_root_per_hour, "crop.mn_uptake_rate_per_g_root_per_hour"));
     SIM_CHECK(require(std::isfinite(p.crop.mn_max_uptake_ratio) && p.crop.mn_max_uptake_ratio >= 1.0,
-                      "crop.mn_max_uptake_ratio must be >= 1"));
+                      "crop.mn_max_uptake_ratio must be finite and >= 1"));
     SIM_CHECK(validate_curve(p.crop.mn_toxicity_curve, "crop.mn_toxicity_curve"));
+    SIM_CHECK(curve_y_at_most_one(p.crop.mn_toxicity_curve, "crop.mn_toxicity_curve"));  // y = 생장 계수
 
     const AerationParams& aer = p.aeration;
     SIM_CHECK(validate_curve(aer.compaction_cap_curve, "aeration.compaction_cap_curve"));
@@ -133,6 +159,7 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(positive(ion.mg_g_per_eq, "ions.mg_g_per_eq"));
     SIM_CHECK(positive(ion.p_g_per_eq, "ions.p_g_per_eq"));
     SIM_CHECK(positive(ion.s_g_per_eq, "ions.s_g_per_eq"));
+    SIM_CHECK(positive(ion.mn_g_per_eq, "ions.mn_g_per_eq"));
 
     const SoilChemistryParams& chem = p.soil_chemistry;
     SIM_CHECK(fraction(chem.p_solution_fraction, "soil_chemistry.p_solution_fraction"));
@@ -202,6 +229,7 @@ std::expected<void, Error> validate_params(const Params& p) {
         SIM_CHECK(non_negative(c.mg_g_per_kg, std::format("compost '{}' mg_g_per_kg", c.id)));
         SIM_CHECK(non_negative(c.p_g_per_kg, std::format("compost '{}' p_g_per_kg", c.id)));
         SIM_CHECK(non_negative(c.s_g_per_kg, std::format("compost '{}' s_g_per_kg", c.id)));
+        SIM_CHECK(non_negative(c.mn_g_per_kg, std::format("compost '{}' mn_g_per_kg", c.id)));
         SIM_CHECK(finite(c.direct_acid_eq_per_kg, std::format("compost '{}' direct_acid_eq_per_kg", c.id)));
     }
     std::set<std::string, std::less<>> fertilizer_ids;
@@ -215,6 +243,7 @@ std::expected<void, Error> validate_params(const Params& p) {
         SIM_CHECK(non_negative(f.mg_g_per_kg, std::format("fertilizer '{}' mg_g_per_kg", f.id)));
         SIM_CHECK(non_negative(f.p_g_per_kg, std::format("fertilizer '{}' p_g_per_kg", f.id)));
         SIM_CHECK(non_negative(f.s_g_per_kg, std::format("fertilizer '{}' s_g_per_kg", f.id)));
+        SIM_CHECK(non_negative(f.mn_g_per_kg, std::format("fertilizer '{}' mn_g_per_kg", f.id)));
         SIM_CHECK(finite(f.direct_acid_eq_per_kg, std::format("fertilizer '{}' direct_acid_eq_per_kg", f.id)));
     }
     std::set<std::string, std::less<>> lime_ids;

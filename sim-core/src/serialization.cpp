@@ -5,7 +5,7 @@
 //   [동적 상태] tick, next_command_seq, pending_commands, tiles(토양 셀 + 작물), house_air_temp, ledger
 //
 // state_hash()는 동적 상태 부분만 해시해요. 이벤트는 저장하지 않아요.
-// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4).
+// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5).
 
 #include <array>
 #include <format>
@@ -102,8 +102,6 @@ void write_cell(detail::ByteWriter& w, const SoilCell& c) {
     w.f64(c.cec_mineral_eq_per_m2);
     w.f64(c.mn_g_per_m2);
     w.f64(c.mn_oxide_g_per_m2);
-    w.f64(c.mn_oxidized_this_tick_g_per_m2);
-    w.f64(c.mn_reduced_this_tick_g_per_m2);
     w.f64(c.p_fixed_g_per_m2);
     w.f64(c.nh4_solution_N_g_per_m2);
     w.f64(c.k_solution_g_per_m2);
@@ -146,8 +144,6 @@ void read_cell(detail::ByteReader& r, SoilCell& c) {
     c.cec_mineral_eq_per_m2 = r.f64();
     c.mn_g_per_m2 = r.f64();
     c.mn_oxide_g_per_m2 = r.f64();
-    c.mn_oxidized_this_tick_g_per_m2 = r.f64();
-    c.mn_reduced_this_tick_g_per_m2 = r.f64();
     c.p_fixed_g_per_m2 = r.f64();
     c.nh4_solution_N_g_per_m2 = r.f64();
     c.k_solution_g_per_m2 = r.f64();
@@ -181,14 +177,6 @@ void write_crop(detail::ByteWriter& w, const Crop& c) {
     w.f64(c.plant_Mn_g_per_m2);
     w.f64(c.antagonism_Ca_factor);
     w.f64(c.antagonism_Mg_factor);
-    w.f64(c.diag_demand_K_g_per_m2);
-    w.f64(c.diag_capacity_K_g_per_m2);
-    w.f64(c.diag_demand_Ca_g_per_m2);
-    w.f64(c.diag_capacity_Ca_g_per_m2);
-    w.f64(c.diag_demand_Mg_g_per_m2);
-    w.f64(c.diag_capacity_Mg_g_per_m2);
-    w.f64(c.diag_demand_Mn_g_per_m2);
-    w.f64(c.diag_capacity_Mn_g_per_m2);
 }
 
 void read_crop(detail::ByteReader& r, Crop& c) {
@@ -214,14 +202,6 @@ void read_crop(detail::ByteReader& r, Crop& c) {
     c.plant_Mn_g_per_m2 = r.f64();
     c.antagonism_Ca_factor = r.f64();
     c.antagonism_Mg_factor = r.f64();
-    c.diag_demand_K_g_per_m2 = r.f64();
-    c.diag_capacity_K_g_per_m2 = r.f64();
-    c.diag_demand_Ca_g_per_m2 = r.f64();
-    c.diag_capacity_Ca_g_per_m2 = r.f64();
-    c.diag_demand_Mg_g_per_m2 = r.f64();
-    c.diag_capacity_Mg_g_per_m2 = r.f64();
-    c.diag_demand_Mn_g_per_m2 = r.f64();
-    c.diag_capacity_Mn_g_per_m2 = r.f64();
 }
 
 // ---- 정적 입력 ----

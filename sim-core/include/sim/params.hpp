@@ -92,7 +92,7 @@ struct CationExchangeParams {
 struct AntagonismParams {
     PiecewiseLinear ca_curve;
     PiecewiseLinear mg_curve;
-    double min_demand_factor = 0.0;  // 수요 상한 배율의 하한 (5차 점검 신설)
+    double min_demand_factor = 0.0;  // Ca·Mg 수요 상한에 거는 길항 배율의 하한 (흡수 능력에는 적용 안 함)
 
     bool operator==(const AntagonismParams&) const = default;
 };
@@ -145,7 +145,7 @@ struct IonParams {
     bool operator==(const IonParams&) const = default;
 };
 
-// docs/spec/soil-chemistry.md "용액 비율" 외 (M2). K·Ca·Mg 용액 비율은 M3에서 용액 상태로 대체
+// docs/spec/soil-chemistry.md "용액 비율" 외 (M2). K·Ca·Mg·NH4 용액 비율은 M3에서 용액 상태로 대체 (cation-exchange)
 struct SoilChemistryParams {
     double p_solution_fraction = 0.0;
     double s_solution_fraction = 0.0;
@@ -203,7 +203,7 @@ struct CropParams {
     double target_Mg_g_per_g = 0.0;
     double luxury_uptake_ratio = 0.0;
     double uptake_rate_per_g_root_per_hour = 0.0;
-    double ca_uptake_rate_per_g_root_per_hour = 0.0;  // M3 프로토타입 점검으로 신설
+    double ca_uptake_rate_per_g_root_per_hour = 0.0;  // M3: Ca·Mg 전용 흡수 속도 (cation-exchange "흡수 길항")
     double mg_uptake_rate_per_g_root_per_hour = 0.0;
     double transpiration_mm_per_hour_per_W_per_m2 = 0.0;
     double root_recovery_rate_per_hour = 0.0;

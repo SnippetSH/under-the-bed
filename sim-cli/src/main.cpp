@@ -6,6 +6,8 @@
 // CSV는 틱 0(초기 상태)부터 틱 N까지 N+1행이에요. 행의 값은 해당 틱 시점의 상태예요.
 // 열: 기상·명령 수, house_air_temp_degC, 셀 평균 토양 상태(soil.hpp 필드 이름), 작물 평균(작물이 있는 타일만,
 // 작물이 하나도 없으면 빈 칸), 장부 합계(ledger_ 접두사), state_hash 순서예요.
+// M3 파생 열: 교환성 양(*_exchangeable_* = 총량 − 용액), 토양 P 총량(p_total = 유효 + 고정),
+// 작물 Mn 충족도·과잉 지수·체내 비율, 길항 배율, stress_hours 10개(StressFactor 순서).
 // 명령 일정표([[schedule]])는 해당 틱을 처리하기 직전에 enqueue해요.
 // 표준 출력에는 이벤트 종류별 횟수와 최종 상태 해시를 찍어요.
 
@@ -81,7 +83,7 @@ std::optional<Options> parse_args(int argc, char** argv) {
     return opt;
 }
 
-// CSV 열: 이름과 값을 같은 함수에서 만들어 순서가 어긋나지 않게 해요 (M3 프로토타입).
+// CSV 열: 이름과 값을 같은 함수에서 만들어 순서가 어긋나지 않게 해요.
 struct Row {
     std::vector<std::string> names;
     std::vector<std::string> values;
@@ -157,8 +159,6 @@ Row build_row(const sim::World& world) {
     SOIL_COL(mn_solution_g_per_m2);
     SOIL_COL(mn_g_per_m2);
     SOIL_COL(mn_oxide_g_per_m2);
-    SOIL_COL(mn_oxidized_this_tick_g_per_m2);
-    SOIL_COL(mn_reduced_this_tick_g_per_m2);
     SOIL_COL(p_fixed_g_per_m2);
 #undef SOIL_COL
     row.add("p_total_g_per_m2",
@@ -173,9 +173,6 @@ Row build_row(const sim::World& world) {
             mean_of(s.soil, [](const sim::SoilCell& c) { return c.mg_g_per_m2 - c.mg_solution_g_per_m2; }));
     row.add("mn_exchangeable_g_per_m2",
             mean_of(s.soil, [](const sim::SoilCell& c) { return c.mn_g_per_m2 - c.mn_solution_g_per_m2; }));
-    row.add("mn_retention_factor", mean_of(s.soil, [&](const sim::SoilCell& c) {
-                return sim::process::manganese_retention(c, world.params().manganese);
-            }));
 
     // 작물 (작물이 있는 타일 평균; 없으면 빈 칸)
     std::vector<const sim::Crop*> present;
@@ -220,7 +217,7 @@ Row build_row(const sim::World& world) {
     // M3
     STATUS_COL("sufficiency_Mn", sufficiency_Mn);
     STATUS_COL("excess_index_Mn", excess_Mn);
-    STATUS_COL("plant_Mn_ratio", ratio_Mn);
+    STATUS_COL("plant_Mn_ratio", plant_Mn_ratio);
     STATUS_COL("excess_index_K", excess_K);
     STATUS_COL("excess_index_Ca", excess_Ca);
     CROP_COL(plant_N_g_per_m2);
@@ -231,14 +228,6 @@ Row build_row(const sim::World& world) {
     CROP_COL(plant_Mn_g_per_m2);
     CROP_COL(antagonism_Ca_factor);
     CROP_COL(antagonism_Mg_factor);
-    CROP_COL(diag_demand_K_g_per_m2);
-    CROP_COL(diag_capacity_K_g_per_m2);
-    CROP_COL(diag_demand_Ca_g_per_m2);
-    CROP_COL(diag_capacity_Ca_g_per_m2);
-    CROP_COL(diag_demand_Mg_g_per_m2);
-    CROP_COL(diag_capacity_Mg_g_per_m2);
-    CROP_COL(diag_demand_Mn_g_per_m2);
-    CROP_COL(diag_capacity_Mn_g_per_m2);
 #undef CROP_COL
 #undef STATUS_COL
     constexpr std::array<std::string_view, sim::kStressFactorCount> kStressNames = {
