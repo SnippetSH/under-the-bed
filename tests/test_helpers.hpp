@@ -7,6 +7,7 @@
 
 #include "sim/calendar.hpp"
 #include "sim/params.hpp"
+#include "sim/processes.hpp"
 #include "sim/scenario.hpp"
 #include "sim/world.hpp"
 
@@ -65,14 +66,14 @@ inline sim::Params test_params() {
     p.cation_exchange = {.cec_organic_eq_per_g_C = 0.0015, .exchange_rate_per_hour = 0.3, .nh4_retention_factor = 70.0,
                          .k_retention_factor = 250.0, .ca_retention_factor = 760.0, .mg_retention_factor = 380.0,
                          .solver_iterations = 60, .buffer_eq_per_pH_per_eq_cec = 0.15};
-    p.antagonism = {.ca_curve = {{{{0.0, 1.0}}, {{0.3, 1.0}}, {{0.6, 0.5}}, {{1.0, 0.2}}, {{2.0, 0.05}}}},
-                    .mg_curve = {{{{0.0, 1.0}}, {{0.25, 1.0}}, {{0.5, 0.4}}, {{1.0, 0.15}}, {{2.0, 0.05}}}},
+    p.antagonism = {.ca_curve = {{{{0.0, 1.0}}, {{0.2, 1.0}}, {{0.4, 0.6}}, {{0.7, 0.35}}, {{1.2, 0.15}}}},
+                    .mg_curve = {{{{0.0, 1.0}}, {{0.18, 1.0}}, {{0.35, 0.55}}, {{0.6, 0.3}}, {{1.2, 0.1}}}},
                     .min_demand_factor = 0.6};
     p.phosphorus = {.fixation_rate_per_hour = 0.0015,
                     .fixation_ph_curve = {{{{4.5, 1.0}}, {{5.5, 0.6}}, {{6.3, 0.2}}, {{6.8, 0.2}}, {{7.5, 0.6}}, {{8.5, 1.0}}}},
                     .release_rate_per_hour = 0.00005};
     p.manganese = {
-        .retention_ph_curve = {{{{4.5, 450.0}}, {{5.0, 500.0}}, {{5.5, 800.0}}, {{6.0, 1200.0}}, {{6.5, 1500.0}}, {{7.5, 1800.0}}, {{8.5, 2000.0}}}},
+        .retention_ph_curve = {{{{4.5, 450.0}}, {{5.0, 500.0}}, {{5.1, 900.0}}, {{5.3, 1500.0}}, {{6.5, 1500.0}}, {{7.5, 1800.0}}, {{8.5, 2000.0}}}},
         .oxidation_rate_per_hour = 0.002,
         .oxidation_ph_curve = {{{{4.5, 0.005}}, {{5.0, 0.02}}, {{5.3, 0.06}}, {{5.5, 0.12}}, {{5.8, 0.3}}, {{6.0, 0.5}}, {{6.5, 1.0}}, {{7.0, 2.0}}, {{7.5, 4.0}}, {{8.5, 10.0}}}},
         .oxidation_o2_curve = {{{{0, 0.0}}, {{0.3, 0.2}}, {{0.6, 0.8}}, {{0.8, 1.0}}, {{1, 1.0}}}},
@@ -137,15 +138,15 @@ inline sim::Params test_params() {
         .target_Mg_g_per_g = 0.004,
         .luxury_uptake_ratio = 1.3,
         .uptake_rate_per_g_root_per_hour = 0.002,
-        .ca_uptake_rate_per_g_root_per_hour = 0.0001,
-        .mg_uptake_rate_per_g_root_per_hour = 0.0001,
+        .ca_uptake_rate_per_g_root_per_hour = 0.00019,
+        .mg_uptake_rate_per_g_root_per_hour = 0.00021,
         .transpiration_mm_per_hour_per_W_per_m2 = 0.0015,
         .root_recovery_rate_per_hour = 0.002,
         .death_root_health = 0.05,
         .root_dieback_per_damage = 1.0,
         .dry_matter_C_fraction = 0.45,
         .target_Mn_g_per_g = 0.0001,
-        .mn_uptake_rate_per_g_root_per_hour = 0.0002,
+        .mn_uptake_rate_per_g_root_per_hour = 0.00004,
         .mn_max_uptake_ratio = 30.0,
         .mn_toxicity_curve = {{{{0, 1}}, {{5, 1}}, {{10, 0.7}}, {{20, 0.3}}, {{30, 0.1}}}},
     };
@@ -153,13 +154,13 @@ inline sim::Params test_params() {
     p.composts = {
         {.id = "immature_manure", .name = "미숙 우분 퇴비", .C_g_per_kg = 180, .N_g_per_kg = 12,
          .labile_C_fraction = 0.6, .labile_N_fraction = 0.7, .k_g_per_kg = 12, .ca_g_per_kg = 10, .mg_g_per_kg = 4,
-         .p_g_per_kg = 4, .s_g_per_kg = 2, .direct_acid_eq_per_kg = 0},
+         .p_g_per_kg = 4, .s_g_per_kg = 2, .mn_g_per_kg = 0.3, .direct_acid_eq_per_kg = 0},
         {.id = "mature_manure", .name = "숙성 우분 퇴비", .C_g_per_kg = 150, .N_g_per_kg = 12,
          .labile_C_fraction = 0.1, .labile_N_fraction = 0.1, .k_g_per_kg = 14, .ca_g_per_kg = 15, .mg_g_per_kg = 5,
-         .p_g_per_kg = 5, .s_g_per_kg = 2, .direct_acid_eq_per_kg = 0},
+         .p_g_per_kg = 5, .s_g_per_kg = 2, .mn_g_per_kg = 0.4, .direct_acid_eq_per_kg = 0},
         {.id = "bark_compost", .name = "수피·톱밥 퇴비", .C_g_per_kg = 250, .N_g_per_kg = 5,
          .labile_C_fraction = 0.4, .labile_N_fraction = 0.3, .k_g_per_kg = 3, .ca_g_per_kg = 5, .mg_g_per_kg = 1,
-         .p_g_per_kg = 1, .s_g_per_kg = 1, .direct_acid_eq_per_kg = 0},
+         .p_g_per_kg = 1, .s_g_per_kg = 1, .mn_g_per_kg = 0.2, .direct_acid_eq_per_kg = 0},
     };
     p.fertilizers = {
         {.id = "ammonium_sulfate", .name = "황산암모늄", .nh4_N_g_per_kg = 210, .no3_N_g_per_kg = 0, .s_g_per_kg = 240},
@@ -168,6 +169,7 @@ inline sim::Params test_params() {
         {.id = "potassium_sulfate", .name = "황산칼륨", .k_g_per_kg = 415, .s_g_per_kg = 180},
         {.id = "superphosphate", .name = "과인산석회", .ca_g_per_kg = 180, .p_g_per_kg = 87, .s_g_per_kg = 110},
         {.id = "magnesium_sulfate", .name = "황산고토", .mg_g_per_kg = 98, .s_g_per_kg = 130},
+        {.id = "manganese_sulfate", .name = "황산망간", .s_g_per_kg = 190, .mn_g_per_kg = 320},
     };
     p.limes = {
         {.id = "calcium_carbonate", .name = "탄산석회", .eq_per_kg = 20.0, .ca_fraction = 1.0, .mg_fraction = 0.0},
@@ -236,7 +238,14 @@ inline sim::SoilCell test_cell() {
     cell.mn_g_per_m2 = s.mn_g_per_m2;
     cell.mn_oxide_g_per_m2 = s.mn_oxide_g_per_m2;
     cell.p_fixed_g_per_m2 = s.p_fixed_g_per_m2;
+    // M3: 용액 상태를 평형값으로 맞춰요 (World 생성과 같은 초기화). 총량을 바꾼 테스트는 test::settle()을 다시 불러요.
+    sim::process::set_solution_to_equilibrium(cell, test_params());
     return cell;
+}
+
+// 셀의 총량·pH 등을 바꾼 뒤 용액 상태를 평형으로 다시 맞춰요 (M3).
+inline void settle(sim::SoilCell& cell, const sim::Params& params) {
+    sim::process::set_solution_to_equilibrium(cell, params);
 }
 
 // strawberry-minimal 프로토타입 기준 정식 상태 (잎 30, 뿌리 10 g/m²)

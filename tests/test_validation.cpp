@@ -42,7 +42,7 @@ TEST_CASE("Invalid M2 params are rejected", "[unit][validation]") {
     CHECK_FALSE(creates_with([](sim::Params& p) { p.aeration.tilled_compaction_index = 1.5; }));
     CHECK_FALSE(creates_with([](sim::Params& p) { p.aeration.compaction_per_mm_irrigation = -1.0; }));
     CHECK_FALSE(creates_with([](sim::Params& p) { p.ions.k_g_per_eq = 0.0; }));
-    CHECK_FALSE(creates_with([](sim::Params& p) { p.soil_chemistry.k_solution_fraction = 1.2; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.soil_chemistry.p_solution_fraction = 1.2; }));
     CHECK_FALSE(creates_with([](sim::Params& p) { p.soil_chemistry.ph_min = p.soil_chemistry.ph_max; }));
     CHECK_FALSE(creates_with([](sim::Params& p) { p.soil_chemistry.ph_max = 15.0; }));
     CHECK_FALSE(creates_with([](sim::Params& p) { p.soil_chemistry.ec_min_water_mm = 0.0; }));
@@ -91,4 +91,57 @@ TEST_CASE("Invalid M2 scenarios are rejected", "[unit][validation]") {
     CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = sim::CropInit{std::nan(""), 5.0}; }, 0));
     CHECK_FALSE(creates_with([](sim::Scenario& s) { s.stress_combination = static_cast<sim::StressCombination>(7); }, 0));
     CHECK(creates_with([](sim::Scenario& s) { s.crop = sim::CropInit{0.0, 5.0}; }, 0));
+}
+
+// M2 용액 비율 파라미터(k·ca·mg 용액 비율, 용탈 NH4 비율)는 M3에서 사라져 M3 파라미터 검증으로 대체됐어요.
+// 잘못된 M3 파라미터는 거부해요.
+TEST_CASE("Invalid M3 params are rejected", "[unit][validation][m3]") {
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.cec_organic_eq_per_g_C = -0.1; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.exchange_rate_per_hour = -0.1; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.nh4_retention_factor = 0.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.k_retention_factor = -1.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.ca_retention_factor = std::nan(""); }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.mg_retention_factor = 0.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.solver_iterations = 0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.solver_iterations = 201; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.cation_exchange.buffer_eq_per_pH_per_eq_cec = -0.1; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.antagonism.ca_curve.points.resize(1); }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.antagonism.ca_curve.points.back()[1] = 1.5; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.antagonism.mg_curve.points.back()[1] = -0.1; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.antagonism.min_demand_factor = 1.2; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.antagonism.min_demand_factor = -0.1; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.phosphorus.fixation_rate_per_hour = -1.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.phosphorus.fixation_ph_curve.points.clear(); }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.phosphorus.release_rate_per_hour = std::nan(""); }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.manganese.retention_ph_curve.points.back()[1] = 0.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.manganese.oxidation_rate_per_hour = -1.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.manganese.oxidation_o2_curve.points.clear(); }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.manganese.reduction_rate_per_hour = -1.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.manganese.reduction_ph_curve.points.resize(1); }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.ions.mn_g_per_eq = 0.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.crop.target_Mn_g_per_g = 0.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.crop.mn_uptake_rate_per_g_root_per_hour = -1.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.crop.mn_max_uptake_ratio = 0.5; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.crop.mn_toxicity_curve.points.back()[1] = 1.5; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.composts[0].mn_g_per_kg = -1.0; }));
+    CHECK_FALSE(creates_with([](sim::Params& p) { p.fertilizers[0].mn_g_per_kg = -1.0; }));
+}
+
+// 잘못된 M3 시나리오(토양)는 거부해요.
+TEST_CASE("Invalid M3 scenarios are rejected", "[unit][validation][m3]") {
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.cec_mineral_eq_per_m2 = 0.0; }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.cec_mineral_eq_per_m2 = -1.0; }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.mn_g_per_m2 = -1.0; }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.mn_oxide_g_per_m2 = -1.0; }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.p_fixed_g_per_m2 = -1.0; }, 0));
+    CHECK(creates_with([](sim::Scenario& s) { s.soil.mn_oxide_g_per_m2 = 0.0; s.soil.p_fixed_g_per_m2 = 0.0; }, 0));
+}
+
+// M3 파라미터가 허용하는 경계값은 통과해요 (길항 곡선 y는 1까지, 하한 0~1).
+TEST_CASE("Valid M3 boundary params pass validation", "[unit][validation][m3]") {
+    CHECK(creates_with([](sim::Params& p) { p.antagonism.min_demand_factor = 0.0; }));
+    CHECK(creates_with([](sim::Params& p) { p.antagonism.min_demand_factor = 1.0; }));
+    CHECK(creates_with([](sim::Params& p) { p.cation_exchange.solver_iterations = 1; }));
+    CHECK(creates_with([](sim::Params& p) { p.cation_exchange.exchange_rate_per_hour = 0.0; }));
+    CHECK(creates_with([](sim::Params& p) { p.phosphorus.release_rate_per_hour = 0.0; }));
 }

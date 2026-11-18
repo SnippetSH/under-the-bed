@@ -1,6 +1,6 @@
-"""M1·M2 비교 시나리오(S1~S3, S4~S10)를 sim-cli로 돌리고 겹친 그래프를 runs/<m1|m2>/에 저장해요.
+"""M1~M3 비교 시나리오(S1~S3, S4~S10, S5·S6·S11·S12)를 sim-cli로 돌리고 겹친 그래프를 runs/<m1|m2|m3>/에 저장해요.
 
-시나리오 파일은 data/scenarios/<m1|m2>/<name>.toml 이에요. 없는 파일이 있는 그룹은 건너뛰어요.
+시나리오 파일은 data/scenarios/<m1|m2|m3>/<name>.toml 이에요(S11-lime은 m2의 s9_* 시나리오를 읽고 runs/m3/에 써요). 없는 파일이 있는 그룹은 건너뛰어요.
 
 사용법:
     python tools/run_scenarios.py
@@ -25,10 +25,11 @@ HOURS_PER_DAY = 24
 @dataclass(frozen=True)
 class Group:
     name: str
-    milestone: str  # "m1" | "m2": 시나리오 폴더와 출력 폴더 이름
+    milestone: str  # "m1" | "m2" | "m3": 출력 폴더 이름 (scenario_dir이 없으면 시나리오 폴더도)
     scenarios: tuple[str, ...]
     days: int
     columns: tuple[str, ...]
+    scenario_dir: str | None = None  # 시나리오 폴더가 출력 폴더와 다를 때
 
 
 GROUPS = [
@@ -43,6 +44,20 @@ GROUPS = [
     Group("S9", "m2", ("s9_lime", "s9_none"), 14, ("ph", "lime_undissolved_eq_per_m2", "ca_g_per_m2")),
     Group("S10", "m2", ("s10_standard", "s10_excess", "s10_dry"), 14,
           ("ec_dS_per_m", "leaf_g_per_m2", "water_mm")),
+    # M3 (2026-11-18). 열은 m3-overview 시나리오 표의 판정 지표를 중심으로 골랐어요.
+    Group("S5", "m3", ("s5_standard", "s5_k_excess"), 21,
+          ("ledger_Ca_uptake_g", "sufficiency_Ca", "sufficiency_K", "ledger_Ca_leached_g", "antagonism_Ca_factor",
+           "ca_solution_g_per_m2", "k_solution_g_per_m2", "ec_dS_per_m")),
+    Group("S6", "m3", ("s6_loam", "s6_sand"), 21,
+          ("ph", "k_solution_g_per_m2", "ec_dS_per_m", "ledger_K_leached_g", "exchange_free_site_index")),
+    Group("S11", "m3", ("s11_neutral", "s11_acid", "s11_wet", "s11_alkaline"), 21,
+          ("mn_solution_g_per_m2", "mn_g_per_m2", "mn_oxide_g_per_m2", "plant_Mn_ratio", "sufficiency_Mn",
+           "aeration_index", "ph", "leaf_g_per_m2")),
+    Group("S11-lime", "m3", ("s9_lime", "s9_none"), 14,
+          ("ph", "mn_solution_g_per_m2", "mn_g_per_m2", "mn_oxide_g_per_m2", "plant_Mn_ratio",
+           "exchange_free_site_index"), scenario_dir="m2"),
+    Group("S12", "m3", ("s12_neutral", "s12_acid", "s12_alkaline"), 28,
+          ("p_g_per_m2", "p_fixed_g_per_m2", "p_total_g_per_m2", "ph")),
 ]
 
 
@@ -63,8 +78,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--cli", type=Path, default=REPO / "build/vs2022/sim-cli/Debug/sim-cli.exe")
     parser.add_argument("--params", type=Path, default=REPO / "data/params.toml")
-    parser.add_argument("--scenario-root", type=Path, default=REPO / "data/scenarios", help="contains m1/ and m2/")
-    parser.add_argument("--out-root", type=Path, default=REPO / "runs", help="outputs go to <out-root>/m1 or m2")
+    parser.add_argument("--scenario-root", type=Path, default=REPO / "data/scenarios", help="contains m1/, m2/ and m3/")
+    parser.add_argument("--out-root", type=Path, default=REPO / "runs", help="outputs go to <out-root>/m1, m2 or m3")
     parser.add_argument("--groups", nargs="+", default=[g.name for g in GROUPS], choices=[g.name for g in GROUPS])
     args = parser.parse_args()
 
@@ -76,7 +91,7 @@ def main() -> int:
     for group in GROUPS:
         if group.name not in args.groups:
             continue
-        scenario_dir = args.scenario_root / group.milestone
+        scenario_dir = args.scenario_root / (group.scenario_dir or group.milestone)
         out_dir = args.out_root / group.milestone
         paths = {name: scenario_dir / f"{name}.toml" for name in group.scenarios}
         missing = [str(p) for p in paths.values() if not p.exists()]

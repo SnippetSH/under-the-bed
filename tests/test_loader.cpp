@@ -28,7 +28,7 @@ std::string weather_csv(std::size_t rows, std::string_view newline = "\n") {
 }
 
 constexpr std::string_view kValidScenario = R"(
-schema_version = 3
+schema_version = 4
 [scenario]
 name = "t"
 seed = 7
@@ -57,13 +57,17 @@ ca_g_per_m2 = 400.0
 mg_g_per_m2 = 60.0
 p_g_per_m2 = 25.0
 s_g_per_m2 = 3.0
+cec_mineral_eq_per_m2 = 25.0
+mn_g_per_m2 = 5.0
+mn_oxide_g_per_m2 = 100.0
+p_fixed_g_per_m2 = 150.0
 [difficulty]
 stress_combination = "minimum"
 )";
 
 // 형식 검증용 params 문서 (값은 명세 값이 아니어도 돼요)
 constexpr std::string_view kValidParams = R"(
-schema_version = 3
+schema_version = 4
 [house]
 base_offset_degC = 2.0
 solar_gain_degC_per_W_per_m2 = 0.015
@@ -99,8 +103,31 @@ nitrite_alarm_reset_fraction = 0.8
 step1_o2_curve = [[0, 0.05], [1, 1.0]]
 step2_o2_curve = [[0, 0.0], [1, 1.0]]
 nitrite_toxicity_ph_curve = [[4.5, 8.0], [9.0, 1.0]]
-[leaching]
-nh4_solution_fraction = 0.1
+[cation_exchange]
+cec_organic_eq_per_g_C = 0.0015
+exchange_rate_per_hour = 0.3
+nh4_retention_factor = 70.0
+k_retention_factor = 250.0
+ca_retention_factor = 760.0
+mg_retention_factor = 380.0
+solver_iterations = 60
+buffer_eq_per_pH_per_eq_cec = 0.15
+[antagonism]
+ca_curve = [[0.0, 1.0], [1.2, 0.15]]
+mg_curve = [[0.0, 1.0], [1.2, 0.1]]
+min_demand_factor = 0.6
+[phosphorus]
+fixation_rate_per_hour = 0.0015
+fixation_ph_curve = [[4.5, 1.0], [8.5, 1.0]]
+release_rate_per_hour = 0.00005
+[manganese]
+retention_ph_curve = [[4.5, 450.0], [8.5, 2000.0]]
+oxidation_rate_per_hour = 0.002
+oxidation_ph_curve = [[4.5, 0.005], [8.5, 10.0]]
+oxidation_o2_curve = [[0, 0.0], [1, 1.0]]
+reduction_rate_per_hour = 0.00006
+reduction_ph_curve = [[4.5, 6.0], [8.5, 0.3]]
+reduction_o2_curve = [[0, 20.0], [1, 1.0]]
 [aeration]
 compaction_cap_curve = [[0, 1.0], [1.0, 0.35]]
 organic_C_cap_bonus_per_g_C = 0.00004
@@ -116,10 +143,8 @@ ca_g_per_eq = 20.039
 mg_g_per_eq = 12.153
 p_g_per_eq = 30.974
 s_g_per_eq = 16.03
+mn_g_per_eq = 27.469
 [soil_chemistry]
-k_solution_fraction = 0.03
-ca_solution_fraction = 0.01
-mg_solution_fraction = 0.02
 p_solution_fraction = 0.002
 s_solution_fraction = 0.8
 nitrification_H_eq_per_eq_N = 2.0
@@ -161,11 +186,17 @@ target_Ca_g_per_g = 0.012
 target_Mg_g_per_g = 0.004
 luxury_uptake_ratio = 1.3
 uptake_rate_per_g_root_per_hour = 0.002
+ca_uptake_rate_per_g_root_per_hour = 0.00019
+mg_uptake_rate_per_g_root_per_hour = 0.00021
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015
 root_recovery_rate_per_hour = 0.002
 death_root_health = 0.05
 root_dieback_per_damage = 1.0
 dry_matter_C_fraction = 0.45
+target_Mn_g_per_g = 0.0001
+mn_uptake_rate_per_g_root_per_hour = 0.00004
+mn_max_uptake_ratio = 30.0
+mn_toxicity_curve = [[0, 1], [30, 0.1]]
 [[compost]]
 id = "c1"
 name = "compost one"
@@ -178,6 +209,7 @@ ca_g_per_kg = 10.0
 mg_g_per_kg = 4.0
 p_g_per_kg = 4.0
 s_g_per_kg = 2.0
+mn_g_per_kg = 0.3
 direct_acid_eq_per_kg = 0.0
 [[compost]]
 id = "c2"
@@ -191,6 +223,7 @@ ca_g_per_kg = 10.0
 mg_g_per_kg = 4.0
 p_g_per_kg = 4.0
 s_g_per_kg = 2.0
+mn_g_per_kg = 0.3
 direct_acid_eq_per_kg = 0.0
 [[fertilizer]]
 id = "f1"
@@ -202,6 +235,7 @@ ca_g_per_kg = 10.0
 mg_g_per_kg = 4.0
 p_g_per_kg = 4.0
 s_g_per_kg = 2.0
+mn_g_per_kg = 0.3
 direct_acid_eq_per_kg = 0.0
 [[lime]]
 id = "l1"
@@ -235,13 +269,14 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
     SECTION("valid document fills every field") {
         auto p = simdata::parse_params_toml(kValidParams, "p.toml");
         REQUIRE(p.has_value());
-        CHECK(p->schema_version == 3);
+        CHECK(p->schema_version == 4);
         CHECK(p->house.base_offset_degC == 2.0);
         CHECK(p->soil_water.evap_moisture_curve.points.size() == 2);
         CHECK(p->soil_water.evap_moisture_curve(0.5) == 0.5);
         CHECK(p->organic_matter.humus_C_to_N_ratio == 10.0);  // 정수로 쓴 실수 키
         CHECK(p->nitrification.nitrite_toxicity_threshold_g_N_per_m2 == 2.0);
-        CHECK(p->leaching.nh4_solution_fraction == 0.1);
+        CHECK(p->cation_exchange.nh4_retention_factor == 70.0);
+        CHECK(p->cation_exchange.solver_iterations == 60);
         REQUIRE(p->composts.size() == 2);
         CHECK(p->composts[0].id == "c1");
         CHECK(p->composts[1].C_g_per_kg == 150.0);
@@ -304,10 +339,10 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
     }
     SECTION("unknown key in a nested table is rejected") {
         auto p = simdata::parse_params_toml(
-            replaced(kValidParams, "[leaching]\n", "[leaching]\nnh4_fraction = 1\n"), "p.toml");
+            replaced(kValidParams, "[cation_exchange]\n", "[cation_exchange]\nnh4_fraction = 1\n"), "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK_THAT(p.error().message, ContainsSubstring("p.toml"));
-        CHECK_THAT(p.error().message, ContainsSubstring("unknown key 'leaching.nh4_fraction'"));
+        CHECK_THAT(p.error().message, ContainsSubstring("unknown key 'cation_exchange.nh4_fraction'"));
     }
     SECTION("unknown key inside a [[compost]] entry is rejected") {
         auto p = simdata::parse_params_toml(
@@ -328,7 +363,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
                    ContainsSubstring("missing required key 'soil_water.drainage_rate_per_hour'"));
     }
     SECTION("missing table is rejected") {
-        auto p = simdata::parse_params_toml("schema_version = 3\n", "p.toml");
+        auto p = simdata::parse_params_toml("schema_version = 4\n", "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'house'"));
     }
@@ -360,7 +395,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(q.error().message, ContainsSubstring("organic_matter.humification_fraction"));
     }
     SECTION("old schema version is rejected") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 3", "schema_version = 2"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 4", "schema_version = 3"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -472,7 +507,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(doc.error().message, ContainsSubstring("unknown key 'house.bed_depth_cm'"));
     }
     SECTION("missing table") {
-        auto doc = simdata::parse_scenario_toml("schema_version = 3\n[scenario]\n", "s.toml");
+        auto doc = simdata::parse_scenario_toml("schema_version = 4\n[scenario]\n", "s.toml");
         CHECK_FALSE(doc.has_value());
     }
     SECTION("negative seed") {
@@ -480,7 +515,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
             simdata::parse_scenario_toml(replaced(kValidScenario, "seed = 7", "seed = -1"), "s.toml").has_value());
     }
     SECTION("unsupported schema version") {
-        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 3", "schema_version = 2"),
+        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 4", "schema_version = 3"),
                                                 "s.toml");
         REQUIRE_FALSE(doc.has_value());
         CHECK(doc.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -720,4 +755,130 @@ TEST_CASE("Missing files report an I/O error", "[unit][loader]") {
     auto p = simdata::load_params(test::repo_path("data/does-not-exist.toml"));
     REQUIRE_FALSE(p.has_value());
     CHECK(p.error().code == sim::ErrorCode::Io);
+}
+
+// ---- M3 (schema 4) ----
+
+TEST_CASE("M3 params tables, keys and entries are read", "[unit][loader][m3]") {
+    auto p = simdata::parse_params_toml(kValidParams, "p.toml");
+    REQUIRE(p.has_value());
+    CHECK(p->cation_exchange.cec_organic_eq_per_g_C == 0.0015);
+    CHECK(p->cation_exchange.exchange_rate_per_hour == 0.3);
+    CHECK(p->cation_exchange.ca_retention_factor == 760.0);
+    CHECK(p->cation_exchange.buffer_eq_per_pH_per_eq_cec == 0.15);
+    CHECK(p->antagonism.ca_curve(1.2) == 0.15);
+    CHECK(p->antagonism.mg_curve(1.2) == 0.1);
+    CHECK(p->antagonism.min_demand_factor == 0.6);
+    CHECK(p->phosphorus.fixation_rate_per_hour == 0.0015);
+    CHECK(p->phosphorus.release_rate_per_hour == 0.00005);
+    CHECK(p->manganese.retention_ph_curve(4.5) == 450.0);
+    CHECK(p->manganese.oxidation_o2_curve.points.size() == 2);
+    CHECK(p->manganese.reduction_rate_per_hour == 0.00006);
+    CHECK(p->ions.mn_g_per_eq == 27.469);
+    CHECK(p->crop.ca_uptake_rate_per_g_root_per_hour == 0.00019);
+    CHECK(p->crop.mg_uptake_rate_per_g_root_per_hour == 0.00021);
+    CHECK(p->crop.target_Mn_g_per_g == 0.0001);
+    CHECK(p->crop.mn_uptake_rate_per_g_root_per_hour == 0.00004);
+    CHECK(p->crop.mn_max_uptake_ratio == 30.0);
+    CHECK(p->crop.mn_toxicity_curve(30.0) == 0.1);
+    CHECK(p->composts[0].mn_g_per_kg == 0.3);
+    CHECK(p->fertilizers[0].mn_g_per_kg == 0.3);
+}
+
+TEST_CASE("M3 params reject missing, removed and unknown keys", "[unit][loader][m3]") {
+    SECTION("missing M3 table is rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "[manganese]\n", "[mangan]\n"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'manganese'"));
+    }
+    SECTION("missing M3 key in an existing table is rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "solver_iterations = 60\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'cation_exchange.solver_iterations'"));
+    }
+    SECTION("missing antagonism floor is rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "min_demand_factor = 0.6\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'antagonism.min_demand_factor'"));
+    }
+    SECTION("missing crop Mn key is rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "mn_max_uptake_ratio = 30.0\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'crop.mn_max_uptake_ratio'"));
+    }
+    SECTION("missing mn_g_per_kg in a compost entry is rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "mn_g_per_kg = 0.3\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'compost[0].mn_g_per_kg'"));
+    }
+    SECTION("removed M2 solution fraction keys are unknown now") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "[soil_chemistry]\n", "[soil_chemistry]\nk_solution_fraction = 0.03\n"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("unknown key 'soil_chemistry.k_solution_fraction'"));
+    }
+    SECTION("removed [leaching] table is unknown now") {
+        auto p = simdata::parse_params_toml(std::string(kValidParams) + "[leaching]\nnh4_solution_fraction = 0.1\n",
+                                            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("unknown key 'leaching'"));
+    }
+    SECTION("removed mn_retention_factor is unknown now") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "[cation_exchange]\n", "[cation_exchange]\nmn_retention_factor = 1500.0\n"),
+            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("unknown key 'cation_exchange.mn_retention_factor'"));
+    }
+    SECTION("solver_iterations must be an integer") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "solver_iterations = 60", "solver_iterations = 60.5"),
+                                            "p.toml");
+        CHECK_FALSE(p.has_value());
+    }
+    SECTION("params schema 3 (M2) is rejected as an old version") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 4", "schema_version = 3"),
+                                            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
+    }
+}
+
+TEST_CASE("M3 scenario soil keys are read and required", "[unit][loader][m3]") {
+    SECTION("valid") {
+        auto doc = simdata::parse_scenario_toml(kValidScenario, "s.toml");
+        REQUIRE(doc.has_value());
+        CHECK(doc->scenario.soil.cec_mineral_eq_per_m2 == 25.0);
+        CHECK(doc->scenario.soil.mn_g_per_m2 == 5.0);
+        CHECK(doc->scenario.soil.mn_oxide_g_per_m2 == 100.0);
+        CHECK(doc->scenario.soil.p_fixed_g_per_m2 == 150.0);
+    }
+    for (const char* key : {"cec_mineral_eq_per_m2", "mn_g_per_m2", "mn_oxide_g_per_m2", "p_fixed_g_per_m2"}) {
+        INFO(key);
+        std::string text(kValidScenario);
+        const auto begin = text.find(std::string(key) + " = ");
+        REQUIRE(begin != std::string::npos);
+        const auto end = text.find('\n', begin);
+        text.erase(begin, end - begin + 1);
+        auto doc = simdata::parse_scenario_toml(text, "s.toml");
+        REQUIRE_FALSE(doc.has_value());
+        CHECK_THAT(doc.error().message, ContainsSubstring(std::string("missing required key 'soil.") + key + "'"));
+    }
+}
+
+TEST_CASE("Repository params and scenarios carry the M3 fields", "[unit][loader][data][m3]") {
+    auto params = simdata::load_params(test::repo_path("data/params.toml"));
+    REQUIRE(params.has_value());
+    CHECK(params->schema_version == 4);
+    CHECK(params->cation_exchange.solver_iterations == 60);
+    CHECK(params->crop.mn_max_uptake_ratio == 30.0);
+    bool has_mnso4 = false;
+    for (const auto& fertilizer : params->fertilizers) {
+        has_mnso4 = has_mnso4 || (fertilizer.id == "manganese_sulfate" && fertilizer.mn_g_per_kg > 0.0);
+    }
+    CHECK(has_mnso4);
+
+    auto empty = simdata::load_scenario(test::repo_path("data/scenarios/empty.toml"));
+    REQUIRE(empty.has_value());
+    CHECK(empty->soil.cec_mineral_eq_per_m2 > 0.0);
+    CHECK(empty->soil.mn_oxide_g_per_m2 >= 0.0);
 }

@@ -7,6 +7,8 @@ add_executable(sim-tests
   test_world.cpp
   test_serialization.cpp
   test_determinism.cpp
+  test_loader.cpp
+  test_soil_water.cpp
   test_temperature.cpp
   test_organic_matter.cpp
   test_nitrification.cpp
@@ -14,10 +16,18 @@ add_executable(sim-tests
   test_m1_conservation.cpp
   test_m1_determinism.cpp
   test_aeration.cpp
+  test_soil_chemistry.cpp
   test_crop.cpp
+  test_validation.cpp
   test_m2_scenarios.cpp
   test_m2_conservation.cpp
-  test_m2_determinism.cpp)
+  test_m2_determinism.cpp
+  test_cation_exchange.cpp
+  test_phosphorus.cpp
+  test_manganese.cpp
+  test_m3_scenarios.cpp
+  test_m3_conservation.cpp
+  test_m3_determinism.cpp)
 
 target_link_libraries(sim-tests PRIVATE sim-core sim-data Catch2::Catch2WithMain)
 # 실제 data/ 파일을 읽는 테스트용 저장소 경로

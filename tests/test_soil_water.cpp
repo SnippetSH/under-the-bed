@@ -149,7 +149,7 @@ TEST_CASE("No drainage means no leaching", "[unit][leaching]") {
     cell.drained_mm_this_tick = 0.0;
     const sim::SoilCell before = cell;
     sim::Ledger ledger;
-    sim::process::leach(cell, params.leaching, test::test_params().soil_chemistry, ledger);
+    sim::process::leach(cell, params, ledger);
     REQUIRE(cell == before);
     REQUIRE(ledger.N_leached_g == 0.0);
 }
@@ -162,7 +162,7 @@ TEST_CASE("Drainage leaches NO3 proportionally more than NH4 and matches the led
     cell.drained_mm_this_tick = 10.0;
     const sim::SoilCell before = cell;
     sim::Ledger ledger;
-    sim::process::leach(cell, params.leaching, test::test_params().soil_chemistry, ledger);
+    sim::process::leach(cell, params, ledger);
 
     const double no3_rel = 1.0 - cell.no3_N_g_per_m2 / before.no3_N_g_per_m2;
     const double nh4_rel = 1.0 - cell.nh4_N_g_per_m2 / before.nh4_N_g_per_m2;
@@ -184,7 +184,7 @@ TEST_CASE("Leaching fraction equals drained over water plus drained", "[unit][le
     cell.drained_mm_this_tick = 10.0;
     const double no3_before = cell.no3_N_g_per_m2;
     sim::Ledger ledger;
-    sim::process::leach(cell, params.leaching, test::test_params().soil_chemistry, ledger);
+    sim::process::leach(cell, params, ledger);
     REQUIRE(cell.no3_N_g_per_m2 == Catch::Approx(no3_before * (1.0 - 10.0 / 40.0)));
 }
 
@@ -197,8 +197,8 @@ TEST_CASE("More drainage leaches more and pools stay non-negative", "[unit][leac
     large.drained_mm_this_tick = 20.0;
     sim::Ledger small_ledger;
     sim::Ledger large_ledger;
-    sim::process::leach(small, params.leaching, test::test_params().soil_chemistry, small_ledger);
-    sim::process::leach(large, params.leaching, test::test_params().soil_chemistry, large_ledger);
+    sim::process::leach(small, params, small_ledger);
+    sim::process::leach(large, params, large_ledger);
     REQUIRE(large_ledger.N_leached_g > small_ledger.N_leached_g);
 
     // 극단: 남은 수분 0, 큰 배수
@@ -206,7 +206,7 @@ TEST_CASE("More drainage leaches more and pools stay non-negative", "[unit][leac
     extreme.water_mm = 0.0;
     extreme.drained_mm_this_tick = 500.0;
     sim::Ledger ledger;
-    sim::process::leach(extreme, params.leaching, test::test_params().soil_chemistry, ledger);
+    sim::process::leach(extreme, params, ledger);
     REQUIRE(extreme.no3_N_g_per_m2 >= 0.0);
     REQUIRE(extreme.nh4_N_g_per_m2 >= 0.0);
     REQUIRE(extreme.no2_N_g_per_m2 >= 0.0);
@@ -299,7 +299,7 @@ TEST_CASE("Water above saturation drains in the same tick and is leached", "[uni
     REQUIRE(cell.water_mm <= cell.saturation_mm);
     REQUIRE(cell.drained_mm_this_tick >= initial + 100.0 - cell.saturation_mm);
     REQUIRE(water_balance_error(cell, initial, ledger) < 1e-12);
-    sim::process::leach(cell, params.leaching, params.soil_chemistry, ledger);
+    sim::process::leach(cell, params, ledger);
     REQUIRE(cell.no3_N_g_per_m2 < no3_before);
 }
 

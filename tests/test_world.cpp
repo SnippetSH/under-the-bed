@@ -180,3 +180,46 @@ TEST_CASE("Snapshot starts from the scenario soil", "[unit][world]") {
     }
     CHECK(s.ledger == sim::Ledger{});
 }
+
+// M3 (cation-exchange.md "초기화 순서"): 월드 생성 시 통기 지수를 먼저 계산한 뒤 용액을 평형값으로 채워요 (완화 없이 한 번에)
+TEST_CASE("World creation fills the solution state at equilibrium", "[unit][world][m3]") {
+    sim::World world = make_world();
+    const sim::Snapshot s = world.snapshot();
+    sim::SoilCell reference = test::test_cell();
+    const sim::process::ExchangeEquilibrium eq = sim::process::exchange_equilibrium(reference, world.params());
+    for (const sim::SoilCell& cell : s.soil) {
+        CHECK(cell.nh4_solution_N_g_per_m2 == eq.nh4_solution_N_g_per_m2);
+        CHECK(cell.k_solution_g_per_m2 == eq.k_solution_g_per_m2);
+        CHECK(cell.ca_solution_g_per_m2 == eq.ca_solution_g_per_m2);
+        CHECK(cell.mg_solution_g_per_m2 == eq.mg_solution_g_per_m2);
+        CHECK(cell.mn_solution_g_per_m2 == eq.mn_solution_g_per_m2);
+        CHECK(cell.cec_eq_per_m2 == eq.cec_eq_per_m2);
+        CHECK(cell.exchange_free_site_index == eq.exchange_free_site_index);
+        // 불변 조건: 0 ≤ 용액 ≤ 총량
+        CHECK(cell.k_solution_g_per_m2 > 0.0);
+        CHECK(cell.k_solution_g_per_m2 <= cell.k_g_per_m2);
+        CHECK(cell.mn_solution_g_per_m2 <= cell.mn_g_per_m2);
+    }
+}
+
+// 세이브 로드는 저장된 용액 상태를 그대로 쓰고 평형을 다시 구하지 않아요
+TEST_CASE("Deserializing keeps a non-equilibrium solution state", "[unit][world][m3]") {
+    sim::World world = make_world();
+    const sim::TileArea area = sim::whole_grid(2, 3);
+    test::must_enqueue(world, sim::AddFertilizerCommand{area, "potassium_sulfate", 300.0});
+    world.step(1);  // 투입 직후라 평형과 다른 용액 상태
+    const sim::Snapshot before = world.snapshot();
+    const sim::process::ExchangeEquilibrium eq =
+        sim::process::exchange_equilibrium(before.soil.front(), world.params());
+    REQUIRE(before.soil.front().k_solution_g_per_m2 > eq.k_solution_g_per_m2 * 1.01);  // 평형이 아님
+
+    const auto bytes = world.serialize();
+    auto loaded = sim::World::deserialize(bytes);
+    REQUIRE(loaded.has_value());
+    const sim::Snapshot after = loaded->snapshot();
+    REQUIRE(after.soil.size() == before.soil.size());
+    for (std::size_t i = 0; i < before.soil.size(); ++i) {
+        CHECK(after.soil[i] == before.soil[i]);
+    }
+    CHECK(loaded->state_hash() == world.state_hash());
+}
