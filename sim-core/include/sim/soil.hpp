@@ -1,5 +1,9 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
 namespace sim {
 
 // 토양 셀 1개 = 베드 면적 1 m², 근권 한 층 (docs/spec/m1-overview.md "토양 셀 상태")
@@ -7,6 +11,8 @@ namespace sim {
 struct SoilCell {
     // 정적 성질 (시나리오 [soil]에서 옴. 셀별로 다를 수 있게 셀에 둬요)
     double field_capacity_mm = 0.0;
+    double saturation_mm = 0.0;                 // M2 aeration
+    double base_buffer_eq_per_m2_per_pH = 0.0;  // M2 soil-chemistry
 
     // 수분 (soil-water)
     double water_mm = 0.0;
@@ -26,8 +32,29 @@ struct SoilCell {
     double no2_N_g_per_m2 = 0.0;
     double no3_N_g_per_m2 = 0.0;
 
-    // pH: M1에서는 시나리오 초기값으로 고정 (nitrogen)
+    // pH: M2부터 변수 (soil-chemistry)
     double ph = 0.0;
+
+    // 통기·다짐 (aeration, M2)
+    double compaction_index = 0.0;
+    double aeration_index = 0.0;  // 셀 단계 c에서 매 틱 계산
+
+    // 양분 풀: 흙에 붙은 것 + 녹은 것, 원소 기준 (soil-chemistry, M2)
+    double k_g_per_m2 = 0.0;
+    double ca_g_per_m2 = 0.0;
+    double mg_g_per_m2 = 0.0;
+    double p_g_per_m2 = 0.0;
+    double s_g_per_m2 = 0.0;
+
+    // 석회와 산 (soil-chemistry, M2)
+    double lime_undissolved_eq_per_m2 = 0.0;
+    double lime_ca_fraction = 0.0;     // 미용해 석회 당량 중 Ca 비율 (가중 평균)
+    double lime_mg_fraction = 0.0;
+    double acid_H_eq_this_tick = 0.0;  // 명령·질산화가 더하고, pH 단계가 소비한 뒤 0으로
+    double pending_H_eq_per_m2 = 0.0;  // 작물 흡수가 더하고 다음 틱 pH 단계가 소비 (음수 = 염기)
+
+    // 파생값 (셀 단계 j)
+    double ec_dS_per_m = 0.0;
 
     // 아질산 경보 상태 (이벤트 중복 방지)
     bool nitrite_alarm = false;
@@ -56,7 +83,53 @@ struct Ledger {
     double C_in_g = 0.0;
     double C_respired_g = 0.0;
 
+    // M2 (m2-overview "장부 추가")
+    double water_transpired_mm = 0.0;
+    double N_uptake_g = 0.0;
+    double P_in_g = 0.0;
+    double P_leached_g = 0.0;
+    double P_uptake_g = 0.0;
+    double K_in_g = 0.0;
+    double K_leached_g = 0.0;
+    double K_uptake_g = 0.0;
+    double Ca_in_g = 0.0;
+    double Ca_leached_g = 0.0;
+    double Ca_uptake_g = 0.0;
+    double Mg_in_g = 0.0;
+    double Mg_leached_g = 0.0;
+    double Mg_uptake_g = 0.0;
+    double S_in_g = 0.0;
+    double S_leached_g = 0.0;
+    double H_eq_net = 0.0;  // pH 단계에 들어간 순 산 누계 (검증용)
+    double C_root_litter_g = 0.0;  // 뿌리 고사로 토양 이분해성 풀에 들어간 C
+
     bool operator==(const Ledger&) const = default;
+};
+
+// ---- 작물 (docs/spec/strawberry-minimal.md, M2) ----
+
+// stress_hours 인덱스. 동률일 때는 이 순서상 앞선 요인을 기록해요.
+enum class StressFactor : std::uint8_t { Water = 0, Salt, NutrientN, NutrientP, NutrientK, NutrientCa, NutrientMg, Root };
+inline constexpr std::size_t kStressFactorCount = 8;
+
+enum class RootDamageCause : std::uint8_t { Waterlog = 0, Heat, Nitrite, Acid };
+
+// 타일당 작물 0~1개. present = false면 나머지 필드는 의미 없음.
+struct Crop {
+    bool present = false;
+    bool alive = false;
+    double leaf_g_per_m2 = 0.0;  // 건물
+    double root_g_per_m2 = 0.0;
+    double root_health = 0.0;  // 0~1
+    double plant_N_g_per_m2 = 0.0;
+    double plant_P_g_per_m2 = 0.0;
+    double plant_K_g_per_m2 = 0.0;
+    double plant_Ca_g_per_m2 = 0.0;
+    double plant_Mg_g_per_m2 = 0.0;
+    std::array<double, kStressFactorCount> stress_hours{};  // 요인별로 생장을 가장 크게 제한한 누적 시간
+    double last_growth_g_per_m2 = 0.0;                       // 이번 틱 생장량 (스냅샷용)
+
+    bool operator==(const Crop&) const = default;
 };
 
 }  // namespace sim

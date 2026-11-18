@@ -22,6 +22,7 @@ struct Snapshot {
 
     double house_air_temp_degC;  // 마지막으로 처리한 틱의 하우스 기온 (틱 0에서는 초기 기상으로 계산)
     std::vector<SoilCell> soil;  // 행 우선, bed_rows × bed_cols
+    std::vector<Crop> crops;     // 행 우선, soil과 같은 인덱스 (M2)
     Ledger ledger;
 };
 

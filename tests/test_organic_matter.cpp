@@ -340,3 +340,18 @@ TEST_CASE("Immature manure respires more and peaks NH4 higher than mature manure
     CHECK(immature.respired_C_g > mature.respired_C_g);
     CHECK(immature.peak_nh4_N_g_per_m2 > mature.peak_nh4_N_g_per_m2);
 }
+
+// M2: 저산소에서 분해가 느려진다
+TEST_CASE("Low aeration slows decomposition", "[unit][organic_matter][m2]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell good = test::test_cell();
+    sim::SoilCell poor = test::test_cell();
+    good.aeration_index = 1.0;
+    poor.aeration_index = 0.2;
+    sim::Ledger good_ledger;
+    sim::Ledger poor_ledger;
+    decompose(good, good_ledger, params);
+    decompose(poor, poor_ledger, params);
+    CHECK(poor_ledger.C_respired_g > 0.0);
+    CHECK(poor_ledger.C_respired_g < good_ledger.C_respired_g);
+}

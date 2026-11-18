@@ -53,7 +53,7 @@ def plot_files(
     for ax, column in zip(axes[:, 0], columns):
         for data, label in zip(datasets, labels):
             days = [int(t) / HOURS_PER_DAY for t in data["tick"]]
-            ax.plot(days, [float(v) for v in data[column]], linewidth=0.8 if overlay else 0.6, label=label)
+            ax.plot(days, [float(v) if v != "" else float("nan") for v in data[column]], linewidth=0.8 if overlay else 0.6, label=label)
         ax.set_ylabel(column, fontsize=8)
         ax.grid(True, alpha=0.3)
         if overlay:

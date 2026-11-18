@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "sim/processes.hpp"
 #include "sim/world.hpp"
 #include "test_helpers.hpp"
 
@@ -170,8 +171,12 @@ TEST_CASE("World::create validates M1 parameters and soil", "[unit][world]") {
 TEST_CASE("Snapshot starts from the scenario soil", "[unit][world]") {
     sim::World world = make_world();
     const sim::Snapshot s = world.snapshot();
+    // 파생값(통기 지수, EC)은 생성 시 프로세스 함수로 계산돼요
+    sim::SoilCell expected = test::test_cell();
+    expected.aeration_index = sim::process::aeration_index(expected, world.params().aeration);
+    expected.ec_dS_per_m = sim::process::soil_ec_dS_per_m(expected, world.params());
     for (const sim::SoilCell& cell : s.soil) {
-        CHECK(cell == test::test_cell());
+        CHECK(cell == expected);
     }
     CHECK(s.ledger == sim::Ledger{});
 }

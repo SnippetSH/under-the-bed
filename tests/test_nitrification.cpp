@@ -27,7 +27,7 @@ const sim::FertilizerDef& fertilizer(const sim::Params& params, std::string_view
 // 2단계 직전 NO2 = 끝난 뒤 NO2 + 2단계 이동량, 2단계 이동량 = NO3 증가량.
 double observed_step2_fraction(sim::SoilCell cell, const sim::NitrificationParams& params) {
     const double no3_before = cell.no3_N_g_per_m2;
-    sim::process::nitrify(cell, params);
+    sim::process::nitrify(cell, params, test::test_params().soil_chemistry, test::test_params().ions);
     const double n2 = cell.no3_N_g_per_m2 - no3_before;
     const double no2_before_step2 = cell.no2_N_g_per_m2 + n2;
     REQUIRE(no2_before_step2 > 0.0);
@@ -136,7 +136,7 @@ TEST_CASE("Nitrification only changes N form: mineral N is conserved", "[unit][n
             const double mineral_before = cell.mineral_N_g_per_m2();
 
             for (int hour = 0; hour < 24; ++hour) {
-                sim::process::nitrify(cell, params.nitrification);
+                sim::process::nitrify(cell, params.nitrification, test::test_params().soil_chemistry, test::test_params().ions);
                 CHECK_THAT(cell.mineral_N_g_per_m2(), WithinRel(mineral_before, 1e-12));
             }
             CHECK(cell.organic_N_g_per_m2() == organic_before);
@@ -153,6 +153,7 @@ TEST_CASE("Nitrite alarm hysteresis emits one event per crossing", "[unit][nitri
     const std::uint32_t tile = 7;
 
     sim::SoilCell cell = test::test_cell();
+    cell.ph = 7.0;  // 독성 배율 1: 유효 아질산 = NO2
     cell.no2_N_g_per_m2 = 0.0;
     REQUIRE_FALSE(sim::process::check_nitrite_alarm(cell, np, tile).has_value());
     REQUIRE_FALSE(cell.nitrite_alarm);
@@ -220,7 +221,7 @@ TEST_CASE("Nitrification stays finite and non-negative for extreme inputs", "[un
 
                 const double mineral_before = cell.mineral_N_g_per_m2();
                 for (int hour = 0; hour < 24 * 30; ++hour) {
-                    sim::process::nitrify(cell, params.nitrification);
+                    sim::process::nitrify(cell, params.nitrification, test::test_params().soil_chemistry, test::test_params().ions);
                     (void)sim::process::check_nitrite_alarm(cell, params.nitrification, 0);
                 }
                 CHECK(pools_finite_and_non_negative(cell));
@@ -238,7 +239,7 @@ TEST_CASE("Nitrification stays finite and non-negative for extreme inputs", "[un
         cell.water_mm = cell.field_capacity_mm;
         cell.ph = 6.5;
         const double mineral_before = cell.mineral_N_g_per_m2();
-        sim::process::nitrify(cell, fast.nitrification);
+        sim::process::nitrify(cell, fast.nitrification, test::test_params().soil_chemistry, test::test_params().ions);
         CHECK(cell.nh4_N_g_per_m2 == 0.0);
         CHECK(cell.no2_N_g_per_m2 >= 0.0);
         CHECK(pools_finite_and_non_negative(cell));
@@ -250,7 +251,7 @@ TEST_CASE("Nitrification stays finite and non-negative for extreme inputs", "[un
         cell.nh4_N_g_per_m2 = 0.0;
         cell.no2_N_g_per_m2 = 0.0;
         cell.no3_N_g_per_m2 = 0.0;
-        sim::process::nitrify(cell, params.nitrification);
+        sim::process::nitrify(cell, params.nitrification, test::test_params().soil_chemistry, test::test_params().ions);
         CHECK(cell.nh4_N_g_per_m2 == 0.0);
         CHECK(cell.no2_N_g_per_m2 == 0.0);
         CHECK(cell.no3_N_g_per_m2 == 0.0);
@@ -281,7 +282,7 @@ TEST_CASE("S2 direction: alkaline soil accumulates more nitrite after ammonium f
 
         Run r;
         for (int hour = 0; hour < hours; ++hour) {
-            sim::process::nitrify(cell, np);
+            sim::process::nitrify(cell, np, test::test_params().soil_chemistry, test::test_params().ions);
             if (sim::process::check_nitrite_alarm(cell, np, 0).has_value()) {
                 ++r.events;
             }
@@ -303,4 +304,60 @@ TEST_CASE("S2 direction: alkaline soil accumulates more nitrite after ammonium f
     CHECK(alkaline.events >= 1);
     CHECK_FALSE(neutral.ever_above_threshold);
     CHECK(neutral.events == 0);
+}
+
+// M2: 저산소는 2단계를 1단계보다 더 억제해 아질산이 쌓인다
+TEST_CASE("Low aeration slows step 2 more than step 1 so nitrite accumulates", "[unit][nitrification][m2]") {
+    const sim::Params params = test::test_params();
+    const auto run = [&](double aeration) {
+        sim::SoilCell cell = test::test_cell();
+        cell.aeration_index = aeration;
+        cell.nh4_N_g_per_m2 = 10.0;
+        cell.no2_N_g_per_m2 = 0.0;
+        cell.no3_N_g_per_m2 = 0.0;
+        cell.soil_temp_degC = 25.0;
+        for (int hour = 0; hour < 48; ++hour) {
+            sim::process::nitrify(cell, params.nitrification, params.soil_chemistry, params.ions);
+        }
+        return cell;
+    };
+    const sim::SoilCell good = run(1.0);
+    const sim::SoilCell poor = run(0.3);
+    CHECK(poor.nh4_N_g_per_m2 > good.nh4_N_g_per_m2);  // 1단계도 느려짐
+    CHECK(poor.no2_N_g_per_m2 > good.no2_N_g_per_m2);  // 2단계가 더 느려서 NO2 축적
+    CHECK(poor.no3_N_g_per_m2 < good.no3_N_g_per_m2);
+}
+
+// M2: 질산화된 N 1 eq당 H+ 2 eq
+TEST_CASE("Nitrification adds 2 eq H+ per eq N nitrified", "[unit][nitrification][m2]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell cell = test::test_cell();
+    cell.nh4_N_g_per_m2 = 10.0;
+    cell.acid_H_eq_this_tick = 0.0;
+    const double nh4_before = cell.nh4_N_g_per_m2;
+    sim::process::nitrify(cell, params.nitrification, params.soil_chemistry, params.ions);
+    const double nitrified_g = nh4_before - cell.nh4_N_g_per_m2;
+    REQUIRE(nitrified_g > 0.0);
+    CHECK_THAT(cell.acid_H_eq_this_tick, WithinRel(2.0 * nitrified_g / params.ions.nh4_N_g_per_eq, 1e-12));
+}
+
+// M2: 같은 NO2라도 산성에서 유효 아질산이 크고 경보도 산성에서만 울린다
+TEST_CASE("Nitrite toxicity rises at low pH and drives the alarm", "[unit][nitrification][m2]") {
+    const sim::Params params = test::test_params();
+    const auto& np = params.nitrification;
+    sim::SoilCell acid = test::test_cell();
+    sim::SoilCell neutral = test::test_cell();
+    acid.ph = 5.0;
+    neutral.ph = 7.0;
+    acid.no2_N_g_per_m2 = 0.6 * np.nitrite_toxicity_threshold_g_N_per_m2;
+    neutral.no2_N_g_per_m2 = acid.no2_N_g_per_m2;
+
+    CHECK(sim::process::effective_nitrite_g_N_per_m2(acid, np) > sim::process::effective_nitrite_g_N_per_m2(neutral, np));
+    CHECK(sim::process::effective_nitrite_g_N_per_m2(neutral, np) == neutral.no2_N_g_per_m2);
+
+    const auto acid_event = sim::process::check_nitrite_alarm(acid, np, 3);
+    const auto neutral_event = sim::process::check_nitrite_alarm(neutral, np, 3);
+    REQUIRE(acid_event.has_value());
+    CHECK(acid_event->no2_N_g_per_m2 == acid.no2_N_g_per_m2);  // 이벤트에는 원래 NO2
+    CHECK_FALSE(neutral_event.has_value());
 }

@@ -1,6 +1,6 @@
 # S1 기준(무처리) — docs/spec/m1-overview.md "시나리오 테스트 (M1)" 표. 값은 전부 게임용 임의값이에요.
 
-schema_version = 2
+schema_version = 3
 
 [scenario]
 name = "s0_control"
@@ -24,4 +24,16 @@ labile_C_g_per_m2 = 50.0
 labile_N_g_per_m2 = 5.0
 stable_C_g_per_m2 = 3600.0
 stable_N_g_per_m2 = 360.0
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.3
+base_buffer_eq_per_m2_per_pH = 5.0
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[difficulty]
+stress_combination = "minimum"
 

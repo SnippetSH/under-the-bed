@@ -1,10 +1,11 @@
-# 시뮬레이션 파라미터 (ADR-0002, schema_version 2 = M1)
+# 시뮬레이션 파라미터 (ADR-0002, schema_version 3 = M2)
 #
 # 키 이름에 단위를 붙이고, 값마다 출처를 주석으로 달아요. 출처가 없으면 "게임용 임의값".
 # 곡선은 [[x, y], ...] 배열이고 x는 엄격하게 오름차순이에요.
-# 각 값의 의미는 docs/spec/ 의 해당 명세(soil-water, soil-temperature, organic-matter, nitrogen)를 봐요.
+# 각 값의 의미는 docs/spec/ 의 해당 명세(soil-water, soil-temperature, organic-matter, nitrogen,
+# aeration, soil-chemistry, strawberry-minimal)를 봐요.
 
-schema_version = 2  # sim::kParamsSchemaVersion과 같아야 해요
+schema_version = 3  # sim::kParamsSchemaVersion과 같아야 해요
 
 [house]  # docs/spec/soil-temperature.md
 base_offset_degC = 2.0                    # 외기 대비 기본 온도차. 게임용 임의값
@@ -16,6 +17,7 @@ evap_mm_per_hour_per_W_per_m2 = 0.0004    # 하우스 안 일사당 잠재 증�
 evap_base_mm_per_hour = 0.005             # 일사가 없을 때의 기본 증발. 게임용 임의값
 evap_moisture_curve = [[0.0, 0.0], [0.3, 0.15], [0.7, 0.8], [1.0, 1.0]]  # x = relative_water. 게임용 임의값
 drainage_rate_per_hour = 0.3              # 포장용수량 초과분 중 시간당 배수 비율. 게임용 임의값
+drainage_compaction_curve = [[0, 1.0], [0.5, 0.6], [1.0, 0.1]]  # x = compaction_index, y = 배수 속도 배율. 게임용 임의값 (aeration.md)
 
 [soil_temperature]  # docs/spec/soil-temperature.md
 relax_rate_per_hour = 0.04                # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
@@ -27,7 +29,8 @@ stable_decay_rate_per_hour = 0.00002      # 난분해성 풀 최대 분해 속�
 humification_fraction = 0.3               # 분해된 C 중 난분해성 풀로 가는 비율. 게임용 임의값
 humus_C_to_N_ratio = 10.0                 # 새 부식의 C:N비. 게임용 임의값 (토양 유기물 일반 범위)
 temp_curve = [[0, 0.05], [10, 0.25], [20, 0.55], [30, 0.85], [37, 1.0], [45, 1.0], [55, 0.5], [65, 0.1]]  # x = 토양 온도 °C. 게임용 임의값
-moisture_curve = [[0, 0], [0.2, 0.1], [0.6, 0.8], [0.9, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값 (과습 억제는 M2 통기성)
+moisture_curve = [[0, 0], [0.2, 0.1], [0.6, 0.8], [0.9, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값 (과습 억제는 o2_curve)
+o2_curve = [[0, 0.15], [0.3, 0.6], [0.6, 1.0], [1, 1.0]]  # x = aeration_index. 게임용 임의값 (aeration.md): 저산소에서 분해 둔화
 
 [nitrification]  # docs/spec/nitrogen.md
 step1_rate_per_hour = 0.01                # NH4+ -> NO2- 최대 속도. 게임용 임의값
@@ -40,11 +43,85 @@ ammonia_fraction_ph_curve = [[6, 0.0006], [7, 0.0056], [7.5, 0.0175], [8, 0.053]
 free_ammonia_inhibition_curve = [[0, 1], [0.05, 0.9], [0.3, 0.4], [1.0, 0.1], [3.0, 0.05]]  # x = 유리 암모니아 지수 g N/m². 게임용 임의값
 nitrite_toxicity_threshold_g_N_per_m2 = 2.0  # 아질산 독성 이벤트 임계치. 게임용 임의값
 nitrite_alarm_reset_fraction = 0.8        # 임계치의 이 비율 아래로 내려가야 경보 해제. 게임용 임의값
+step1_o2_curve = [[0, 0.05], [0.3, 0.5], [0.6, 1.0], [1, 1.0]]  # x = aeration_index. 게임용 임의값 (aeration.md)
+step2_o2_curve = [[0, 0.0], [0.3, 0.2], [0.6, 0.8], [0.8, 1.0], [1, 1.0]]  # x = aeration_index. 게임용 임의값. 1단계보다 민감 -> 과습에서 아질산 축적
+nitrite_toxicity_ph_curve = [[4.5, 8.0], [5.5, 3.0], [6.5, 1.3], [7.0, 1.0], [9.0, 1.0]]  # x = pH, y = 독성 배율. 게임용 임의값 (산성일수록 HNO2 비율 증가, pKa 약 3.3)
 
 [leaching]  # docs/spec/nitrogen.md "용탈"
 nh4_solution_fraction = 0.1               # NH4+ 중 용액에 있어 빠질 수 있는 비율. 게임용 임의값 (M3에서 양이온 교환으로 대체)
 
-# 퇴비 정의. 모든 값은 게임용 임의값 (docs/spec/organic-matter.md)
+[aeration]  # docs/spec/aeration.md
+compaction_cap_curve = [[0, 1.0], [0.5, 0.8], [1.0, 0.35]]  # x = compaction_index, y = 통기 지수 상한. 게임용 임의값
+organic_C_cap_bonus_per_g_C = 0.00004     # 유기 C 1 g/m²당 상한 증가. 게임용 임의값 (유기 C 3,600 g/m²에서 +0.14)
+compaction_per_mm_irrigation = 0.0015     # 관수 1 mm당 다짐 증가. 게임용 임의값
+tilled_compaction_index = 0.1             # 경운 직후 다짐 지수. 게임용 임의값
+till_root_damage_fraction = 0.5           # 작물이 있을 때 경운하면 깎이는 뿌리 건강도 비율. 게임용 임의값
+
+[ions]  # docs/spec/soil-chemistry.md "이온" — 원소 기준 1 당량의 무게 [g/eq]
+nh4_N_g_per_eq = 14.007                   # N 원자량, 1가
+no3_N_g_per_eq = 14.007                   # N 원자량, 1가
+no2_N_g_per_eq = 14.007                   # N 원자량, 1가
+k_g_per_eq = 39.098                       # K 원자량, 1가
+ca_g_per_eq = 20.039                      # Ca 원자량 / 2
+mg_g_per_eq = 12.153                      # Mg 원자량 / 2
+p_g_per_eq = 30.974                       # H2PO4- 1가로 단순화
+s_g_per_eq = 16.03                        # SO4 2-, S 원자량 / 2
+
+[soil_chemistry]  # docs/spec/soil-chemistry.md
+k_solution_fraction = 0.03                # 풀 중 녹아 있는 비율. 게임용 임의값
+ca_solution_fraction = 0.01               # 게임용 임의값
+mg_solution_fraction = 0.02               # 게임용 임의값
+p_solution_fraction = 0.002               # 게임용 임의값 (S4에서 고pH일 때 흡수 능력이 수요보다 작아지도록 잡음)
+s_solution_fraction = 0.8                 # 게임용 임의값 (황산은 잘 녹고 잘 씻김)
+nitrification_H_eq_per_eq_N = 2.0         # 화학량론: NH4+ + 2O2 -> NO3- + 2H+ + H2O
+uptake_H_eq_per_eq_NH4 = 1.0              # 전하 균형: NH4+ 흡수 시 H+ 방출
+uptake_H_eq_per_eq_NO3 = -1.0             # 전하 균형: NO3- 흡수 시 OH- 방출 (음수)
+organic_C_buffer_eq_per_g_C_per_pH = 0.002  # 유기 C 1 g/m²당 완충력. 게임용 임의값
+ph_min = 3.0                              # pH 계산 하한. 게임용 임의값 (극한 입력 안전장치)
+ph_max = 10.0                             # pH 계산 상한. 게임용 임의값
+lime_dissolution_rate_per_hour = 0.004    # 미용해 석회 최대 시간당 용해 비율. 게임용 임의값 (최적 조건 반감기 약 7일)
+lime_dissolution_ph_curve = [[4.5, 1.0], [5.5, 0.7], [6.5, 0.3], [7.5, 0.05], [8.0, 0.0]]  # x = pH. 게임용 임의값 (산성일수록 빨리 녹음)
+lime_dissolution_moisture_curve = [[0, 0], [0.3, 0.3], [0.7, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값
+ec_meq_per_L_per_dS_per_m = 10.0          # 경험식: 용액 EC 1 dS/m = 양이온 약 10 meq/L
+ec_min_water_mm = 1.0                     # EC 계산 시 물의 하한 (0 나눗셈 방지). 게임용 임의값
+
+[availability]  # docs/spec/soil-chemistry.md "유효도 곡선". x = pH, y = 0~1. 일반 유효도 도표의 모양을 따른 게임용 임의값
+n_ph_curve = [[4.0, 0.5], [5.0, 0.9], [5.5, 1.0], [8.0, 1.0], [9.0, 0.8]]
+p_ph_curve = [[4.5, 0.2], [5.5, 0.6], [6.0, 0.95], [6.8, 1.0], [7.5, 0.35], [8.0, 0.1], [8.5, 0.05]]  # 저pH(Fe·Al 고정), 고pH(Ca 고정)에서 감소
+k_ph_curve = [[4.0, 0.5], [5.0, 0.8], [5.8, 1.0], [9.0, 1.0]]
+ca_ph_curve = [[4.0, 0.3], [5.0, 0.55], [5.5, 0.75], [6.5, 1.0], [9.0, 1.0]]
+mg_ph_curve = [[4.0, 0.3], [5.0, 0.55], [5.5, 0.75], [6.5, 1.0], [9.0, 1.0]]
+
+[root_damage]  # docs/spec/strawberry-minimal.md "뿌리 건강도". y = 시간당 손상 비율. 전부 게임용 임의값
+waterlog_curve = [[0, 0.01], [0.2, 0.004], [0.4, 0.0005], [0.5, 0]]  # x = aeration_index
+heat_curve = [[32, 0], [35, 0.002], [40, 0.01], [45, 0.03]]  # x = 토양 온도 °C. 환기 없는 M2 하우스 기준, M7에서 재검토
+nitrite_curve = [[0, 0], [2, 0], [4, 0.004], [8, 0.015]]  # x = 유효 아질산 g N/m² (pH 배율 적용 후)
+acid_curve = [[4.0, 0.006], [4.6, 0.0018], [5.0, 0.0006], [5.4, 0.0001], [5.6, 0.0]]  # x = pH. ADR-0007 (알루미늄 독성 근사)
+
+[crop]  # docs/spec/strawberry-minimal.md
+specific_leaf_area_m2_per_g = 0.02        # 잎 1 g당 잎 면적 (200 cm²/g). 게임용 임의값
+light_interception_curve = [[0, 0], [0.5, 0.3], [1, 0.5], [2, 0.75], [3, 0.88], [4, 0.94]]  # x = LAI. 지수 감쇠(k 약 0.7) 모양
+par_fraction = 0.48                       # 일사 중 광합성 유효광 비율. 일반값
+light_use_efficiency_g_per_MJ = 2.5       # 받은 PAR 1 MJ당 건물 생산. 작물 일반 범위
+temp_curve = [[3, 0], [8, 0.3], [15, 0.8], [20, 1.0], [25, 1.0], [30, 0.6], [35, 0.2], [40, 0]]  # x = 하우스 기온 °C. 딸기 생장 적온 대략 18~25 °C
+leaf_allocation_fraction = 0.7            # 생장량 중 잎 비율 (나머지 뿌리). 게임용 임의값
+water_stress_curve = [[0.2, 0], [0.4, 0.3], [0.6, 0.9], [0.75, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값
+salt_stress_curve = [[0, 1], [2.0, 1.0], [3.5, 0.6], [5.5, 0.25], [8, 0.05]]  # x = 토양 용액 EC dS/m. 딸기는 염류에 약함. 게임용 임의값
+nutrient_stress_curve = [[0, 0], [0.5, 0.3], [0.8, 0.8], [1.0, 1.0]]  # x = 충족도. 게임용 임의값
+target_N_g_per_g = 0.028                  # 적정 체내 농도 (건물 1 g당). 딸기 잎 분석 적정 범위 대략 2.0~2.8%
+target_P_g_per_g = 0.0035                 # 대략 0.2~0.4%
+target_K_g_per_g = 0.020                  # 대략 1.1~2.5%
+target_Ca_g_per_g = 0.012                 # 대략 0.5~1.5%
+target_Mg_g_per_g = 0.004                 # 대략 0.25~0.45%
+luxury_uptake_ratio = 1.3                 # 적정 농도의 몇 배까지 더 먹는지. 게임용 임의값
+uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율. 게임용 임의값
+transpiration_mm_per_hour_per_W_per_m2 = 0.0015  # 하우스 안 일사 x 받는 빛 비율 1 W/m²당 증산. 게임용 임의값 (맑은 날 하루 약 1.5~2.5 mm)
+root_recovery_rate_per_hour = 0.002       # 손상이 없을 때 뿌리 건강도 회복 비율. 게임용 임의값
+death_root_health = 0.05                  # 이 아래로 내려가면 고사. 게임용 임의값
+root_dieback_per_damage = 1.0             # 손상 비율 1당 죽는 뿌리 건물 비율. 게임용 임의값 (과습 손상이 생장에 남도록)
+dry_matter_C_fraction = 0.45              # 건물 중 탄소 비율. 식물 건물 일반값
+
+# 퇴비 정의. 모든 값은 게임용 임의값 (docs/spec/organic-matter.md, soil-chemistry.md)
 [[compost]]
 id = "immature_manure"
 name = "미숙 우분 퇴비"
@@ -52,6 +129,12 @@ C_g_per_kg = 180.0
 N_g_per_kg = 12.0
 labile_C_fraction = 0.6
 labile_N_fraction = 0.7                   # 이분해성 C:N 약 13
+k_g_per_kg = 12.0
+ca_g_per_kg = 10.0
+mg_g_per_kg = 4.0
+p_g_per_kg = 4.0
+s_g_per_kg = 2.0
+direct_acid_eq_per_kg = 0.0
 
 [[compost]]
 id = "mature_manure"
@@ -60,6 +143,12 @@ C_g_per_kg = 150.0
 N_g_per_kg = 12.0
 labile_C_fraction = 0.1
 labile_N_fraction = 0.1
+k_g_per_kg = 14.0
+ca_g_per_kg = 15.0
+mg_g_per_kg = 5.0
+p_g_per_kg = 5.0
+s_g_per_kg = 2.0
+direct_acid_eq_per_kg = 0.0
 
 [[compost]]
 id = "bark_compost"
@@ -68,22 +157,97 @@ C_g_per_kg = 250.0
 N_g_per_kg = 5.0
 labile_C_fraction = 0.4
 labile_N_fraction = 0.3                   # 이분해성 C:N 약 67, 부동화 유발
+k_g_per_kg = 3.0
+ca_g_per_kg = 5.0
+mg_g_per_kg = 1.0
+p_g_per_kg = 1.0
+s_g_per_kg = 1.0
+direct_acid_eq_per_kg = 0.0
 
-# 비료 정의. 출처: 제품 일반 성분 (docs/spec/nitrogen.md)
+# 비료 정의. 출처: 제품 일반 성분 (docs/spec/nitrogen.md, soil-chemistry.md)
 [[fertilizer]]
 id = "ammonium_sulfate"
 name = "황산암모늄"
 nh4_N_g_per_kg = 210.0                    # 제품 일반 성분 21% N
 no3_N_g_per_kg = 0.0
+k_g_per_kg = 0.0
+ca_g_per_kg = 0.0
+mg_g_per_kg = 0.0
+p_g_per_kg = 0.0
+s_g_per_kg = 240.0                        # 제품 일반 성분
+direct_acid_eq_per_kg = 0.0               # 산성화는 질산화 H+로 설명됨
 
 [[fertilizer]]
 id = "urea"
 name = "요소"
 nh4_N_g_per_kg = 460.0                    # 제품 일반 성분 46% N. 요소 가수분해는 M1에서 즉시 NH4+로 단순화
 no3_N_g_per_kg = 0.0
+k_g_per_kg = 0.0
+ca_g_per_kg = 0.0
+mg_g_per_kg = 0.0
+p_g_per_kg = 0.0
+s_g_per_kg = 0.0
+direct_acid_eq_per_kg = 0.0
 
 [[fertilizer]]
 id = "calcium_nitrate"
 name = "질산칼슘"
 nh4_N_g_per_kg = 11.0                     # 제품 일반 성분 15.5% N
 no3_N_g_per_kg = 144.0
+k_g_per_kg = 0.0
+ca_g_per_kg = 190.0                       # 제품 일반 성분
+mg_g_per_kg = 0.0
+p_g_per_kg = 0.0
+s_g_per_kg = 0.0
+direct_acid_eq_per_kg = 0.0
+
+[[fertilizer]]
+id = "potassium_sulfate"
+name = "황산칼륨"
+nh4_N_g_per_kg = 0.0
+no3_N_g_per_kg = 0.0
+k_g_per_kg = 415.0                        # 제품 일반 성분 K2O 50%
+ca_g_per_kg = 0.0
+mg_g_per_kg = 0.0
+p_g_per_kg = 0.0
+s_g_per_kg = 180.0                        # 제품 일반 성분
+direct_acid_eq_per_kg = 0.0
+
+[[fertilizer]]
+id = "superphosphate"
+name = "과인산석회"
+nh4_N_g_per_kg = 0.0
+no3_N_g_per_kg = 0.0
+k_g_per_kg = 0.0
+ca_g_per_kg = 180.0                       # 제품 일반 성분
+mg_g_per_kg = 0.0
+p_g_per_kg = 87.0                         # 제품 일반 성분 P2O5 20%
+s_g_per_kg = 110.0                        # 제품 일반 성분
+direct_acid_eq_per_kg = 0.0
+
+[[fertilizer]]
+id = "magnesium_sulfate"
+name = "황산고토"
+nh4_N_g_per_kg = 0.0
+no3_N_g_per_kg = 0.0
+k_g_per_kg = 0.0
+ca_g_per_kg = 0.0
+mg_g_per_kg = 98.0                        # 제품 일반 성분
+p_g_per_kg = 0.0
+s_g_per_kg = 130.0                        # 제품 일반 성분
+direct_acid_eq_per_kg = 0.0
+
+# 석회 정의 (docs/spec/soil-chemistry.md "석회 정의")
+[[lime]]
+id = "calcium_carbonate"
+name = "탄산석회"
+eq_per_kg = 20.0                          # CaCO3 1 kg = 20 eq
+ca_fraction = 1.0
+mg_fraction = 0.0
+
+[[lime]]
+id = "dolomite"
+name = "고토석회"
+eq_per_kg = 21.7                          # CaMg(CO3)2 1 kg 약 21.7 eq
+ca_fraction = 0.6                         # 당량 기준 Ca·Mg 비율은 게임용 단순화
+mg_fraction = 0.4

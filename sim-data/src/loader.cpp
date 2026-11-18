@@ -345,8 +345,15 @@ void read_schedule_entry(TableReader& r, int bed_rows, int bed_cols, std::vector
         std::string id = r.string("fertilizer");
         const double g_per_m2 = r.number("g_per_m2");
         command = sim::AddFertilizerCommand{.area = area, .fertilizer_id = std::move(id), .g_per_m2 = g_per_m2};
+    } else if (action == "add_lime") {
+        std::string id = r.string("lime");
+        const double g_per_m2 = r.number("g_per_m2");
+        command = sim::AddLimeCommand{.area = area, .lime_id = std::move(id), .g_per_m2 = g_per_m2};
+    } else if (action == "till") {
+        command = sim::TillCommand{.area = area};
     } else {
-        r.set_error(std::format("'{}': unknown action '{}' (expected irrigate, add_compost or add_fertilizer)",
+        r.set_error(std::format("'{}': unknown action '{}' (expected irrigate, add_compost, add_fertilizer, "
+                                "add_lime or till)",
                                 r.qualified("action"), action));
         return;
     }
@@ -422,6 +429,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         p.soil_water.evap_base_mm_per_hour = r.number("evap_base_mm_per_hour");
         p.soil_water.evap_moisture_curve = r.curve("evap_moisture_curve");
         p.soil_water.drainage_rate_per_hour = r.number("drainage_rate_per_hour");
+        p.soil_water.drainage_compaction_curve = r.curve("drainage_compaction_curve");
     });
     run("soil_temperature", [&](TableReader& r) {
         p.soil_temperature.relax_rate_per_hour = r.number("relax_rate_per_hour");
@@ -435,6 +443,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         om.humus_C_to_N_ratio = r.number("humus_C_to_N_ratio");
         om.temp_curve = r.curve("temp_curve");
         om.moisture_curve = r.curve("moisture_curve");
+        om.o2_curve = r.curve("o2_curve");
     });
     run("nitrification", [&](TableReader& r) {
         auto& n = p.nitrification;
@@ -448,9 +457,89 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         n.free_ammonia_inhibition_curve = r.curve("free_ammonia_inhibition_curve");
         n.nitrite_toxicity_threshold_g_N_per_m2 = r.number("nitrite_toxicity_threshold_g_N_per_m2");
         n.nitrite_alarm_reset_fraction = r.number("nitrite_alarm_reset_fraction");
+        n.step1_o2_curve = r.curve("step1_o2_curve");
+        n.step2_o2_curve = r.curve("step2_o2_curve");
+        n.nitrite_toxicity_ph_curve = r.curve("nitrite_toxicity_ph_curve");
     });
     run("leaching", [&](TableReader& r) {
         p.leaching.nh4_solution_fraction = r.number("nh4_solution_fraction");
+    });
+    run("aeration", [&](TableReader& r) {
+        auto& a = p.aeration;
+        a.compaction_cap_curve = r.curve("compaction_cap_curve");
+        a.organic_C_cap_bonus_per_g_C = r.number("organic_C_cap_bonus_per_g_C");
+        a.compaction_per_mm_irrigation = r.number("compaction_per_mm_irrigation");
+        a.tilled_compaction_index = r.number("tilled_compaction_index");
+        a.till_root_damage_fraction = r.number("till_root_damage_fraction");
+    });
+    run("ions", [&](TableReader& r) {
+        auto& i = p.ions;
+        i.nh4_N_g_per_eq = r.number("nh4_N_g_per_eq");
+        i.no3_N_g_per_eq = r.number("no3_N_g_per_eq");
+        i.no2_N_g_per_eq = r.number("no2_N_g_per_eq");
+        i.k_g_per_eq = r.number("k_g_per_eq");
+        i.ca_g_per_eq = r.number("ca_g_per_eq");
+        i.mg_g_per_eq = r.number("mg_g_per_eq");
+        i.p_g_per_eq = r.number("p_g_per_eq");
+        i.s_g_per_eq = r.number("s_g_per_eq");
+    });
+    run("soil_chemistry", [&](TableReader& r) {
+        auto& c = p.soil_chemistry;
+        c.k_solution_fraction = r.number("k_solution_fraction");
+        c.ca_solution_fraction = r.number("ca_solution_fraction");
+        c.mg_solution_fraction = r.number("mg_solution_fraction");
+        c.p_solution_fraction = r.number("p_solution_fraction");
+        c.s_solution_fraction = r.number("s_solution_fraction");
+        c.nitrification_H_eq_per_eq_N = r.number("nitrification_H_eq_per_eq_N");
+        c.uptake_H_eq_per_eq_NH4 = r.number("uptake_H_eq_per_eq_NH4");
+        c.uptake_H_eq_per_eq_NO3 = r.number("uptake_H_eq_per_eq_NO3");
+        c.organic_C_buffer_eq_per_g_C_per_pH = r.number("organic_C_buffer_eq_per_g_C_per_pH");
+        c.ph_min = r.number("ph_min");
+        c.ph_max = r.number("ph_max");
+        c.lime_dissolution_rate_per_hour = r.number("lime_dissolution_rate_per_hour");
+        c.lime_dissolution_ph_curve = r.curve("lime_dissolution_ph_curve");
+        c.lime_dissolution_moisture_curve = r.curve("lime_dissolution_moisture_curve");
+        c.ec_meq_per_L_per_dS_per_m = r.number("ec_meq_per_L_per_dS_per_m");
+        c.ec_min_water_mm = r.number("ec_min_water_mm");
+    });
+    run("availability", [&](TableReader& r) {
+        auto& a = p.availability;
+        a.n_ph_curve = r.curve("n_ph_curve");
+        a.p_ph_curve = r.curve("p_ph_curve");
+        a.k_ph_curve = r.curve("k_ph_curve");
+        a.ca_ph_curve = r.curve("ca_ph_curve");
+        a.mg_ph_curve = r.curve("mg_ph_curve");
+    });
+    run("root_damage", [&](TableReader& r) {
+        auto& d = p.root_damage;
+        d.waterlog_curve = r.curve("waterlog_curve");
+        d.heat_curve = r.curve("heat_curve");
+        d.nitrite_curve = r.curve("nitrite_curve");
+        d.acid_curve = r.curve("acid_curve");
+    });
+    run("crop", [&](TableReader& r) {
+        auto& c = p.crop;
+        c.specific_leaf_area_m2_per_g = r.number("specific_leaf_area_m2_per_g");
+        c.light_interception_curve = r.curve("light_interception_curve");
+        c.par_fraction = r.number("par_fraction");
+        c.light_use_efficiency_g_per_MJ = r.number("light_use_efficiency_g_per_MJ");
+        c.temp_curve = r.curve("temp_curve");
+        c.leaf_allocation_fraction = r.number("leaf_allocation_fraction");
+        c.water_stress_curve = r.curve("water_stress_curve");
+        c.salt_stress_curve = r.curve("salt_stress_curve");
+        c.nutrient_stress_curve = r.curve("nutrient_stress_curve");
+        c.target_N_g_per_g = r.number("target_N_g_per_g");
+        c.target_P_g_per_g = r.number("target_P_g_per_g");
+        c.target_K_g_per_g = r.number("target_K_g_per_g");
+        c.target_Ca_g_per_g = r.number("target_Ca_g_per_g");
+        c.target_Mg_g_per_g = r.number("target_Mg_g_per_g");
+        c.luxury_uptake_ratio = r.number("luxury_uptake_ratio");
+        c.uptake_rate_per_g_root_per_hour = r.number("uptake_rate_per_g_root_per_hour");
+        c.transpiration_mm_per_hour_per_W_per_m2 = r.number("transpiration_mm_per_hour_per_W_per_m2");
+        c.root_recovery_rate_per_hour = r.number("root_recovery_rate_per_hour");
+        c.death_root_health = r.number("death_root_health");
+        c.root_dieback_per_damage = r.number("root_dieback_per_damage");
+        c.dry_matter_C_fraction = r.number("dry_matter_C_fraction");
     });
     if (!status) {
         return std::unexpected(std::move(status.error()));
@@ -464,6 +553,12 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.N_g_per_kg = r.number("N_g_per_kg");
         c.labile_C_fraction = r.number("labile_C_fraction");
         c.labile_N_fraction = r.number("labile_N_fraction");
+        c.k_g_per_kg = r.number("k_g_per_kg");
+        c.ca_g_per_kg = r.number("ca_g_per_kg");
+        c.mg_g_per_kg = r.number("mg_g_per_kg");
+        c.p_g_per_kg = r.number("p_g_per_kg");
+        c.s_g_per_kg = r.number("s_g_per_kg");
+        c.direct_acid_eq_per_kg = r.number("direct_acid_eq_per_kg");
         if (auto done = r.finish(); !done) {
             return std::unexpected(std::move(done.error()));
         }
@@ -475,10 +570,28 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         f.name = r.string("name");
         f.nh4_N_g_per_kg = r.number("nh4_N_g_per_kg");
         f.no3_N_g_per_kg = r.number("no3_N_g_per_kg");
+        f.k_g_per_kg = r.number("k_g_per_kg");
+        f.ca_g_per_kg = r.number("ca_g_per_kg");
+        f.mg_g_per_kg = r.number("mg_g_per_kg");
+        f.p_g_per_kg = r.number("p_g_per_kg");
+        f.s_g_per_kg = r.number("s_g_per_kg");
+        f.direct_acid_eq_per_kg = r.number("direct_acid_eq_per_kg");
         if (auto done = r.finish(); !done) {
             return std::unexpected(std::move(done.error()));
         }
         p.fertilizers.push_back(std::move(f));
+    }
+    for (TableReader& r : root.table_array("lime", true)) {
+        sim::LimeDef l;
+        l.id = r.string("id");
+        l.name = r.string("name");
+        l.eq_per_kg = r.number("eq_per_kg");
+        l.ca_fraction = r.number("ca_fraction");
+        l.mg_fraction = r.number("mg_fraction");
+        if (auto done = r.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+        p.limes.push_back(std::move(l));
     }
 
     if (auto done = root.finish(); !done) {
@@ -535,8 +648,43 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
     s.labile_N_g_per_m2 = soil.number("labile_N_g_per_m2");
     s.stable_C_g_per_m2 = soil.number("stable_C_g_per_m2");
     s.stable_N_g_per_m2 = soil.number("stable_N_g_per_m2");
+    s.saturation_mm = soil.number("saturation_mm");
+    s.compaction_index = soil.number("compaction_index");
+    s.base_buffer_eq_per_m2_per_pH = soil.number("base_buffer_eq_per_m2_per_pH");
+    s.k_g_per_m2 = soil.number("k_g_per_m2");
+    s.ca_g_per_m2 = soil.number("ca_g_per_m2");
+    s.mg_g_per_m2 = soil.number("mg_g_per_m2");
+    s.p_g_per_m2 = soil.number("p_g_per_m2");
+    s.s_g_per_m2 = soil.number("s_g_per_m2");
     if (auto done = soil.finish(); !done) {
         return std::unexpected(std::move(done.error()));
+    }
+
+    // [crop]은 선택이에요. 있으면 두 키가 모두 필수예요.
+    if (root.has("crop")) {
+        TableReader crop = root.child("crop");
+        sim::CropInit init;
+        init.leaf_g_per_m2 = crop.number("leaf_g_per_m2");
+        init.root_g_per_m2 = crop.number("root_g_per_m2");
+        if (auto done = crop.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+        doc.scenario.crop = init;
+    }
+
+    TableReader difficulty = root.child("difficulty");
+    const std::string combination = difficulty.string("stress_combination");
+    if (auto done = difficulty.finish(); !done) {
+        return std::unexpected(std::move(done.error()));
+    }
+    if (combination == "minimum") {
+        doc.scenario.stress_combination = sim::StressCombination::Minimum;
+    } else if (combination == "product") {
+        doc.scenario.stress_combination = sim::StressCombination::Product;
+    } else {
+        return fail(ErrorCode::InvalidData,
+                    std::format("{}: key 'difficulty.stress_combination' must be \"minimum\" or \"product\", got '{}'",
+                                source_name, combination));
     }
 
     for (TableReader& entry : root.table_array("schedule", false)) {

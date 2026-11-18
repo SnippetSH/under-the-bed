@@ -95,7 +95,7 @@ double run_and_check(Loaded loaded, std::vector<simdata::ScheduledCommand> extra
         const double ew =
             rel_err(now.water, initial.water + l.water_in_mm - l.water_evaporated_mm - l.water_drained_mm);
         const double en = rel_err(now.nitrogen, initial.nitrogen + l.N_in_g - l.N_leached_g - l.N_gas_g);
-        const double ec = rel_err(now.carbon, initial.carbon + l.C_in_g - l.C_respired_g);
+        const double ec = rel_err(now.carbon, initial.carbon + l.C_in_g + l.C_root_litter_g - l.C_respired_g);
         max_err = std::max({max_err, ew, en, ec});
         bool all_valid = true;
         for (const sim::SoilCell& c : snap.soil) {

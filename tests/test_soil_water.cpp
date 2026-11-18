@@ -14,7 +14,8 @@ constexpr double kDaySolar = 600.0;  // W/m², 낮
 constexpr double kNightSolar = 0.0;
 
 double water_balance_error(const sim::SoilCell& cell, double initial, const sim::Ledger& l) {
-    const double expected = initial + l.water_in_mm - l.water_evaporated_mm - l.water_drained_mm;
+    const double expected =
+        initial + l.water_in_mm - l.water_evaporated_mm - l.water_transpired_mm - l.water_drained_mm;
     return std::abs(cell.water_mm - expected) / std::max(1.0, std::abs(expected));
 }
 
@@ -25,7 +26,7 @@ TEST_CASE("Irrigation adds the same amount to water and the ledger", "[unit][soi
     sim::SoilCell cell = test::test_cell();
     sim::Ledger ledger;
     const double before = cell.water_mm;
-    sim::process::apply_irrigation(cell, 12.5, ledger);
+    sim::process::apply_irrigation(cell, 12.5, test::test_params().aeration, ledger);
     REQUIRE(cell.water_mm == Catch::Approx(before + 12.5));
     REQUIRE(ledger.water_in_mm == Catch::Approx(12.5));
 }
@@ -38,7 +39,7 @@ TEST_CASE("At or below field capacity without irrigation: no drainage, water dec
     sim::Ledger ledger;
     double prev = cell.water_mm;
     for (int i = 0; i < 200; ++i) {
-        sim::process::update_soil_water(cell, params.soil_water, kDaySolar, ledger);
+        sim::process::update_soil_water(cell, params.soil_water, kDaySolar, 0.0, 0.0, ledger);
         REQUIRE(cell.drained_mm_this_tick == 0.0);
         REQUIRE(cell.water_mm < prev);
         prev = cell.water_mm;
@@ -54,13 +55,15 @@ TEST_CASE("Above field capacity: excess shrinks by (1 - drainage rate) each tick
     params.soil_water.evap_mm_per_hour_per_W_per_m2 = 0.0;
     sim::SoilCell cell = test::test_cell();
     cell.water_mm = cell.field_capacity_mm + 20.0;
+    const double rate = params.soil_water.drainage_rate_per_hour *
+                        params.soil_water.drainage_compaction_curve(cell.compaction_index);
     sim::Ledger ledger;
     double excess = 20.0;
     for (int i = 0; i < 5; ++i) {
-        sim::process::update_soil_water(cell, params.soil_water, kNightSolar, ledger);
+        sim::process::update_soil_water(cell, params.soil_water, kNightSolar, 0.0, 0.0, ledger);
         REQUIRE(cell.drained_mm_this_tick > 0.0);
         const double new_excess = cell.water_mm - cell.field_capacity_mm;
-        REQUIRE(new_excess == Catch::Approx(excess * (1.0 - params.soil_water.drainage_rate_per_hour)));
+        REQUIRE(new_excess == Catch::Approx(excess * (1.0 - rate)));
         REQUIRE(cell.drained_mm_this_tick == Catch::Approx(excess - new_excess));
         excess = new_excess;
     }
@@ -73,8 +76,8 @@ TEST_CASE("Daytime evaporation exceeds night evaporation at equal water", "[unit
     sim::SoilCell night = test::test_cell();
     sim::Ledger day_ledger;
     sim::Ledger night_ledger;
-    sim::process::update_soil_water(day, params.soil_water, kDaySolar, day_ledger);
-    sim::process::update_soil_water(night, params.soil_water, kNightSolar, night_ledger);
+    sim::process::update_soil_water(day, params.soil_water, kDaySolar, 0.0, 0.0, day_ledger);
+    sim::process::update_soil_water(night, params.soil_water, kNightSolar, 0.0, 0.0, night_ledger);
     REQUIRE(day_ledger.water_evaporated_mm > night_ledger.water_evaporated_mm);
     REQUIRE(night_ledger.water_evaporated_mm >= 0.0);
 }
@@ -88,8 +91,8 @@ TEST_CASE("Wetter soil evaporates more", "[unit][soil_water]") {
     dry.water_mm = 0.2 * dry.field_capacity_mm;
     sim::Ledger wet_ledger;
     sim::Ledger dry_ledger;
-    sim::process::update_soil_water(wet, params.soil_water, kDaySolar, wet_ledger);
-    sim::process::update_soil_water(dry, params.soil_water, kDaySolar, dry_ledger);
+    sim::process::update_soil_water(wet, params.soil_water, kDaySolar, 0.0, 0.0, wet_ledger);
+    sim::process::update_soil_water(dry, params.soil_water, kDaySolar, 0.0, 0.0, dry_ledger);
     REQUIRE(wet_ledger.water_evaporated_mm > dry_ledger.water_evaporated_mm);
 }
 
@@ -99,10 +102,10 @@ TEST_CASE("1000 mm irrigation: finite, drains toward field capacity, water conse
     sim::SoilCell cell = test::test_cell();
     const double initial = cell.water_mm;
     sim::Ledger ledger;
-    sim::process::apply_irrigation(cell, 1000.0, ledger);
+    sim::process::apply_irrigation(cell, 1000.0, test::test_params().aeration, ledger);
     for (int i = 0; i < 24 * 30; ++i) {
         const double solar = (i % 24 >= 6 && i % 24 < 18) ? kDaySolar : kNightSolar;
-        sim::process::update_soil_water(cell, params.soil_water, solar, ledger);
+        sim::process::update_soil_water(cell, params.soil_water, solar, 0.0, 0.0, ledger);
         REQUIRE(std::isfinite(cell.water_mm));
         REQUIRE(cell.water_mm >= 0.0);
         REQUIRE(cell.drained_mm_this_tick >= 0.0);
@@ -119,7 +122,7 @@ TEST_CASE("One year without irrigation: water stays non-negative and conserved",
     sim::Ledger ledger;
     for (int i = 0; i < 24 * 365; ++i) {
         const double solar = (i % 24 >= 6 && i % 24 < 18) ? kDaySolar : kNightSolar;
-        sim::process::update_soil_water(cell, params.soil_water, solar, ledger);
+        sim::process::update_soil_water(cell, params.soil_water, solar, 0.0, 0.0, ledger);
         REQUIRE(cell.water_mm >= 0.0);
     }
     REQUIRE(cell.water_mm < 0.05 * cell.field_capacity_mm);
@@ -132,7 +135,7 @@ TEST_CASE("Zero water with extreme inputs stays finite", "[unit][soil_water]") {
     sim::SoilCell cell = test::test_cell();
     cell.water_mm = 0.0;
     sim::Ledger ledger;
-    sim::process::update_soil_water(cell, params.soil_water, 1.0e6, ledger);
+    sim::process::update_soil_water(cell, params.soil_water, 1.0e6, 0.0, 0.0, ledger);
     REQUIRE(cell.water_mm == 0.0);
     REQUIRE(std::isfinite(ledger.water_evaporated_mm));
     REQUIRE(ledger.water_evaporated_mm == 0.0);
@@ -146,7 +149,7 @@ TEST_CASE("No drainage means no leaching", "[unit][leaching]") {
     cell.drained_mm_this_tick = 0.0;
     const sim::SoilCell before = cell;
     sim::Ledger ledger;
-    sim::process::leach(cell, params.leaching, ledger);
+    sim::process::leach(cell, params.leaching, test::test_params().soil_chemistry, ledger);
     REQUIRE(cell == before);
     REQUIRE(ledger.N_leached_g == 0.0);
 }
@@ -159,7 +162,7 @@ TEST_CASE("Drainage leaches NO3 proportionally more than NH4 and matches the led
     cell.drained_mm_this_tick = 10.0;
     const sim::SoilCell before = cell;
     sim::Ledger ledger;
-    sim::process::leach(cell, params.leaching, ledger);
+    sim::process::leach(cell, params.leaching, test::test_params().soil_chemistry, ledger);
 
     const double no3_rel = 1.0 - cell.no3_N_g_per_m2 / before.no3_N_g_per_m2;
     const double nh4_rel = 1.0 - cell.nh4_N_g_per_m2 / before.nh4_N_g_per_m2;
@@ -181,7 +184,7 @@ TEST_CASE("Leaching fraction equals drained over water plus drained", "[unit][le
     cell.drained_mm_this_tick = 10.0;
     const double no3_before = cell.no3_N_g_per_m2;
     sim::Ledger ledger;
-    sim::process::leach(cell, params.leaching, ledger);
+    sim::process::leach(cell, params.leaching, test::test_params().soil_chemistry, ledger);
     REQUIRE(cell.no3_N_g_per_m2 == Catch::Approx(no3_before * (1.0 - 10.0 / 40.0)));
 }
 
@@ -194,8 +197,8 @@ TEST_CASE("More drainage leaches more and pools stay non-negative", "[unit][leac
     large.drained_mm_this_tick = 20.0;
     sim::Ledger small_ledger;
     sim::Ledger large_ledger;
-    sim::process::leach(small, params.leaching, small_ledger);
-    sim::process::leach(large, params.leaching, large_ledger);
+    sim::process::leach(small, params.leaching, test::test_params().soil_chemistry, small_ledger);
+    sim::process::leach(large, params.leaching, test::test_params().soil_chemistry, large_ledger);
     REQUIRE(large_ledger.N_leached_g > small_ledger.N_leached_g);
 
     // 극단: 남은 수분 0, 큰 배수
@@ -203,9 +206,111 @@ TEST_CASE("More drainage leaches more and pools stay non-negative", "[unit][leac
     extreme.water_mm = 0.0;
     extreme.drained_mm_this_tick = 500.0;
     sim::Ledger ledger;
-    sim::process::leach(extreme, params.leaching, ledger);
+    sim::process::leach(extreme, params.leaching, test::test_params().soil_chemistry, ledger);
     REQUIRE(extreme.no3_N_g_per_m2 >= 0.0);
     REQUIRE(extreme.nh4_N_g_per_m2 >= 0.0);
     REQUIRE(extreme.no2_N_g_per_m2 >= 0.0);
     REQUIRE(std::isfinite(ledger.N_leached_g));
+}
+
+// M2: 증산 포함 물 보존
+TEST_CASE("Water is conserved including transpiration", "[unit][soil_water][m2]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell cell = test::test_cell();
+    const double initial = cell.water_mm;
+    sim::Ledger ledger;
+    for (int i = 0; i < 24 * 60; ++i) {
+        const double solar = (i % 24 >= 6 && i % 24 < 18) ? kDaySolar : kNightSolar;
+        if (i % 72 == 0) {
+            sim::process::apply_irrigation(cell, 80.0, params.aeration, ledger);
+        }
+        sim::process::update_soil_water(cell, params.soil_water, solar, 0.5, 0.3, ledger);
+        REQUIRE(cell.water_mm >= 0.0);
+    }
+    REQUIRE(ledger.water_transpired_mm > 0.0);
+    REQUIRE(water_balance_error(cell, initial, ledger) < 1e-9);
+}
+
+// M2: 수관이 덮으면 증발이 줄어든다
+TEST_CASE("Canopy interception reduces evaporation", "[unit][soil_water][m2]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell open_cell = test::test_cell();
+    sim::SoilCell shaded = test::test_cell();
+    sim::Ledger open_ledger;
+    sim::Ledger shaded_ledger;
+    sim::process::update_soil_water(open_cell, params.soil_water, kDaySolar, 0.0, 0.0, open_ledger);
+    sim::process::update_soil_water(shaded, params.soil_water, kDaySolar, 0.6, 0.0, shaded_ledger);
+    REQUIRE(shaded_ledger.water_evaporated_mm < open_ledger.water_evaporated_mm);
+    REQUIRE(shaded_ledger.water_evaporated_mm == Catch::Approx(open_ledger.water_evaporated_mm * 0.4));
+}
+
+// M2: 증산은 요구량만큼, 물이 모자라면 남은 물까지만
+TEST_CASE("Transpiration takes the demand but is limited by available water", "[unit][soil_water][m2]") {
+    const sim::Params params = test::test_params();
+    SECTION("demand below water") {
+        sim::SoilCell cell = test::test_cell();
+        sim::Ledger ledger;
+        sim::process::update_soil_water(cell, params.soil_water, kNightSolar, 0.0, 0.5, ledger);
+        REQUIRE(ledger.water_transpired_mm == Catch::Approx(0.5));
+    }
+    SECTION("demand above water") {
+        sim::SoilCell cell = test::test_cell();
+        cell.water_mm = 0.2;
+        sim::Ledger ledger;
+        sim::process::update_soil_water(cell, params.soil_water, kDaySolar, 0.0, 5.0, ledger);
+        REQUIRE(cell.water_mm == 0.0);
+        REQUIRE(ledger.water_transpired_mm > 0.0);
+        REQUIRE(ledger.water_transpired_mm <= 0.2);
+        REQUIRE(ledger.water_evaporated_mm + ledger.water_transpired_mm == Catch::Approx(0.2));
+    }
+}
+
+// M2: 다짐이 심하면 배수가 느리다
+TEST_CASE("Compaction slows drainage", "[unit][soil_water][m2]") {
+    sim::Params params = test::test_params();
+    params.soil_water.evap_base_mm_per_hour = 0.0;
+    params.soil_water.evap_mm_per_hour_per_W_per_m2 = 0.0;
+    sim::SoilCell loose = test::test_cell();
+    sim::SoilCell packed = test::test_cell();
+    loose.compaction_index = 0.0;
+    packed.compaction_index = 0.9;
+    loose.water_mm = loose.field_capacity_mm + 20.0;
+    packed.water_mm = packed.field_capacity_mm + 20.0;
+    sim::Ledger loose_ledger;
+    sim::Ledger packed_ledger;
+    sim::process::update_soil_water(loose, params.soil_water, kNightSolar, 0.0, 0.0, loose_ledger);
+    sim::process::update_soil_water(packed, params.soil_water, kNightSolar, 0.0, 0.0, packed_ledger);
+    REQUIRE(packed.drained_mm_this_tick > 0.0);
+    REQUIRE(packed.drained_mm_this_tick < loose.drained_mm_this_tick);
+}
+
+// M2: 포화 초과분은 같은 틱에 배수되고 용탈에 반영된다
+TEST_CASE("Water above saturation drains in the same tick and is leached", "[unit][soil_water][m2]") {
+    sim::Params params = test::test_params();
+    params.soil_water.evap_base_mm_per_hour = 0.0;
+    params.soil_water.evap_mm_per_hour_per_W_per_m2 = 0.0;
+    sim::SoilCell cell = test::test_cell();
+    sim::Ledger ledger;
+    const double initial = cell.water_mm;
+    sim::process::apply_irrigation(cell, 100.0, params.aeration, ledger);
+    REQUIRE(cell.water_mm > cell.saturation_mm);
+    const double no3_before = cell.no3_N_g_per_m2;
+    sim::process::update_soil_water(cell, params.soil_water, kNightSolar, 0.0, 0.0, ledger);
+    REQUIRE(cell.water_mm <= cell.saturation_mm);
+    REQUIRE(cell.drained_mm_this_tick >= initial + 100.0 - cell.saturation_mm);
+    REQUIRE(water_balance_error(cell, initial, ledger) < 1e-12);
+    sim::process::leach(cell, params.leaching, params.soil_chemistry, ledger);
+    REQUIRE(cell.no3_N_g_per_m2 < no3_before);
+}
+
+// M2: 관수는 다짐을 늘린다 (1에서 멈춤)
+TEST_CASE("Irrigation increases compaction up to one", "[unit][soil_water][m2]") {
+    const sim::Params params = test::test_params();
+    sim::SoilCell cell = test::test_cell();
+    sim::Ledger ledger;
+    const double before = cell.compaction_index;
+    sim::process::apply_irrigation(cell, 10.0, params.aeration, ledger);
+    REQUIRE(cell.compaction_index == Catch::Approx(before + 10.0 * params.aeration.compaction_per_mm_irrigation));
+    sim::process::apply_irrigation(cell, 1.0e6, params.aeration, ledger);
+    REQUIRE(cell.compaction_index == 1.0);
 }

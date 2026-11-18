@@ -103,9 +103,10 @@ void decompose_organic_matter(SoilCell& cell, const OrganicMatterParams& params,
                               const SoilTemperatureParams& temperature_params, Ledger& ledger) {
     // 환경 계수는 이 단계 시작 시점의 토양 온도·수분으로 한 번 계산해 두 풀에 똑같이 써요.
     // (이번 틱의 발열은 다음 틱 분해 속도에 반영돼요.)
-    // 나중에 곱해질 계수: O2계수(M2 통기성), 분해균계수(M5 분해균 개체군). M1에서는 둘 다 1이라 생략해요.
-    const double environment_factor =
-        params.temp_curve(cell.soil_temp_degC) * params.moisture_curve(cell.relative_water());
+    // O2 계수(M2 통기성)를 곱해요. 나중에 분해균계수(M5)도 곱해져요.
+    const double environment_factor = params.temp_curve(cell.soil_temp_degC) *
+                                      params.moisture_curve(cell.relative_water()) *
+                                      params.o2_curve(cell.aeration_index);
 
     double respired_C_g_per_m2 = 0.0;
     // 이분해성 → 난분해성 순서. 난분해성 단계는 이분해성 단계에서 부식화된 C·N까지 포함한 값에서 시작해요.

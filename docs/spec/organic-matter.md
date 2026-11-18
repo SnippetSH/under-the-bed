@@ -4,6 +4,8 @@
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), [soil-temperature](soil-temperature.md), [nitrogen](nitrogen.md)
 
+> **M2 변경 (2026-11-18 승인)**: `O2계수 = organic_matter.o2_curve(aeration_index)` ([aeration](aeration.md)). 퇴비의 K·Ca·Mg·P·S와 직접 산 효과는 [soil-chemistry](soil-chemistry.md) "투입".
+
 ## 목적
 
 퇴비 선택 판단을 만들어요.

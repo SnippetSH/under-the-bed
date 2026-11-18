@@ -51,8 +51,25 @@ struct AddFertilizerCommand {
     bool operator==(const AddFertilizerCommand&) const = default;
 };
 
+// docs/spec/soil-chemistry.md "석회" (M2)
+struct AddLimeCommand {
+    TileArea area;
+    std::string lime_id;
+    double g_per_m2 = 0.0;
+
+    bool operator==(const AddLimeCommand&) const = default;
+};
+
+// docs/spec/aeration.md "경운" (M2)
+struct TillCommand {
+    TileArea area;
+
+    bool operator==(const TillCommand&) const = default;
+};
+
 // 플레이어 행동. 직렬화는 variant 인덱스를 쓰므로, 기존 항목의 순서를 바꾸지 말고 뒤에만 추가해요.
-using Command = std::variant<NoopCommand, IrrigateCommand, AddCompostCommand, AddFertilizerCommand>;
+using Command = std::variant<NoopCommand, IrrigateCommand, AddCompostCommand, AddFertilizerCommand, AddLimeCommand,
+                             TillCommand>;
 
 struct QueuedCommand {
     std::uint64_t seq;  // 투입 순서 일련번호

@@ -15,7 +15,7 @@
 namespace simdata {
 
 // 시나리오 TOML 파일의 스키마 버전
-inline constexpr std::int64_t kScenarioFileSchemaVersion = 2;
+inline constexpr std::int64_t kScenarioFileSchemaVersion = 3;
 
 // 기상 CSV 머리글 (순서 고정)
 inline constexpr std::string_view kWeatherCsvHeader =

@@ -4,6 +4,8 @@
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), [organic-matter](organic-matter.md), [soil-water](soil-water.md)
 
+> **M2 변경 (2026-11-18 승인)**: 1·2단계에 `step1_o2_curve`, `step2_o2_curve`(aeration_index) 곱함. 1단계로 질산화된 N 1 eq당 H+ `nitrification_H_eq_per_eq_N` eq를 이번 틱 산으로 기록([soil-chemistry](soil-chemistry.md)). 아질산 경보와 뿌리 손상은 `no2 × nitrite_toxicity_ph_curve(pH)`로 판정. 용탈 대상에 K·Ca·Mg·P·S(용액 부분) 추가. 비료 투입은 soil-chemistry로 옮김(성분 확장).
+
 ## 목적
 
 비료 형태와 토양 pH의 조합 판단(S2), 관수와 질소 손실의 판단(S3)을 만들어요. 총 질소량만 보면 안 되고 **형태**를 봐야 한다는 경험이 핵심이에요.

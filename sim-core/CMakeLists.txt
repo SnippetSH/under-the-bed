@@ -15,10 +15,15 @@ add_library(sim-core STATIC
   include/sim/world.hpp
   src/byte_io.hpp
   src/serialization.cpp
+  src/validation.cpp
+  src/validation.hpp
   src/world.cpp
+  src/processes/aeration.cpp
+  src/processes/crop.cpp
   src/processes/leaching.cpp
   src/processes/nitrification.cpp
   src/processes/organic_matter.cpp
+  src/processes/soil_chemistry.cpp
   src/processes/soil_water.cpp
   src/processes/temperature.cpp)
 

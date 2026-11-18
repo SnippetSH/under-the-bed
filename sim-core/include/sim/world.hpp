@@ -24,6 +24,7 @@ class ByteReader;
 // 베드 타일 = 토양 셀 1개 + 작물 0~1개 (작물은 M2부터)
 struct Tile {
     SoilCell soil;
+    Crop crop;
 
     bool operator==(const Tile&) const = default;
 };
@@ -67,11 +68,15 @@ private:
     void apply_command(const IrrigateCommand& command);
     void apply_command(const AddCompostCommand& command);
     void apply_command(const AddFertilizerCommand& command);
+    void apply_command(const AddLimeCommand& command);
+    void apply_command(const TillCommand& command);
 
     [[nodiscard]] std::expected<void, Error> validate_command(const Command& command) const;
     [[nodiscard]] std::expected<void, Error> validate_area(const TileArea& area) const;
     [[nodiscard]] const CompostDef* find_compost(std::string_view id) const;
     [[nodiscard]] const FertilizerDef* find_fertilizer(std::string_view id) const;
+    [[nodiscard]] const LimeDef* find_lime(std::string_view id) const;
+    void refresh_derived_cell_values();  // 생성·역직렬화 직후 통기 지수·EC 계산
 
     template <typename Fn>
     void for_each_tile_in(const TileArea& area, Fn&& fn);

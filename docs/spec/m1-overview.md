@@ -5,6 +5,8 @@
 - 관련 명세: [soil-water](soil-water.md), [soil-temperature](soil-temperature.md), [organic-matter](organic-matter.md), [nitrogen](nitrogen.md), [core-api](core-api.md)
 - 완료 기준(계획서 7장): 시나리오 S1·S2·S3 통과, 질소 보존 테스트 통과
 
+> **M2 변경 (2026-11-18 승인)**: 틱 순서·장부·보존식은 [m2-overview](m2-overview.md)가 대체해요.
+
 이 문서는 M1 프로세스들이 공유하는 틀(단위, 셀 상태, 틱 순서, 명령, 장부, 데이터 배치)을 정해요. 각 프로세스의 수식과 인과관계는 개별 명세에 있어요.
 
 ## 플레이어 판단 (디자인 원칙 1)

@@ -4,6 +4,8 @@
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), 용탈은 [nitrogen](nitrogen.md)
 
+> **M2 변경 (2026-11-18 승인)**: 포화 수분량 상한(초과분 즉시 배수), 배수 속도 × `drainage_compaction_curve(compaction)`, 관수 시 다짐 증가([aeration](aeration.md)), 작물 증산 항과 토양 증발 × `(1 − 수관 차광)`([strawberry-minimal](strawberry-minimal.md)). 장부에 `water_transpired_mm` 추가.
+
 ## 목적
 
 관수량 판단을 만들어요. 물이 모자라면 분해·질산화가 느려지고(이후 작물 흡수도), 넘치면 배수와 함께 질산태 질소가 씻겨 나가요.
