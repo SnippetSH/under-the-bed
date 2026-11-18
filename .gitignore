@@ -1,0 +1,30 @@
+# 빌드 산출물
+/build/
+/out/
+/install/
+CMakeUserPresets.json
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 시뮬레이션 실행 결과 (그래프는 PR에 첨부하거나 docs/에 명시적으로 커밋)
+/runs/
+*.csv.tmp
+
+# Godot (M6 이후)
+.godot/
+*.import
+
+# OS
+Thumbs.db
+.DS_Store

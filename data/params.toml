@@ -1,0 +1,6 @@
+# 시뮬레이션 파라미터 (ADR-0002)
+#
+# 키 이름에 단위를 붙이고, 값마다 출처를 주석으로 달아요. 출처가 없으면 "게임용 임의값".
+# M0에는 계수가 없어요. M1부터 프로세스별 테이블([soil_water], [nitrogen] 등)이 추가돼요.
+
+schema_version = 1  # sim::kParamsSchemaVersion과 같아야 해요

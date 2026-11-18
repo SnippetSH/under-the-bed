@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    # VS 2022 생성기를 쓰므로 이미지를 고정해요 (ADR-0005). 러너 이미지를 바꾸면 회귀 스냅샷도 다시 확인해요.
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ci
+
+      - name: Build
+        run: cmake --build --preset ci
+
+      - name: Test
+        run: ctest --preset ci
+
+      - name: Run empty scenario (1 year)
+        run: build/ci/sim-cli/Release/sim-cli.exe --params data/params.toml --scenario data/scenarios/empty.toml --ticks 8760 --out runs/empty.csv
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Plot scenario graphs
+        run: |
+          pip install -r tools/requirements.txt
+          python tools/plot_csv.py runs/empty.csv --out runs/empty.png --title "empty scenario - 1 year"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scenario-graphs
+          path: runs/

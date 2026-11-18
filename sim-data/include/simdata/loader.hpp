@@ -1,0 +1,44 @@
+#pragma once
+
+#include <cstdint>
+#include <expected>
+#include <filesystem>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "sim/error.hpp"
+#include "sim/params.hpp"
+#include "sim/scenario.hpp"
+
+namespace simdata {
+
+// 시나리오 TOML 파일의 스키마 버전
+inline constexpr std::int64_t kScenarioFileSchemaVersion = 1;
+
+// 기상 CSV 머리글 (순서 고정)
+inline constexpr std::string_view kWeatherCsvHeader =
+    "day_of_year,hour,outside_air_temp_degC,solar_radiation_W_per_m2,outside_rh_percent";
+
+// 시나리오 TOML을 파싱한 결과. 기상 표는 아직 비어 있고, 경로만 들어 있어요.
+struct ScenarioDocument {
+    sim::Scenario scenario;
+    std::string weather_csv;  // 시나리오 파일 기준 상대 경로 (UTF-8)
+};
+
+// 문자열 파서. source_name은 오류 메시지에만 써요.
+// 모르는 키, 빠진 키, 타입 불일치는 모두 오류예요 (ADR-0002 엄격한 로딩).
+[[nodiscard]] std::expected<sim::Params, sim::Error> parse_params_toml(std::string_view text,
+                                                                       std::string_view source_name);
+[[nodiscard]] std::expected<ScenarioDocument, sim::Error> parse_scenario_toml(
+    std::string_view text, std::string_view source_name);
+[[nodiscard]] std::expected<std::vector<sim::WeatherHour>, sim::Error> parse_weather_csv(
+    std::string_view text, std::string_view source_name);
+
+// 파일 로더
+[[nodiscard]] std::expected<sim::Params, sim::Error> load_params(const std::filesystem::path& path);
+// 시나리오 TOML을 읽고, 그 안의 weather_csv 경로(시나리오 파일 기준)로 기상 표까지 채워요.
+[[nodiscard]] std::expected<sim::Scenario, sim::Error> load_scenario(
+    const std::filesystem::path& path);
+
+}  // namespace simdata
