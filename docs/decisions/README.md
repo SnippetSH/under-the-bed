@@ -15,6 +15,8 @@
 | [0003](0003-test-framework.md) | 테스트 프레임워크로 Catch2 v3 채택 | 승인 |
 | [0004](0004-determinism-scope.md) | 결정론 보장 범위와 규칙 | 승인 |
 | [0005](0005-cpp-toolchain.md) | C++ 표준과 툴체인 | 승인 |
+| [0006](0006-off-season-and-disinfection.md) | 하계 휴작기 정비와 토양 소독, 육묘 제외 | 승인 |
+| [0007](0007-acid-toxicity-and-manganese.md) | 산성 장해는 곡선 근사, 망간은 별도 풀 | 승인 |
 
 ## 템플릿
 

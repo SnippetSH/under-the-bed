@@ -1,0 +1,39 @@
+# S3 관수량 3.0 mm — docs/spec/m1-overview.md "시나리오 테스트 (M1)" 표. 값은 전부 게임용 임의값이에요.
+
+schema_version = 2
+
+[scenario]
+name = "s3_proper"
+seed = 20261118
+start_day_of_year = 244                          # 9월 1일, 게임용 임의값
+weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 45.0
+soil_temp_degC = 20.0
+ph = 6.5
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 10.0
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 5.0
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 360.0
+
+[[schedule]]
+tick = 0
+action = "add_fertilizer"
+fertilizer = "calcium_nitrate"
+g_per_m2 = 100.0
+
+[[schedule]]
+tick = 8
+action = "irrigate"
+amount_mm = 3.0
+repeat_every_ticks = 24
+repeat_count = 14

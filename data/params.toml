@@ -1,6 +1,89 @@
-# 시뮬레이션 파라미터 (ADR-0002)
+# 시뮬레이션 파라미터 (ADR-0002, schema_version 2 = M1)
 #
 # 키 이름에 단위를 붙이고, 값마다 출처를 주석으로 달아요. 출처가 없으면 "게임용 임의값".
-# M0에는 계수가 없어요. M1부터 프로세스별 테이블([soil_water], [nitrogen] 등)이 추가돼요.
+# 곡선은 [[x, y], ...] 배열이고 x는 엄격하게 오름차순이에요.
+# 각 값의 의미는 docs/spec/ 의 해당 명세(soil-water, soil-temperature, organic-matter, nitrogen)를 봐요.
 
-schema_version = 1  # sim::kParamsSchemaVersion과 같아야 해요
+schema_version = 2  # sim::kParamsSchemaVersion과 같아야 해요
+
+[house]  # docs/spec/soil-temperature.md
+base_offset_degC = 2.0                    # 외기 대비 기본 온도차. 게임용 임의값
+solar_gain_degC_per_W_per_m2 = 0.015      # 외부 일사당 온실 효과. 게임용 임의값 (맑은 한낮 약 +10 °C)
+solar_transmittance_factor = 0.7          # 피복 일사 투과율 (soil-water와 공유). 게임용 임의값
+
+[soil_water]  # docs/spec/soil-water.md
+evap_mm_per_hour_per_W_per_m2 = 0.0004    # 하우스 안 일사당 잠재 증발. 게임용 임의값 (맑은 날 하루 약 2 mm)
+evap_base_mm_per_hour = 0.005             # 일사가 없을 때의 기본 증발. 게임용 임의값
+evap_moisture_curve = [[0.0, 0.0], [0.3, 0.15], [0.7, 0.8], [1.0, 1.0]]  # x = relative_water. 게임용 임의값
+drainage_rate_per_hour = 0.3              # 포장용수량 초과분 중 시간당 배수 비율. 게임용 임의값
+
+[soil_temperature]  # docs/spec/soil-temperature.md
+relax_rate_per_hour = 0.04                # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
+heat_degC_per_g_C = 0.4                   # 호흡 탄소 1 g/m²당 토양 온도 상승. 게임용 임의값
+
+[organic_matter]  # docs/spec/organic-matter.md
+labile_decay_rate_per_hour = 0.004        # 이분해성 풀 최대 분해 속도. 게임용 임의값 (반감기 약 7일)
+stable_decay_rate_per_hour = 0.00002      # 난분해성 풀 최대 분해 속도. 게임용 임의값 (반감기 약 4년)
+humification_fraction = 0.3               # 분해된 C 중 난분해성 풀로 가는 비율. 게임용 임의값
+humus_C_to_N_ratio = 10.0                 # 새 부식의 C:N비. 게임용 임의값 (토양 유기물 일반 범위)
+temp_curve = [[0, 0.05], [10, 0.25], [20, 0.55], [30, 0.85], [37, 1.0], [45, 1.0], [55, 0.5], [65, 0.1]]  # x = 토양 온도 °C. 게임용 임의값
+moisture_curve = [[0, 0], [0.2, 0.1], [0.6, 0.8], [0.9, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값 (과습 억제는 M2 통기성)
+
+[nitrification]  # docs/spec/nitrogen.md
+step1_rate_per_hour = 0.01                # NH4+ -> NO2- 최대 속도. 게임용 임의값
+step2_rate_per_hour = 0.08                # NO2- -> NO3- 최대 속도. 게임용 임의값
+temp_curve = [[0, 0], [5, 0.1], [15, 0.5], [25, 0.9], [32, 1.0], [40, 0.6], [50, 0.1]]  # x = 토양 온도 °C. 게임용 임의값
+moisture_curve = [[0, 0], [0.3, 0.2], [0.6, 0.8], [0.9, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값
+step1_ph_curve = [[4.5, 0.1], [5.5, 0.5], [6.5, 1.0], [8.0, 1.0], [9.0, 0.6]]  # x = pH. 게임용 임의값
+step2_ph_curve = [[4.5, 0.1], [5.5, 0.5], [6.5, 1.0], [7.2, 0.9], [8.0, 0.35], [9.0, 0.1]]  # x = pH. 게임용 임의값 (1단계보다 고pH에서 가파르게 감소)
+ammonia_fraction_ph_curve = [[6, 0.0006], [7, 0.0056], [7.5, 0.0175], [8, 0.053], [8.5, 0.15], [9, 0.36], [10, 0.85]]  # x = pH, y = NH3 비율. 헨더슨-하셀바흐 식, pKa 9.25(25 °C)를 구간 선형으로 근사
+free_ammonia_inhibition_curve = [[0, 1], [0.05, 0.9], [0.3, 0.4], [1.0, 0.1], [3.0, 0.05]]  # x = 유리 암모니아 지수 g N/m². 게임용 임의값
+nitrite_toxicity_threshold_g_N_per_m2 = 2.0  # 아질산 독성 이벤트 임계치. 게임용 임의값
+nitrite_alarm_reset_fraction = 0.8        # 임계치의 이 비율 아래로 내려가야 경보 해제. 게임용 임의값
+
+[leaching]  # docs/spec/nitrogen.md "용탈"
+nh4_solution_fraction = 0.1               # NH4+ 중 용액에 있어 빠질 수 있는 비율. 게임용 임의값 (M3에서 양이온 교환으로 대체)
+
+# 퇴비 정의. 모든 값은 게임용 임의값 (docs/spec/organic-matter.md)
+[[compost]]
+id = "immature_manure"
+name = "미숙 우분 퇴비"
+C_g_per_kg = 180.0
+N_g_per_kg = 12.0
+labile_C_fraction = 0.6
+labile_N_fraction = 0.7                   # 이분해성 C:N 약 13
+
+[[compost]]
+id = "mature_manure"
+name = "숙성 우분 퇴비"
+C_g_per_kg = 150.0
+N_g_per_kg = 12.0
+labile_C_fraction = 0.1
+labile_N_fraction = 0.1
+
+[[compost]]
+id = "bark_compost"
+name = "수피·톱밥 퇴비"
+C_g_per_kg = 250.0
+N_g_per_kg = 5.0
+labile_C_fraction = 0.4
+labile_N_fraction = 0.3                   # 이분해성 C:N 약 67, 부동화 유발
+
+# 비료 정의. 출처: 제품 일반 성분 (docs/spec/nitrogen.md)
+[[fertilizer]]
+id = "ammonium_sulfate"
+name = "황산암모늄"
+nh4_N_g_per_kg = 210.0                    # 제품 일반 성분 21% N
+no3_N_g_per_kg = 0.0
+
+[[fertilizer]]
+id = "urea"
+name = "요소"
+nh4_N_g_per_kg = 460.0                    # 제품 일반 성분 46% N. 요소 가수분해는 M1에서 즉시 NH4+로 단순화
+no3_N_g_per_kg = 0.0
+
+[[fertilizer]]
+id = "calcium_nitrate"
+name = "질산칼슘"
+nh4_N_g_per_kg = 11.0                     # 제품 일반 성분 15.5% N
+no3_N_g_per_kg = 144.0

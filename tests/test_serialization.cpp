@@ -10,8 +10,12 @@ using test::make_world;
 
 TEST_CASE("Serialize -> deserialize -> serialize is byte-identical", "[unit][serialization]") {
     sim::World world = make_world();
+    const sim::TileArea all = sim::whole_grid(2, 3);
+    test::must_enqueue(world, sim::AddCompostCommand{all, "immature_manure", 3.0});
     world.step(100);
-    world.enqueue(sim::NoopCommand{});
+    test::must_enqueue(world, sim::NoopCommand{});
+    test::must_enqueue(world, sim::IrrigateCommand{{0, 1, 2, 2}, 12.5});
+    test::must_enqueue(world, sim::AddFertilizerCommand{all, "calcium_nitrate", 40.0});
 
     const std::vector<std::byte> bytes = world.serialize();
     auto loaded = sim::World::deserialize(bytes);
@@ -20,12 +24,14 @@ TEST_CASE("Serialize -> deserialize -> serialize is byte-identical", "[unit][ser
     CHECK(loaded->state_hash() == world.state_hash());
     CHECK(loaded->params() == world.params());
     CHECK(loaded->scenario() == world.scenario());
-    CHECK(loaded->snapshot().pending_command_count == 1);
+    CHECK(loaded->snapshot().pending_command_count == 3);
+    CHECK(loaded->snapshot().soil == world.snapshot().soil);
+    CHECK(loaded->snapshot().ledger == world.snapshot().ledger);
 }
 
 TEST_CASE("Deserialize rejects damaged save data", "[unit][serialization]") {
     sim::World world = make_world();
-    world.enqueue(sim::NoopCommand{});
+    test::must_enqueue(world, sim::NoopCommand{});
     const std::vector<std::byte> good = world.serialize();
 
     SECTION("empty") {

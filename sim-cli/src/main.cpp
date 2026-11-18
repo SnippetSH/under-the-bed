@@ -4,7 +4,9 @@
 //           [--out runs/empty.csv]
 //
 // CSV는 틱 0(초기 상태)부터 틱 N까지 N+1행이에요. 행의 값은 해당 틱 시점의 상태예요.
-// 표준 출력 마지막 줄에 최종 상태 해시를 찍어요.
+// 열: 기상·명령 수, house_air_temp_degC, 셀 평균 토양 상태(soil.hpp 필드 이름), 장부 합계(ledger_ 접두사),
+// state_hash 순서예요. 명령 일정표([[schedule]])는 해당 틱을 처리하기 직전에 enqueue해요.
+// 표준 출력에는 이벤트 종류별 횟수와 최종 상태 해시를 찍어요.
 
 #include <charconv>
 #include <chrono>
@@ -16,6 +18,8 @@
 #include <print>
 #include <string>
 #include <string_view>
+#include <variant>
+#include <vector>
 
 #include "sim/world.hpp"
 #include "simdata/loader.hpp"
@@ -34,7 +38,12 @@ constexpr std::string_view kUsage =
 
 constexpr std::string_view kCsvHeader =
     "tick,elapsed_days,day_of_year,hour,outside_air_temp_degC,solar_radiation_W_per_m2,"
-    "outside_rh_percent,pending_commands,state_hash";
+    "outside_rh_percent,pending_commands,house_air_temp_degC,"
+    "water_mm,drained_mm_this_tick,soil_temp_degC,labile_C_g_per_m2,labile_N_g_per_m2,"
+    "stable_C_g_per_m2,stable_N_g_per_m2,nh4_N_g_per_m2,no2_N_g_per_m2,no3_N_g_per_m2,ph,"
+    "ledger_water_in_mm,ledger_water_evaporated_mm,ledger_water_drained_mm,"
+    "ledger_N_in_g,ledger_N_leached_g,ledger_N_gas_g,ledger_C_in_g,ledger_C_respired_g,"
+    "state_hash";
 
 struct Options {
     fs::path params;
@@ -77,13 +86,67 @@ std::optional<Options> parse_args(int argc, char** argv) {
     return opt;
 }
 
+// 셀 평균 토양 상태 (열 순서는 kCsvHeader와 같아요)
+struct SoilMeans {
+    double water_mm = 0.0;
+    double drained_mm_this_tick = 0.0;
+    double soil_temp_degC = 0.0;
+    double labile_C_g_per_m2 = 0.0;
+    double labile_N_g_per_m2 = 0.0;
+    double stable_C_g_per_m2 = 0.0;
+    double stable_N_g_per_m2 = 0.0;
+    double nh4_N_g_per_m2 = 0.0;
+    double no2_N_g_per_m2 = 0.0;
+    double no3_N_g_per_m2 = 0.0;
+    double ph = 0.0;
+};
+
+SoilMeans mean_soil(const std::vector<sim::SoilCell>& cells) {
+    SoilMeans m;
+    for (const sim::SoilCell& c : cells) {
+        m.water_mm += c.water_mm;
+        m.drained_mm_this_tick += c.drained_mm_this_tick;
+        m.soil_temp_degC += c.soil_temp_degC;
+        m.labile_C_g_per_m2 += c.labile_C_g_per_m2;
+        m.labile_N_g_per_m2 += c.labile_N_g_per_m2;
+        m.stable_C_g_per_m2 += c.stable_C_g_per_m2;
+        m.stable_N_g_per_m2 += c.stable_N_g_per_m2;
+        m.nh4_N_g_per_m2 += c.nh4_N_g_per_m2;
+        m.no2_N_g_per_m2 += c.no2_N_g_per_m2;
+        m.no3_N_g_per_m2 += c.no3_N_g_per_m2;
+        m.ph += c.ph;
+    }
+    if (!cells.empty()) {
+        const double n = static_cast<double>(cells.size());
+        m.water_mm /= n;
+        m.drained_mm_this_tick /= n;
+        m.soil_temp_degC /= n;
+        m.labile_C_g_per_m2 /= n;
+        m.labile_N_g_per_m2 /= n;
+        m.stable_C_g_per_m2 /= n;
+        m.stable_N_g_per_m2 /= n;
+        m.nh4_N_g_per_m2 /= n;
+        m.no2_N_g_per_m2 /= n;
+        m.no3_N_g_per_m2 /= n;
+        m.ph /= n;
+    }
+    return m;
+}
+
 void write_row(std::ofstream& csv, const sim::World& world) {
     const sim::Snapshot s = world.snapshot();
+    const SoilMeans m = mean_soil(s.soil);
+    const sim::Ledger& l = s.ledger;
     // {}는 최단 왕복 표현이라 같은 값이면 항상 같은 문자열이 나와요.
-    std::println(csv, "{},{},{},{},{},{},{},{},0x{:016x}", s.tick, s.time.elapsed_days,
-                 s.time.day_of_year, s.time.hour, s.weather.outside_air_temp_degC,
-                 s.weather.solar_radiation_W_per_m2, s.weather.outside_rh_percent,
-                 s.pending_command_count, world.state_hash());
+    std::println(csv, "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},0x{:016x}",
+                 s.tick, s.time.elapsed_days, s.time.day_of_year, s.time.hour,
+                 s.weather.outside_air_temp_degC, s.weather.solar_radiation_W_per_m2,
+                 s.weather.outside_rh_percent, s.pending_command_count, s.house_air_temp_degC,
+                 m.water_mm, m.drained_mm_this_tick, m.soil_temp_degC, m.labile_C_g_per_m2,
+                 m.labile_N_g_per_m2, m.stable_C_g_per_m2, m.stable_N_g_per_m2, m.nh4_N_g_per_m2,
+                 m.no2_N_g_per_m2, m.no3_N_g_per_m2, m.ph, l.water_in_mm, l.water_evaporated_mm,
+                 l.water_drained_mm, l.N_in_g, l.N_leached_g, l.N_gas_g, l.C_in_g, l.C_respired_g,
+                 world.state_hash());
 }
 
 }  // namespace
@@ -100,12 +163,13 @@ int main(int argc, char** argv) {
         std::println(stderr, "error: {}", params.error().message);
         return kExitRuntimeError;
     }
-    auto scenario = simdata::load_scenario(opt->scenario);
-    if (!scenario) {
-        std::println(stderr, "error: {}", scenario.error().message);
+    auto bundle = simdata::load_scenario_bundle(opt->scenario);
+    if (!bundle) {
+        std::println(stderr, "error: {}", bundle.error().message);
         return kExitRuntimeError;
     }
-    auto world = sim::World::create(std::move(*params), std::move(*scenario));
+    const std::vector<simdata::ScheduledCommand> schedule = std::move(bundle->schedule);
+    auto world = sim::World::create(std::move(*params), std::move(bundle->scenario));
     if (!world) {
         std::println(stderr, "error: {}", world.error().message);
         return kExitRuntimeError;
@@ -133,8 +197,27 @@ int main(int argc, char** argv) {
     if (csv.is_open()) {
         write_row(csv, *world);
     }
+    std::size_t next_command = 0;
+    std::uint64_t command_applied_events = 0;
+    std::uint64_t nitrite_events = 0;
     for (std::uint32_t t = 0; t < opt->ticks; ++t) {
+        // 일정표는 tick 오름차순이라 현재 틱의 명령만 앞에서부터 꺼내면 돼요.
+        while (next_command < schedule.size() && schedule[next_command].tick == t) {
+            const auto seq = world->enqueue(schedule[next_command].command);
+            if (!seq) {
+                std::println(stderr, "error: schedule entry for tick {} rejected: {}", t, seq.error().message);
+                return kExitRuntimeError;
+            }
+            ++next_command;
+        }
         world->step(1);
+        for (const sim::Event& event : world->events()) {
+            if (std::holds_alternative<sim::CommandAppliedEvent>(event.payload)) {
+                ++command_applied_events;
+            } else if (std::holds_alternative<sim::NitriteThresholdExceededEvent>(event.payload)) {
+                ++nitrite_events;
+            }
+        }
         if (csv.is_open()) {
             write_row(csv, *world);
         }
@@ -152,6 +235,8 @@ int main(int argc, char** argv) {
     }
 
     std::println("scenario={} ticks={} elapsed_ms={}", world->scenario().name, opt->ticks, elapsed_ms);
+    std::println("events command_applied={} nitrite_threshold_exceeded={}", command_applied_events,
+                 nitrite_events);
     std::println("final_state_hash=0x{:016x}", world->state_hash());
     return kExitOk;
 }

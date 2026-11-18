@@ -2,9 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "sim/calendar.hpp"
 #include "sim/scenario.hpp"
+#include "sim/soil.hpp"
 
 namespace sim {
 
@@ -17,6 +19,10 @@ struct Snapshot {
     int bed_rows;
     int bed_cols;
     std::size_t pending_command_count;  // 다음 틱 시작 시 적용될 명령 수
+
+    double house_air_temp_degC;  // 마지막으로 처리한 틱의 하우스 기온 (틱 0에서는 초기 기상으로 계산)
+    std::vector<SoilCell> soil;  // 행 우선, bed_rows × bed_cols
+    Ledger ledger;
 };
 
 }  // namespace sim

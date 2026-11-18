@@ -31,7 +31,7 @@ std::vector<std::uint64_t> run_and_record_hashes(sim::World world, std::uint64_t
     hashes.push_back(world.state_hash());
     for (std::uint64_t t = 0; t < ticks; ++t) {
         if (has_command_before(t)) {
-            world.enqueue(sim::NoopCommand{});
+            test::must_enqueue(world, sim::NoopCommand{});
         }
         world.step(1);
         hashes.push_back(world.state_hash());
@@ -57,7 +57,7 @@ TEST_CASE("Save, load, continue equals an uninterrupted run", "[determinism][ser
     auto drive = [](sim::World& w, std::uint64_t from, std::uint64_t to) {
         for (std::uint64_t t = from; t < to; ++t) {
             if (has_command_before(t)) {
-                w.enqueue(sim::NoopCommand{});
+                test::must_enqueue(w, sim::NoopCommand{});
             }
             w.step(1);
         }
@@ -68,8 +68,8 @@ TEST_CASE("Save, load, continue equals an uninterrupted run", "[determinism][ser
     sim::World saved = load_empty_scenario_world();
     drive(continuous, 0, kSplit);
     drive(saved, 0, kSplit);
-    continuous.enqueue(sim::NoopCommand{});
-    saved.enqueue(sim::NoopCommand{});
+    test::must_enqueue(continuous, sim::NoopCommand{});
+    test::must_enqueue(saved, sim::NoopCommand{});
 
     auto resumed = sim::World::deserialize(saved.serialize());
     REQUIRE(resumed.has_value());

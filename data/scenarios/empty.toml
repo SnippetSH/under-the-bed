@@ -1,7 +1,7 @@
 # 빈 시나리오 — M0 완료 기준(1년치 실행, 결정론) 검증용
 # 프로세스가 없어서 상태는 틱과 달력만 진행돼요.
 
-schema_version = 1
+schema_version = 2
 
 [scenario]
 name = "empty"
@@ -13,3 +13,17 @@ weather_csv = "../weather/synthetic_year.csv"    # 이 파일 기준 상대 경�
 # 타일 해상도(포기 단위 / 베드 구간 단위)는 미결정 사항이에요. 크기는 게임용 임의값이에요.
 bed_rows = 4
 bed_cols = 20
+
+[soil]
+# 모든 셀의 초기값 (균일 토양). 전부 게임용 임의값 (docs/spec/m1-overview.md 예시)
+field_capacity_mm = 60.0
+water_mm = 45.0
+soil_temp_degC = 20.0
+ph = 6.5
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 10.0
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 5.0
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 360.0

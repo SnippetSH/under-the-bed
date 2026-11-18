@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "sim/command.hpp"
 #include "sim/error.hpp"
 #include "sim/params.hpp"
 #include "sim/scenario.hpp"
@@ -14,16 +15,30 @@
 namespace simdata {
 
 // 시나리오 TOML 파일의 스키마 버전
-inline constexpr std::int64_t kScenarioFileSchemaVersion = 1;
+inline constexpr std::int64_t kScenarioFileSchemaVersion = 2;
 
 // 기상 CSV 머리글 (순서 고정)
 inline constexpr std::string_view kWeatherCsvHeader =
     "day_of_year,hour,outside_air_temp_degC,solar_radiation_W_per_m2,outside_rh_percent";
 
+// [[schedule]]을 펼친 항목: 이 틱을 처리하기 직전에 enqueue할 명령
+struct ScheduledCommand {
+    std::uint64_t tick;
+    sim::Command command;
+};
+
 // 시나리오 TOML을 파싱한 결과. 기상 표는 아직 비어 있고, 경로만 들어 있어요.
 struct ScenarioDocument {
     sim::Scenario scenario;
     std::string weather_csv;  // 시나리오 파일 기준 상대 경로 (UTF-8)
+    // 반복을 펼치고 tick 오름차순으로 안정 정렬한 명령 목록 (같은 틱은 파일 순서)
+    std::vector<ScheduledCommand> schedule;
+};
+
+// 월드 초기 조건과 명령 일정표 (기상 표까지 채워진 상태)
+struct ScenarioBundle {
+    sim::Scenario scenario;
+    std::vector<ScheduledCommand> schedule;
 };
 
 // 문자열 파서. source_name은 오류 메시지에만 써요.
@@ -37,6 +52,9 @@ struct ScenarioDocument {
 
 // 파일 로더
 [[nodiscard]] std::expected<sim::Params, sim::Error> load_params(const std::filesystem::path& path);
+// 일정표까지 함께 돌려줘요.
+[[nodiscard]] std::expected<ScenarioBundle, sim::Error> load_scenario_bundle(
+    const std::filesystem::path& path);
 // 시나리오 TOML을 읽고, 그 안의 weather_csv 경로(시나리오 파일 기준)로 기상 표까지 채워요.
 [[nodiscard]] std::expected<sim::Scenario, sim::Error> load_scenario(
     const std::filesystem::path& path);

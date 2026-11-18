@@ -2,17 +2,25 @@
 add_library(sim-core STATIC
   include/sim/calendar.hpp
   include/sim/command.hpp
+  include/sim/curve.hpp
   include/sim/error.hpp
   include/sim/event.hpp
   include/sim/hash.hpp
   include/sim/params.hpp
+  include/sim/processes.hpp
   include/sim/rng.hpp
   include/sim/scenario.hpp
   include/sim/snapshot.hpp
+  include/sim/soil.hpp
   include/sim/world.hpp
   src/byte_io.hpp
   src/serialization.cpp
-  src/world.cpp)
+  src/world.cpp
+  src/processes/leaching.cpp
+  src/processes/nitrification.cpp
+  src/processes/organic_matter.cpp
+  src/processes/soil_water.cpp
+  src/processes/temperature.cpp)
 
 target_include_directories(sim-core PUBLIC include PRIVATE src)
 target_compile_features(sim-core PUBLIC cxx_std_23)

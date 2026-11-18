@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <variant>
 
@@ -8,6 +9,7 @@
 #include "test_helpers.hpp"
 
 using test::make_world;
+using test::must_enqueue;
 using test::test_params;
 using test::test_scenario;
 
@@ -56,7 +58,8 @@ TEST_CASE("Snapshot reports time and the matching weather row", "[unit][world]")
     sim::Snapshot s0 = world.snapshot();
     CHECK(s0.tick == 0);
     CHECK(s0.time == sim::CalendarTime{0, 365, 0});
-    CHECK(s0.weather.outside_air_temp_degC == 365.0);
+    CHECK(s0.weather == world.scenario().weather_hourly[sim::weather_index(365, 0)]);
+    CHECK(s0.soil.size() == 6);
     CHECK(s0.bed_rows == 2);
     CHECK(s0.bed_cols == 3);
 
@@ -70,8 +73,8 @@ TEST_CASE("Snapshot reports time and the matching weather row", "[unit][world]")
 TEST_CASE("Commands apply at the start of the next tick, in order", "[unit][world][command]") {
     sim::World world = make_world();
 
-    const std::uint64_t first = world.enqueue(sim::NoopCommand{});
-    const std::uint64_t second = world.enqueue(sim::NoopCommand{});
+    const std::uint64_t first = test::must_enqueue(world, sim::NoopCommand{});
+    const std::uint64_t second = test::must_enqueue(world, sim::NoopCommand{});
     CHECK(first == 0);
     CHECK(second == 1);
     CHECK(world.snapshot().pending_command_count == 2);
@@ -90,7 +93,7 @@ TEST_CASE("Commands apply at the start of the next tick, in order", "[unit][worl
 
 TEST_CASE("Events cover only the last step call", "[unit][world][event]") {
     sim::World world = make_world();
-    world.enqueue(sim::NoopCommand{});
+    test::must_enqueue(world, sim::NoopCommand{});
     world.step(3);
     CHECK(world.events().size() == 1);
 
@@ -98,7 +101,7 @@ TEST_CASE("Events cover only the last step call", "[unit][world][event]") {
     CHECK(world.events().empty());
 
     world.step(2);
-    world.enqueue(sim::NoopCommand{});
+    test::must_enqueue(world, sim::NoopCommand{});
     world.step(2);
     REQUIRE(world.events().size() == 1);
     CHECK(world.events()[0].tick == 6);  // 틱 0..5를 지난 뒤 처리된 첫 틱
@@ -112,4 +115,63 @@ TEST_CASE("State hash changes as the world advances", "[unit][world]") {
     const std::uint64_t h0 = world.state_hash();
     world.step(1);
     CHECK(world.state_hash() != h0);
+}
+
+TEST_CASE("enqueue validates commands before queueing", "[unit][world][command]") {
+    sim::World world = make_world(test_scenario(1, 2, 3));
+    const sim::TileArea all = sim::whole_grid(2, 3);
+
+    CHECK(world.enqueue(sim::IrrigateCommand{all, 10.0}).has_value());
+    CHECK(world.enqueue(sim::AddCompostCommand{all, "immature_manure", 3.0}).has_value());
+    CHECK(world.enqueue(sim::AddFertilizerCommand{all, "urea", 20.0}).has_value());
+    CHECK(world.enqueue(sim::IrrigateCommand{{1, 2, 1, 1}, 0.0}).has_value());  // 마지막 칸, 0 mm 허용
+
+    const std::size_t queued = world.snapshot().pending_command_count;
+    CHECK_FALSE(world.enqueue(sim::IrrigateCommand{all, -1.0}).has_value());
+    CHECK_FALSE(world.enqueue(sim::IrrigateCommand{{0, 0, 3, 3}, 1.0}).has_value());   // 행 초과
+    CHECK_FALSE(world.enqueue(sim::IrrigateCommand{{0, 2, 1, 2}, 1.0}).has_value());   // 열 초과
+    CHECK_FALSE(world.enqueue(sim::IrrigateCommand{{0, 0, 0, 1}, 1.0}).has_value());   // 빈 영역
+    CHECK_FALSE(world.enqueue(sim::IrrigateCommand{{-1, 0, 1, 1}, 1.0}).has_value());  // 음수 위치
+    CHECK_FALSE(world.enqueue(sim::AddCompostCommand{all, "no_such_compost", 1.0}).has_value());
+    CHECK_FALSE(world.enqueue(sim::AddFertilizerCommand{all, "no_such_fertilizer", 1.0}).has_value());
+    CHECK_FALSE(world.enqueue(sim::AddFertilizerCommand{all, "urea",
+                                                        std::numeric_limits<double>::infinity()}).has_value());
+    CHECK(world.snapshot().pending_command_count == queued);  // 거부된 명령은 큐에 없어요
+}
+
+TEST_CASE("World::create validates M1 parameters and soil", "[unit][world]") {
+    SECTION("bad curve") {
+        sim::Params p = test_params();
+        p.nitrification.step2_ph_curve.points = {{{7.0, 1.0}}};
+        CHECK_FALSE(sim::World::create(p, test_scenario()).has_value());
+    }
+    SECTION("fraction out of range") {
+        sim::Params p = test_params();
+        p.organic_matter.humification_fraction = 1.5;
+        CHECK_FALSE(sim::World::create(p, test_scenario()).has_value());
+    }
+    SECTION("duplicate compost id") {
+        sim::Params p = test_params();
+        p.composts.push_back(p.composts.front());
+        CHECK_FALSE(sim::World::create(p, test_scenario()).has_value());
+    }
+    SECTION("non-positive field capacity") {
+        sim::Scenario s = test_scenario();
+        s.soil.field_capacity_mm = 0.0;
+        CHECK_FALSE(sim::World::create(test_params(), s).has_value());
+    }
+    SECTION("negative initial pool") {
+        sim::Scenario s = test_scenario();
+        s.soil.no3_N_g_per_m2 = -0.1;
+        CHECK_FALSE(sim::World::create(test_params(), s).has_value());
+    }
+}
+
+TEST_CASE("Snapshot starts from the scenario soil", "[unit][world]") {
+    sim::World world = make_world();
+    const sim::Snapshot s = world.snapshot();
+    for (const sim::SoilCell& cell : s.soil) {
+        CHECK(cell == test::test_cell());
+    }
+    CHECK(s.ledger == sim::Ledger{});
 }

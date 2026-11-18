@@ -12,7 +12,15 @@ struct CommandAppliedEvent {
     bool operator==(const CommandAppliedEvent&) const = default;
 };
 
-using EventPayload = std::variant<CommandAppliedEvent>;
+// 아질산이 독성 임계치를 처음 넘음 (docs/spec/nitrogen.md "아질산 독성 판정")
+struct NitriteThresholdExceededEvent {
+    std::uint32_t tile_index;  // 행 우선 인덱스
+    double no2_N_g_per_m2;
+
+    bool operator==(const NitriteThresholdExceededEvent&) const = default;
+};
+
+using EventPayload = std::variant<CommandAppliedEvent, NitriteThresholdExceededEvent>;
 
 struct Event {
     std::uint64_t tick;  // 이벤트가 발생한 틱 (처리 중이던 틱 번호)

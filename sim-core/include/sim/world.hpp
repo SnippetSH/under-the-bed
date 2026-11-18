@@ -12,6 +12,7 @@
 #include "sim/params.hpp"
 #include "sim/scenario.hpp"
 #include "sim/snapshot.hpp"
+#include "sim/soil.hpp"
 
 namespace sim {
 
@@ -20,11 +21,6 @@ class ByteWriter;
 class ByteReader;
 }  // namespace detail
 
-// 토양 셀. M1부터 수분, 온도, 유기물, 질소 풀이 들어와요.
-struct SoilCell {
-    bool operator==(const SoilCell&) const = default;
-};
-
 // 베드 타일 = 토양 셀 1개 + 작물 0~1개 (작물은 M2부터)
 struct Tile {
     SoilCell soil;
@@ -32,15 +28,16 @@ struct Tile {
     bool operator==(const Tile&) const = default;
 };
 
-// 시뮬레이션 월드. 공개 인터페이스는 docs/spec/core-api.md를 따라요.
+// 시뮬레이션 월드. 공개 인터페이스는 docs/spec/core-api.md, 틱 순서는 docs/spec/m1-overview.md를 따라요.
 // 공개 함수는 예외를 던지지 않고, 실패할 수 있는 호출은 std::expected를 돌려줘요.
 class World {
 public:
     // 1. 초기화: 파라미터와 시나리오를 검증하고 월드를 만들어요.
     [[nodiscard]] static std::expected<World, Error> create(Params params, Scenario scenario);
 
-    // 2. 명령 투입: 다음 틱 시작 시 투입 순서대로 적용돼요. 부여된 일련번호를 돌려줘요.
-    std::uint64_t enqueue(Command command);
+    // 2. 명령 투입: 검증 후 큐에 넣고 일련번호를 돌려줘요. 다음 틱 시작 시 투입 순서대로 적용돼요.
+    //    모르는 퇴비·비료 ID, 음수·비유한 양, 그리드 밖 영역은 거부하고 큐에 넣지 않아요.
+    [[nodiscard]] std::expected<std::uint64_t, Error> enqueue(Command command);
 
     // 3. 틱 진행: N틱 진행해요. 호출할 때마다 events()가 비워져요.
     void step(std::uint32_t ticks);
@@ -67,6 +64,17 @@ private:
 
     void tick_once();
     void apply_command(const NoopCommand& command);
+    void apply_command(const IrrigateCommand& command);
+    void apply_command(const AddCompostCommand& command);
+    void apply_command(const AddFertilizerCommand& command);
+
+    [[nodiscard]] std::expected<void, Error> validate_command(const Command& command) const;
+    [[nodiscard]] std::expected<void, Error> validate_area(const TileArea& area) const;
+    [[nodiscard]] const CompostDef* find_compost(std::string_view id) const;
+    [[nodiscard]] const FertilizerDef* find_fertilizer(std::string_view id) const;
+
+    template <typename Fn>
+    void for_each_tile_in(const TileArea& area, Fn&& fn);
 
     void write_dynamic(detail::ByteWriter& writer) const;
     [[nodiscard]] std::expected<void, Error> read_dynamic(detail::ByteReader& reader);
@@ -80,6 +88,8 @@ private:
     std::uint64_t next_command_seq_ = 0;
     std::vector<QueuedCommand> pending_commands_;
     std::vector<Tile> tiles_;  // 행 우선 순서, bed_rows × bed_cols
+    double house_air_temp_degC_ = 0.0;
+    Ledger ledger_;
 
     // 일시적 출력
     std::vector<Event> events_;
