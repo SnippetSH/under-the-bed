@@ -9,7 +9,9 @@
 #include "sim/command.hpp"
 #include "sim/error.hpp"
 #include "sim/event.hpp"
+#include "sim/house.hpp"
 #include "sim/params.hpp"
+#include "sim/rng.hpp"
 #include "sim/scenario.hpp"
 #include "sim/snapshot.hpp"
 #include "sim/soil.hpp"
@@ -70,6 +72,10 @@ private:
     void apply_command(const AddFertilizerCommand& command);
     void apply_command(const AddLimeCommand& command);
     void apply_command(const TillCommand& command);
+    void apply_command(const SetWindowCommand& command);
+    void apply_command(const SetHeaterCommand& command);
+    void apply_command(const SetCoverLayersCommand& command);
+    void apply_command(const ThinFlowersCommand& command);
 
     [[nodiscard]] std::expected<void, Error> validate_command(const Command& command) const;
     [[nodiscard]] std::expected<void, Error> validate_area(const TileArea& area) const;
@@ -93,7 +99,8 @@ private:
     std::uint64_t next_command_seq_ = 0;
     std::vector<QueuedCommand> pending_commands_;
     std::vector<Tile> tiles_;  // 행 우선 순서, bed_rows × bed_cols
-    double house_air_temp_degC_ = 0.0;
+    HouseState house_;         // M4 하우스 기후 (house-climate)
+    Pcg32 biology_rng_;        // M4 생물 변이 스트림 (RngStream::Biology)
     Ledger ledger_;
 
     // 일시적 출력

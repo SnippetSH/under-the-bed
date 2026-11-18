@@ -1,6 +1,6 @@
 # S1 기준(무처리) — docs/spec/m1-overview.md "시나리오 테스트 (M1)" 표. 값은 전부 게임용 임의값이에요.
 
-schema_version = 4
+schema_version = 5
 
 [scenario]
 name = "s0_control"
@@ -11,6 +11,7 @@ weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경�
 [house]
 bed_rows = 4
 bed_cols = 20
+cover_layers = 3
 
 [soil]
 field_capacity_mm = 60.0
@@ -42,3 +43,112 @@ s_g_per_m2 = 3.0
 [difficulty]
 stress_combination = "minimum"
 
+# 낮 환기 (M4 이행): 매일 10시에 창 6개 전부 열고 16시에 닫기 (2026-11-18 프로토타입 점검으로 조정)
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 10
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 60
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 60

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace sim {
 
@@ -96,7 +97,7 @@ struct Ledger {
     double water_drained_mm = 0.0;
     double N_in_g = 0.0;
     double N_leached_g = 0.0;
-    double N_gas_g = 0.0;  // M1에서는 항상 0
+    double N_gas_g = 0.0;  // M4: 탈질
     double C_in_g = 0.0;
     double C_respired_g = 0.0;
 
@@ -125,6 +126,15 @@ struct Ledger {
     double Mn_leached_g = 0.0;
     double Mn_uptake_g = 0.0;
 
+    // M4: 수확 반출, 낙엽(+저온 피해 잎·과실) C
+    double N_harvested_g = 0.0;
+    double P_harvested_g = 0.0;
+    double K_harvested_g = 0.0;
+    double Ca_harvested_g = 0.0;
+    double Mg_harvested_g = 0.0;
+    double Mn_harvested_g = 0.0;
+    double C_leaf_litter_g = 0.0;
+
     bool operator==(const Ledger&) const = default;
 };
 
@@ -138,6 +148,69 @@ enum class StressFactor : std::uint8_t {
 inline constexpr std::size_t kStressFactorCount = 10;
 
 enum class RootDamageCause : std::uint8_t { Waterlog = 0, Heat, Nitrite, Acid };
+
+// ---- M4 (docs/spec/strawberry-phenology.md, strawberry-fruit.md) ----
+
+// 화방 (분화 순서대로)
+struct Truss {
+    std::uint64_t initiated_tick = 0;
+    double development_index = 0.0;  // 분화 → 개화 0~1
+    double flowers_per_m2 = 0.0;     // 분화 시 정해짐 (저온 피해로 줄 수 있음)
+    bool opened = false;
+    // 프로토타입 진단용 (명세 밖, 5차): 개화 틱, 화방별 수확·낙과
+    std::uint64_t opened_tick = 0;
+    std::uint64_t harvested_fruits = 0;
+    double harvested_fresh_g = 0.0;
+    std::uint64_t aborted_fruits = 0;
+    std::uint64_t first_harvest_tick = 0;
+    std::uint64_t last_harvest_tick = 0;
+
+    bool operator==(const Truss&) const = default;
+};
+
+// 개별 과실 (타일 1칸 = 1 m²). set = false면 아직 꽃
+struct Fruit {
+    std::uint32_t truss_index = 0;
+    std::uint32_t rank = 0;  // 과위 0~(과위 수 − 1)
+    std::uint64_t anthesis_tick = 0;
+    bool set = false;
+    double pollination_index = 0.0;
+    bool deformed = false;
+    double potential_fresh_g = 0.0;
+    double dry_g = 0.0;
+    double development_index = 0.0;  // 개화 → 수확 0~1
+    double brix_factor_sum = 0.0;
+    double firmness_factor_sum = 0.0;
+    double weight_sum = 0.0;
+    // 당도 온도 점수의 주·야간 가중 합 (낮 가중치 = 하우스 안 일사, 밤 가중치 = 시간)
+    double day_score_sum = 0.0;
+    double day_weight_sum = 0.0;
+    double night_score_sum = 0.0;
+    double night_weight_sum = 0.0;
+
+    bool operator==(const Fruit&) const = default;
+};
+
+// 누적 수확 기록 (작물마다)
+struct HarvestRecord {
+    std::uint64_t harvested_fruits = 0;  // 정상과
+    double harvested_fresh_g = 0.0;
+    std::uint64_t harvested_deformed = 0;
+    double harvested_deformed_fresh_g = 0.0;
+    double harvested_brix_weighted = 0.0;      // 당도 × 생체중 합 (정상과)
+    double harvested_firmness_weighted = 0.0;  // 경도 × 생체중 합 (정상과)
+    std::vector<std::uint64_t> harvested_size_class_counts;  // 길이 = 경계 수 + 1
+    bool has_first_harvest = false;
+    std::uint64_t first_harvest_tick = 0;
+    // 프로토타입 진단용 (명세 밖, 4차 점검): 낙과·적과 개수, 정상과의 온도 점수 × 생체중 합
+    std::uint64_t aborted_fruits = 0;
+    std::uint64_t thinned_fruits = 0;
+    double harvested_day_score_weighted = 0.0;
+    double harvested_night_score_weighted = 0.0;
+    double harvested_temp_score_weighted = 0.0;
+
+    bool operator==(const HarvestRecord&) const = default;
+};
 
 // 타일당 작물 0~1개. present = false면 나머지 필드는 의미 없음.
 struct Crop {
@@ -157,6 +230,30 @@ struct Crop {
     // M3 이번 틱 길항 배율 (스냅샷용, cation-exchange "흡수 길항")
     double antagonism_Ca_factor = 1.0;
     double antagonism_Mg_factor = 1.0;
+
+    // M4
+    double crown_g_per_m2 = 0.0;
+    double plants_per_m2 = 0.0;  // 정식 시 고정
+    double establishment_index = 0.0;
+    double induction_index = 0.0;
+    std::vector<Truss> trusses;
+    std::vector<Fruit> fruits;
+    HarvestRecord harvest;
+    // 이번 틱 값 (스냅샷·CO2 수지용)
+    double last_gross_g_per_m2 = 0.0;        // 총생산
+    double last_respiration_g_per_m2 = 0.0;  // 유지 호흡
+    double last_supply_ratio = 1.0;          // 과실 공급 비율
+    // 프로토타입 점검 3차 (P2): 크기 충족도(Σ과실 건물 ÷ Σ목표 건물)의 이동 평균. 순생산 > 0인 틱에만 갱신 (당도 계수의 x)
+    double size_satisfaction_mean = 1.0;
+
+    // 달려 있는 과실 건물 합 g/m² (꽃은 0)
+    [[nodiscard]] double fruit_g_per_m2() const {
+        double sum = 0.0;
+        for (const Fruit& f : fruits) {
+            sum += f.dry_g;
+        }
+        return sum;
+    }
 
     bool operator==(const Crop&) const = default;
 };

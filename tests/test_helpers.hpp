@@ -23,7 +23,96 @@ inline sim::Params test_params() {
     sim::Params p;
     p.schema_version = sim::kParamsSchemaVersion;
 
-    p.house = {.base_offset_degC = 2.0, .solar_gain_degC_per_W_per_m2 = 0.015, .solar_transmittance_factor = 0.7};
+    // M4 house-climate 명세 초기값 (3중·창 닫힘·난방 없음에서 M1 식과 거의 같음)
+    p.house = {
+        .layer_transmittance_factor = 0.9,
+        .layer_resistance_m2K_per_W = 0.13,
+        .infiltration_W_per_m2_per_K = 0.5,
+        .window_bypass_fraction = 0.5,
+        .window_open_levels = {0.0, 0.3, 0.5, 0.7, 1.0},
+        .vent_conductance_W_per_m2_per_K = 30.0,
+        .solar_heat_gain_fraction = 0.18,
+        .ground_heat_W_per_m2 = 6.1,
+        .air_relax_rate_per_hour = 0.7,
+        .heater_capacity_W_per_m2 = 150.0,
+        .heater_setpoint_min_degC = 0.0,
+        .heater_setpoint_max_degC = 30.0,
+        .temp_mean_relax_rate_per_hour = 0.042,
+        .cover_change_window_doy = {91, 243},
+        .min_cover_layers = 2,
+        .max_cover_layers = 4,
+        .outside_co2_ppm_by_hour = {420.0, 424.0, 428.8, 439.4, 464.7, 494.6, 495.1, 466.2, 441.8, 431.9, 427.6, 423.9,
+                                    420.0, 415.2, 402.8, 388.1, 397.3, 404.6, 405.0, 405.5, 407.0, 409.4, 412.5, 416.1},
+        .air_volume_m3_per_m2 = 3.0,
+        .co2_mg_per_m3_per_ppm = 1.83,
+        .infiltration_air_changes_per_hour = 0.3,
+        .vent_air_changes_per_hour = 30.0,
+        .co2_floor_ppm = 50.0,
+    };
+    p.calendar = {.day_length_curve = {{{{1, 9.56}}, {{16, 9.79}}, {{31, 10.17}}, {{46, 10.66}}, {{61, 11.21}}, {{76, 11.80}}, {{91, 12.40}}, {{106, 12.98}}, {{121, 13.51}}, {{136, 13.97}}, {{151, 14.31}}, {{166, 14.48}}, {{181, 14.46}}, {{196, 14.26}}, {{211, 13.90}}, {{226, 13.43}}, {{241, 12.88}}, {{256, 12.30}}, {{271, 11.70}}, {{286, 11.12}}, {{301, 10.57}}, {{316, 10.10}}, {{331, 9.74}}, {{346, 9.54}}, {{361, 9.52}}, {{365, 9.55}}}}};
+    p.phenology = {
+        .establishment_rate_per_hour = 0.0042,
+        .establishment_temp_curve = {{{{5, 0}}, {{10, 0.5}}, {{18, 1}}, {{28, 1}}, {{35, 0.3}}}},
+        .establishment_growth_curve = {{{{0, 0.3}}, {{1, 1}}}},
+        .induction_rate_per_hour = 0.002,
+        .induction_day_length_curve = {{{{8, 1}}, {{11.5, 1}}, {{12.5, 0.6}}, {{13.5, 0.1}}, {{14, 0}}}},
+        .induction_temp_curve = {{{{3, 0}}, {{8, 0.5}}, {{12, 1}}, {{22, 1}}, {{26, 0.3}}, {{30, 0}}}},
+        .induction_nitrogen_curve = {{{{0, 1}}, {{1.1, 1}}, {{1.3, 0.6}}, {{1.5, 0.25}}}},
+        .truss_base_temp_degC = 5.0,
+        .truss_degree_days_to_anthesis = 350.0,
+        .flowers_per_truss_curve = {{{{1, 6}}, {{3, 12}}, {{6, 18}}, {{10, 22}}}},
+    };
+    p.fruit = {
+        .rank_fraction = {0.06, 0.11, 0.22, 0.39, 0.22},
+        .rank_anthesis_delay_days = {0.0, 4.0, 7.0, 10.0, 12.0},
+        .anthesis_jitter_days = 4.0,
+        .rank_potential_fresh_g = {35.0, 25.0, 17.0, 12.0, 8.0},
+        .size_variation_fraction = 0.1,
+        .pollination_mean_curve = {{{{3, 0.2}}, {{5, 0.3}}, {{8, 0.6}}, {{12, 0.92}}, {{25, 0.92}}, {{30, 0.65}}, {{35, 0.35}}}},
+        .pollination_spread = 0.15,
+        .set_threshold = 0.3,
+        .deformed_threshold = 0.7,
+        .pollination_size_curve = {{{{0.3, 0.4}}, {{0.7, 0.8}}, {{0.9, 1.0}}, {{1, 1.0}}}},
+        .dry_matter_fraction = 0.09,
+        .base_temp_degC = 5.0,
+        .degree_days_to_harvest = 350.0,
+        .growth_shape_curve = {{{{0, 0}}, {{0.2, 0.05}}, {{0.5, 0.35}}, {{0.8, 0.85}}, {{1, 1}}}},
+        .size_class_bounds_g = {10.0, 15.0, 20.0, 25.0},
+        .base_brix = 10.0,
+        .brix_supply_curve = {{{{0, 0.7}}, {{0.5, 0.85}}, {{1, 1}}}},
+        .brix_k_curve = {{{{0.5, 0.75}}, {{0.8, 0.9}}, {{1, 1}}}},
+        .brix_n_excess_curve = {{{{0, 1}}, {{0.3, 1}}, {{0.5, 0.85}}}},
+        .brix_water_curve = {{{{0.4, 1.08}}, {{0.7, 1.03}}, {{0.9, 1.0}}, {{1.2, 0.95}}}},
+        .firmness_ca_curve = {{{{0.5, 0.6}}, {{0.8, 0.85}}, {{1, 1}}}},
+        .firmness_temp_curve = {{{{10, 1}}, {{20, 0.95}}, {{28, 0.75}}}},
+        .firmness_n_excess_curve = {{{{0.0, 1.0}}, {{0.3, 0.85}}}},
+        .abortion_rate_per_development_index = 8.0,
+        .abortion_window_index = 0.35,
+        .abortion_satisfaction_curve = {{{{0.0, 1.0}}, {{0.9, 0.6}}, {{1.0, 0.1}}}},
+        .rank_abortion_weight = {0.1, 0.4, 1.0, 1.4, 1.8},
+        .thinnable_max_index = 0.3,
+        .brix_day_temp_score_curve = {{{{3.0, 0.0003}}, {{4.0, 0.0007}}, {{5.0, 0.0015}}, {{6.0, 0.0031}}, {{7.0, 0.006}}, {{8.0, 0.0111}}, {{9.0, 0.0198}}, {{10.0, 0.034}}, {{11.0, 0.0561}}, {{12.0, 0.0889}}, {{13.0, 0.1353}}, {{14.0, 0.1979}}, {{15.0, 0.278}}, {{16.0, 0.3753}}, {{17.0, 0.4868}}, {{18.0, 0.6065}}, {{19.0, 0.7261}}, {{20.0, 0.8353}}, {{21.0, 0.9231}}, {{22.0, 0.9802}}, {{23.0, 1.0}}, {{24.0, 0.9802}}, {{25.0, 0.9231}}, {{26.0, 0.8353}}, {{27.0, 0.7261}}, {{28.0, 0.6065}}, {{29.0, 0.4868}}, {{30.0, 0.3753}}, {{31.0, 0.278}}, {{32.0, 0.1979}}, {{33.0, 0.1353}}, {{34.0, 0.0889}}, {{35.0, 0.0561}}, {{36.0, 0.034}}, {{37.0, 0.0198}}, {{38.0, 0.0111}}, {{39.0, 0.006}}, {{40.0, 0.0031}}, {{41.0, 0.0015}}, {{42.0, 0.0007}}, {{43.0, 0.0003}}}},
+        .brix_night_temp_score_curve = {{{{-10.0, 0.0}}, {{-9.0, 0.0}}, {{-8.0, 0.0}}, {{-7.0, 0.0}}, {{-6.0, 0.0}}, {{-5.0, 0.0}}, {{-4.0, 0.0002}}, {{-3.0, 0.0006}}, {{-2.0, 0.0022}}, {{-1.0, 0.0066}}, {{0.0, 0.0181}}, {{1.0, 0.0439}}, {{2.0, 0.0956}}, {{3.0, 0.1863}}, {{4.0, 0.3247}}, {{5.0, 0.5063}}, {{6.0, 0.7066}}, {{7.0, 0.8825}}, {{8.0, 0.9862}}, {{8.5, 1.0}}, {{9.0, 0.94}}, {{10.0, 0.82}}, {{11.0, 0.7}}, {{12.0, 0.58}}, {{13.0, 0.46}}, {{14.0, 0.34}}, {{15.0, 0.22}}, {{16.0, 0.1}}, {{17.0, 0.0}}, {{18.0, 0.0}}, {{19.0, 0.0}}, {{20.0, 0.0}}}},
+        .brix_day_weight = 0.6,
+        .brix_night_weight = 0.4,
+        .brix_temp_score_curve = {{{{0.0, 0.75}}, {{1.0, 1.15}}}},
+        .day_solar_threshold_W_per_m2 = 0.0,
+    };
+    p.denitrification = {
+        .rate_per_hour = 0.004,
+        .o2_curve = {{{{0, 1}}, {{0.2, 0.6}}, {{0.4, 0.15}}, {{0.5, 0}}, {{1, 0}}}},
+        .temp_curve = {{{{0, 0}}, {{10, 0.3}}, {{25, 1}}, {{35, 1}}, {{45, 0.5}}}},
+        .carbon_curve = {{{{0, 0.1}}, {{50, 0.6}}, {{200, 1}}}},
+        .H_eq_per_eq_N = -1.0,
+    };
+    p.seedling_grades = {
+        {.id = "A", .leaf_g_per_plant = 4.0, .crown_g_per_plant = 3.0, .root_g_per_plant = 2.0,
+         .initial_induction_index = 1.0},
+        {.id = "B", .leaf_g_per_plant = 3.5, .crown_g_per_plant = 2.0, .root_g_per_plant = 1.5,
+         .initial_induction_index = 0.8},
+        {.id = "C", .leaf_g_per_plant = 2.5, .crown_g_per_plant = 1.2, .root_g_per_plant = 1.0,
+         .initial_induction_index = 0.3},
+    };
 
     p.soil_water = {
         .evap_mm_per_hour_per_W_per_m2 = 0.0004,
@@ -86,7 +175,7 @@ inline sim::Params test_params() {
     p.aeration = {
         .compaction_cap_curve = {{{{0, 1.0}}, {{0.5, 0.8}}, {{1.0, 0.35}}}},
         .organic_C_cap_bonus_per_g_C = 0.00004,
-        .compaction_per_mm_irrigation = 0.0015,
+        .compaction_per_mm_irrigation = 0.001,
         .tilled_compaction_index = 0.1,
         .till_root_damage_fraction = 0.5,
     };
@@ -116,7 +205,7 @@ inline sim::Params test_params() {
         .mg_ph_curve = {{{{4.0, 0.3}}, {{5.0, 0.55}}, {{5.5, 0.75}}, {{6.5, 1.0}}, {{9.0, 1.0}}}},
     };
     p.root_damage = {
-        .waterlog_curve = {{{{0, 0.01}}, {{0.2, 0.004}}, {{0.4, 0.0005}}, {{0.5, 0}}}},
+        .waterlog_curve = {{{{0.0, 0.015}}, {{0.2, 0.006}}, {{0.4, 0.001}}, {{0.5, 0.0}}}},
         .heat_curve = {{{{32, 0}}, {{35, 0.002}}, {{40, 0.01}}, {{45, 0.03}}}},
         .nitrite_curve = {{{{0, 0}}, {{2, 0}}, {{4, 0.004}}, {{8, 0.015}}}},
         .acid_curve = {{{{4.0, 0.006}}, {{4.6, 0.0018}}, {{5.0, 0.0006}}, {{5.4, 0.0001}}, {{5.6, 0.0}}}},
@@ -125,9 +214,8 @@ inline sim::Params test_params() {
         .specific_leaf_area_m2_per_g = 0.02,
         .light_interception_curve = {{{{0, 0}}, {{0.5, 0.3}}, {{1, 0.5}}, {{2, 0.75}}, {{3, 0.88}}, {{4, 0.94}}}},
         .par_fraction = 0.48,
-        .light_use_efficiency_g_per_MJ = 2.5,
-        .temp_curve = {{{{3, 0}}, {{8, 0.3}}, {{15, 0.8}}, {{20, 1.0}}, {{25, 1.0}}, {{30, 0.6}}, {{35, 0.2}}, {{40, 0}}}},
-        .leaf_allocation_fraction = 0.7,
+        .light_use_efficiency_g_per_MJ = 2.25,
+        .temp_curve = {{{{3.0, 0.0}}, {{8.0, 0.3}}, {{15.0, 0.8}}, {{20.0, 1.0}}, {{25.0, 1.0}}, {{30.0, 0.6}}, {{35.0, 0.2}}, {{40.0, 0.0}}}},
         .water_stress_curve = {{{{0.2, 0}}, {{0.4, 0.3}}, {{0.6, 0.9}}, {{0.75, 1.0}}, {{2.0, 1.0}}}},
         .salt_stress_curve = {{{{0, 1}}, {{2.0, 1.0}}, {{3.5, 0.6}}, {{5.5, 0.25}}, {{8, 0.05}}}},
         .nutrient_stress_curve = {{{{0, 0}}, {{0.5, 0.3}}, {{0.8, 0.8}}, {{1.0, 1.0}}}},
@@ -146,9 +234,31 @@ inline sim::Params test_params() {
         .root_dieback_per_damage = 1.0,
         .dry_matter_C_fraction = 0.45,
         .target_Mn_g_per_g = 0.0001,
-        .mn_uptake_rate_per_g_root_per_hour = 0.00004,
+        .mn_uptake_rate_per_g_root_per_hour = 0.00001,
         .mn_max_uptake_ratio = 30.0,
         .mn_toxicity_curve = {{{{0, 1}}, {{5, 1}}, {{10, 0.7}}, {{20, 0.3}}, {{30, 0.1}}}},
+        .vegetative_leaf_fraction = 0.6,
+        .vegetative_crown_fraction = 0.15,
+        .vegetative_root_fraction = 0.25,
+        .max_fruit_assimilate_fraction = 0.65,
+        .maintenance_rate_leaf_per_hour = 0.0008,
+        .maintenance_rate_crown_per_hour = 0.0004,
+        .maintenance_rate_root_per_hour = 0.0006,
+        .maintenance_rate_fruit_per_hour = 0.0004,
+        .maintenance_temp_curve = {{{{0, 0.18}}, {{10, 0.35}}, {{20, 0.71}}, {{25, 1.0}}, {{30, 1.41}}, {{40, 2.83}}}},
+        .leaf_senescence_rate_per_hour = 0.0003,
+        .fruit_target_N_g_per_g = 0.015,
+        .fruit_target_P_g_per_g = 0.0035,
+        .fruit_target_K_g_per_g = 0.025,
+        .fruit_target_Ca_g_per_g = 0.0015,
+        .fruit_target_Mg_g_per_g = 0.0012,
+        .fruit_target_Mn_g_per_g = 0.00002,
+        .co2_g_per_g_dry_matter = 1.65,
+        .co2_growth_curve = {{{{50, 0}}, {{100, 0.4}}, {{200, 0.75}}, {{400, 1.0}}, {{800, 1.2}}, {{1200, 1.25}}}},
+        .cold_leaf_damage_curve = {{{{-6, 0.05}}, {{-3, 0.015}}, {{-1, 0.003}}, {{0, 0}}}},
+        .cold_fruit_loss_curve = {{{{-4, 0.2}}, {{-2, 0.05}}, {{-0.5, 0}}, {{0, 0}}}},
+        .n_luxury_uptake_ratio = 1.2,
+        .n_uptake_rate_per_g_root_per_hour = 0.00006,
     };
 
     p.composts = {
@@ -248,8 +358,10 @@ inline void settle(sim::SoilCell& cell, const sim::Params& params) {
     sim::process::set_solution_to_equilibrium(cell, params);
 }
 
-// strawberry-minimal 프로토타입 기준 정식 상태 (잎 30, 뿌리 10 g/m²)
-inline sim::CropInit test_crop_init() { return sim::CropInit{.leaf_g_per_m2 = 30.0, .root_g_per_m2 = 10.0}; }
+// M4: 모종 B 8포기/m² (잎 28, 관부 16, 뿌리 12 g/m², m4-overview "시나리오 이행")
+inline sim::CropInit test_crop_init() {
+    return sim::CropInit{.seedling_grade = "B", .plants_per_m2 = 8.0, .initial_establishment_index = 1.0};
+}
 
 // 시간마다 값이 다른 기상 표: 조회 위치가 틀리면 바로 드러나요.
 inline sim::Scenario test_scenario(int start_day_of_year = 1, int rows = 2, int cols = 3) {
@@ -259,6 +371,7 @@ inline sim::Scenario test_scenario(int start_day_of_year = 1, int rows = 2, int 
     s.start_day_of_year = start_day_of_year;
     s.bed_rows = rows;
     s.bed_cols = cols;
+    s.cover_layers = 3;
     s.soil = test_soil();
     s.weather_hourly.reserve(sim::kHoursPerYear);
     for (int day = 1; day <= sim::kDaysPerYear; ++day) {
@@ -291,3 +404,42 @@ inline std::uint64_t must_enqueue(sim::World& world, sim::Command command) {
 }
 
 }  // namespace test
+
+// ---- M4 API 호환 (테스트 셋업 전용) ----
+// M2·M3 단위 테스트가 옛 시그니처로 부르던 plant_crop / update_crop을 M4 API로 이어 줘요.
+// CO2 400 ppm(co2_growth_curve = 1), 이동 평균 = 기온, 1월 1일(단일), 틱 0, 고정 시드 생물 스트림.
+namespace sim::process {
+
+inline Crop plant_crop(const CropInit& init, const CropParams& crop_params) {
+    Params p = test::test_params();
+    p.crop = crop_params;
+    const SeedlingGradeDef* grade = find_seedling_grade(p, init.seedling_grade);
+    if (grade == nullptr) {
+        throw std::runtime_error("unknown seedling grade in test");
+    }
+    Crop crop = plant_crop(*grade, init.plants_per_m2, p);
+    crop.establishment_index = init.initial_establishment_index;
+    return crop;
+}
+
+inline constexpr double kTestCo2_ppm = 400.0;
+
+inline std::optional<PlantDiedEvent> update_crop(Crop& crop, SoilCell& cell, const Params& params,
+                                                 const NutrientAvailability& available, double inside_solar_W_per_m2,
+                                                 double house_air_temp_degC, StressCombination mode,
+                                                 std::uint32_t tile_index, Ledger& ledger) {
+    const CropEnvironment env{
+        .inside_solar_W_per_m2 = inside_solar_W_per_m2,
+        .house_air_temp_degC = house_air_temp_degC,
+        .house_air_temp_mean_degC = house_air_temp_degC,
+        .house_co2_ppm = kTestCo2_ppm,
+        .day_of_year = 1,
+        .tick = 0,
+        .mode = mode,
+        .tile_index = tile_index,
+    };
+    Pcg32 rng = make_stream(test::test_scenario().seed, static_cast<std::uint64_t>(RngStream::Biology));
+    return update_crop(crop, cell, params, available, env, rng, ledger).died;
+}
+
+}  // namespace sim::process

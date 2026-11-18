@@ -819,7 +819,7 @@ TEST_CASE("Ca and Mg uptake capacity use their own uptake rates", "[unit][crop][
         return ledger;
     };
     const sim::Ledger base = run(params);
-    const double root = test::test_crop_init().root_g_per_m2;
+    const double root = make_crop(params).root_g_per_m2;  // M4: 모종 B 8포기 = 12 g/m²
     // 식: 유효량 × min(1, 전용 속도 × 뿌리 × 건강도) × water × salt (여기서 water = salt = 1, 건강도 1, 길항 1)
     CHECK(base.Ca_uptake_g ==
           Catch::Approx(10.0 * std::min(1.0, params.crop.ca_uptake_rate_per_g_root_per_hour * root)));
@@ -896,7 +896,7 @@ TEST_CASE("Antagonism factor scales capacity without the floor", "[unit][crop][m
         .nh4_N = 0.0, .no3_N = 0.0, .p = 0.0, .k = 0.0, .ca = 10.0, .mg = 0.0, .mn = 0.0};
     sim::Ledger ledger;
     (void)step(crop, cell, params, available, kNightSolar_W_per_m2, ledger);
-    const double root = test::test_crop_init().root_g_per_m2;
+    const double root = make_crop(params).root_g_per_m2;  // M4: 모종 B 8포기 = 12 g/m²
     CHECK(crop.antagonism_Ca_factor == Catch::Approx(curve_ca));
     CHECK(ledger.Ca_uptake_g ==
           Catch::Approx(10.0 * std::min(1.0, params.crop.ca_uptake_rate_per_g_root_per_hour * root) * curve_ca));

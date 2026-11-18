@@ -86,11 +86,14 @@ TEST_CASE("Invalid M2 scenarios are rejected", "[unit][validation]") {
     CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.compaction_index = 1.1; }, 0));
     CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.base_buffer_eq_per_m2_per_pH = 0.0; }, 0));
     CHECK_FALSE(creates_with([](sim::Scenario& s) { s.soil.ca_g_per_m2 = -1.0; }, 0));
-    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = sim::CropInit{0.0, 0.0}; }, 0));
-    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = sim::CropInit{-1.0, 5.0}; }, 0));
-    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = sim::CropInit{std::nan(""), 5.0}; }, 0));
+    // M4: 정식 입력이 CropInit{leaf, root}에서 {seedling_grade, plants_per_m2}로 바뀌어 같은 의도의 검사로 옮겼어요.
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = test::test_crop_init(); s.crop->plants_per_m2 = 0.0; }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = test::test_crop_init(); s.crop->plants_per_m2 = -1.0; }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = test::test_crop_init(); s.crop->plants_per_m2 = std::nan(""); }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = test::test_crop_init(); s.crop->seedling_grade.clear(); }, 0));
+    CHECK_FALSE(creates_with([](sim::Scenario& s) { s.crop = test::test_crop_init(); s.crop->seedling_grade = "no_such_grade"; }, 0));
     CHECK_FALSE(creates_with([](sim::Scenario& s) { s.stress_combination = static_cast<sim::StressCombination>(7); }, 0));
-    CHECK(creates_with([](sim::Scenario& s) { s.crop = sim::CropInit{0.0, 5.0}; }, 0));
+    CHECK(creates_with([](sim::Scenario& s) { s.crop = test::test_crop_init(); s.crop->plants_per_m2 = 5.0; }, 0));
 }
 
 // M2 용액 비율 파라미터(k·ca·mg 용액 비율, 용탈 NH4 비율)는 M3에서 사라져 M3 파라미터 검증으로 대체됐어요.

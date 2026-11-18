@@ -1,0 +1,65 @@
+# S18 CO2 닫힘: 3월 6일(day 65) 시작, 7일, 창 닫힘, 난방 8 도 (2026-11-18 프로토타입 점검 4차: 12월 → 닫힌 한낮 27 °C를 넘는 3월 초) — docs/spec/m4-overview.md "시나리오 테스트 (M4)". 값은 전부 게임용 임의값이에요.
+# 길이는 sim-cli의 --ticks로 정해요. 시작: day 340, 틱 0 = 그날 0시.
+
+schema_version = 5
+
+[scenario]
+name = "m4/s18_co2_closed"
+seed = 20261118
+start_day_of_year = 65  # (2026-11-18 프로토타입 점검으로 조정)
+weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+cover_layers = 3
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 50.0
+soil_temp_degC = 8.0
+ph = 6.2
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 10.0
+labile_C_g_per_m2 = 10.0  # 생퇴비 없음. (2026-11-18 프로토타입 점검으로 조정)
+labile_N_g_per_m2 = 1.0  # (2026-11-18 프로토타입 점검으로 조정)
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 360.0
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.3
+base_buffer_eq_per_m2_per_pH = 1.25
+# M3 항목: 전부 게임용 임의값 (기준 토양 = M3 s5_standard, docs/spec/m3-overview.md)
+cec_mineral_eq_per_m2 = 25.0
+mn_g_per_m2 = 5.0
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[crop]
+seedling_grade = "A"
+plants_per_m2 = 16.0  # 큰 활착 작물. (2026-11-18 프로토타입 점검으로 조정)
+initial_establishment_index = 1.0  # (2026-11-18 프로토타입 점검으로 조정)
+
+[difficulty]
+stress_combination = "minimum"
+
+# 관수: 매일 08시, 7일
+[[schedule]]
+tick = 8
+action = "irrigate"
+amount_mm = 2.5
+repeat_every_ticks = 24
+repeat_count = 7
+
+# 난방 8.0 도, 틱 0부터
+[[schedule]]
+tick = 0
+action = "set_heater"
+on = true
+setpoint_degC = 8.0

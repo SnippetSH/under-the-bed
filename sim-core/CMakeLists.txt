@@ -6,6 +6,7 @@ add_library(sim-core STATIC
   include/sim/error.hpp
   include/sim/event.hpp
   include/sim/hash.hpp
+  include/sim/house.hpp
   include/sim/params.hpp
   include/sim/processes.hpp
   include/sim/rng.hpp
@@ -22,6 +23,10 @@ add_library(sim-core STATIC
   src/processes/cation_exchange.cpp
   src/processes/phosphorus.cpp
   src/processes/crop.cpp
+  src/processes/denitrification.cpp
+  src/processes/fruit.cpp
+  src/processes/house_climate.cpp
+  src/processes/phenology.cpp
   src/processes/leaching.cpp
   src/processes/nitrification.cpp
   src/processes/organic_matter.cpp

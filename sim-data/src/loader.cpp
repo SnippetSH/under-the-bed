@@ -114,6 +114,62 @@ public:
         return {};
     }
 
+    bool boolean(std::string_view key) {
+        const toml::node* node = lookup(key);
+        if (node == nullptr) {
+            return false;
+        }
+        if (auto value = node->value_exact<bool>()) {
+            return *value;
+        }
+        wrong_type(key, "boolean");
+        return false;
+    }
+
+    // 숫자 배열 (정수도 받아요). 길이·범위 검사는 코어(validate)가 해요.
+    std::vector<double> number_array(std::string_view key) {
+        std::vector<double> result;
+        const toml::node* node = lookup(key);
+        if (node == nullptr) {
+            return result;
+        }
+        const toml::array* array = node->as_array();
+        if (array == nullptr) {
+            wrong_type(key, "array of numbers");
+            return result;
+        }
+        for (std::size_t i = 0; i < array->size(); ++i) {
+            if (!array->get(i)->is_number()) {
+                set_error(std::format("{}: '{}[{}]' must be a number", source_name_, qualified(key), i));
+                return {};
+            }
+            result.push_back(number_from(*array->get(i), qualified(key)));
+        }
+        return result;
+    }
+
+    // 정수 2개짜리 배열 (cover_change_window_doy)
+    std::array<std::int64_t, 2> int_array2(std::string_view key) {
+        std::array<std::int64_t, 2> result{};
+        const toml::node* node = lookup(key);
+        if (node == nullptr) {
+            return result;
+        }
+        const toml::array* array = node->as_array();
+        bool ok = array != nullptr && array->size() == 2;
+        for (std::size_t i = 0; ok && i < 2; ++i) {
+            const auto value = array->get(i)->value_exact<std::int64_t>();
+            ok = value.has_value();
+            if (ok) {
+                result[i] = *value;
+            }
+        }
+        if (!ok) {
+            set_error(std::format("{}: key '{}' must be an array of 2 integers", source_name_, qualified(key)));
+        }
+        return result;
+    }
+
     // [[x, y], ...] 배열. 점의 순서·범위 검사는 코어(validate_curve)가 해요.
     sim::PiecewiseLinear curve(std::string_view key) {
         sim::PiecewiseLinear result;
@@ -327,33 +383,67 @@ void read_schedule_entry(TableReader& r, int bed_rows, int bed_cols, std::vector
         return;
     }
 
-    // area는 action과 무관하게 같은 키라서 먼저 읽어요. 없으면 하우스 전체예요.
-    sim::TileArea area = sim::whole_grid(bed_rows, bed_cols);
-    if (r.has("area")) {
-        const std::array<int, 4> a = r.int_array4("area");
-        area = sim::TileArea{.row = a[0], .col = a[1], .rows = a[2], .cols = a[3]};
-    }
+    // area는 영역 명령(관수·투입·경운)만 써요. 없으면 하우스 전체예요.
+    // set_window 등 하우스 전체 명령에서는 읽지 않으므로 area 키가 있으면 모르는 키 오류가 돼요.
+    auto read_area = [&]() {
+        sim::TileArea area = sim::whole_grid(bed_rows, bed_cols);
+        if (r.has("area")) {
+            const std::array<int, 4> a = r.int_array4("area");
+            area = sim::TileArea{.row = a[0], .col = a[1], .rows = a[2], .cols = a[3]};
+        }
+        return area;
+    };
 
     sim::Command command;
     if (action == "irrigate") {
+        const sim::TileArea area = read_area();
         command = sim::IrrigateCommand{.area = area, .amount_mm = r.number("amount_mm")};
     } else if (action == "add_compost") {
+        const sim::TileArea area = read_area();
         std::string id = r.string("compost");
         const double kg_per_m2 = r.number("kg_per_m2");
         command = sim::AddCompostCommand{.area = area, .compost_id = std::move(id), .kg_per_m2 = kg_per_m2};
     } else if (action == "add_fertilizer") {
+        const sim::TileArea area = read_area();
         std::string id = r.string("fertilizer");
         const double g_per_m2 = r.number("g_per_m2");
         command = sim::AddFertilizerCommand{.area = area, .fertilizer_id = std::move(id), .g_per_m2 = g_per_m2};
     } else if (action == "add_lime") {
+        const sim::TileArea area = read_area();
         std::string id = r.string("lime");
         const double g_per_m2 = r.number("g_per_m2");
         command = sim::AddLimeCommand{.area = area, .lime_id = std::move(id), .g_per_m2 = g_per_m2};
     } else if (action == "till") {
-        command = sim::TillCommand{.area = area};
+        command = sim::TillCommand{.area = read_area()};
+    } else if (action == "set_window") {
+        const int layer = r.small_integer("layer");
+        const std::string side = r.string("side");
+        const double open_fraction = r.number("open_fraction");
+        if (!r.ok()) {
+            return;
+        }
+        sim::WindowSide parsed_side = sim::WindowSide::Left;
+        if (side == "left") {
+            parsed_side = sim::WindowSide::Left;
+        } else if (side == "right") {
+            parsed_side = sim::WindowSide::Right;
+        } else {
+            r.set_error(std::format("'{}' must be \"left\" or \"right\", got '{}'", r.qualified("side"), side));
+            return;
+        }
+        command = sim::SetWindowCommand{.layer = layer, .side = parsed_side, .open_fraction = open_fraction};
+    } else if (action == "set_heater") {
+        const bool on = r.boolean("on");
+        const double setpoint_degC = r.number("setpoint_degC");
+        command = sim::SetHeaterCommand{.on = on, .setpoint_degC = setpoint_degC};
+    } else if (action == "set_cover_layers") {
+        command = sim::SetCoverLayersCommand{.layers = r.small_integer("layers")};
+    } else if (action == "thin_flowers") {
+        const sim::TileArea area = read_area();
+        command = sim::ThinFlowersCommand{.area = area, .per_plant = r.number("per_plant")};
     } else {
         r.set_error(std::format("'{}': unknown action '{}' (expected irrigate, add_compost, add_fertilizer, "
-                                "add_lime or till)",
+                                "add_lime, till, set_window, set_heater, set_cover_layers or thin_flowers)",
                                 r.qualified("action"), action));
         return;
     }
@@ -420,9 +510,88 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
     };
 
     run("house", [&](TableReader& r) {
-        p.house.base_offset_degC = r.number("base_offset_degC");
-        p.house.solar_gain_degC_per_W_per_m2 = r.number("solar_gain_degC_per_W_per_m2");
-        p.house.solar_transmittance_factor = r.number("solar_transmittance_factor");
+        auto& h = p.house;
+        h.layer_transmittance_factor = r.number("layer_transmittance_factor");
+        h.layer_resistance_m2K_per_W = r.number("layer_resistance_m2K_per_W");
+        h.infiltration_W_per_m2_per_K = r.number("infiltration_W_per_m2_per_K");
+        h.window_bypass_fraction = r.number("window_bypass_fraction");
+        h.vent_conductance_W_per_m2_per_K = r.number("vent_conductance_W_per_m2_per_K");
+        h.solar_heat_gain_fraction = r.number("solar_heat_gain_fraction");
+        h.ground_heat_W_per_m2 = r.number("ground_heat_W_per_m2");
+        h.air_relax_rate_per_hour = r.number("air_relax_rate_per_hour");
+        h.heater_capacity_W_per_m2 = r.number("heater_capacity_W_per_m2");
+        h.heater_setpoint_min_degC = r.number("heater_setpoint_min_degC");
+        h.heater_setpoint_max_degC = r.number("heater_setpoint_max_degC");
+        h.temp_mean_relax_rate_per_hour = r.number("temp_mean_relax_rate_per_hour");
+        h.cover_change_window_doy = r.int_array2("cover_change_window_doy");
+        h.min_cover_layers = r.integer("min_cover_layers");
+        h.max_cover_layers = r.integer("max_cover_layers");
+        h.outside_co2_ppm_by_hour = r.number_array("outside_co2_ppm_by_hour");
+        h.window_open_levels = r.number_array("window_open_levels");
+        h.air_volume_m3_per_m2 = r.number("air_volume_m3_per_m2");
+        h.co2_mg_per_m3_per_ppm = r.number("co2_mg_per_m3_per_ppm");
+        h.infiltration_air_changes_per_hour = r.number("infiltration_air_changes_per_hour");
+        h.vent_air_changes_per_hour = r.number("vent_air_changes_per_hour");
+        h.co2_floor_ppm = r.number("co2_floor_ppm");
+    });
+    run("calendar", [&](TableReader& r) { p.calendar.day_length_curve = r.curve("day_length_curve"); });
+    run("phenology", [&](TableReader& r) {
+        auto& ph = p.phenology;
+        ph.establishment_rate_per_hour = r.number("establishment_rate_per_hour");
+        ph.establishment_temp_curve = r.curve("establishment_temp_curve");
+        ph.establishment_growth_curve = r.curve("establishment_growth_curve");
+        ph.induction_rate_per_hour = r.number("induction_rate_per_hour");
+        ph.induction_day_length_curve = r.curve("induction_day_length_curve");
+        ph.induction_temp_curve = r.curve("induction_temp_curve");
+        ph.induction_nitrogen_curve = r.curve("induction_nitrogen_curve");
+        ph.truss_base_temp_degC = r.number("truss_base_temp_degC");
+        ph.truss_degree_days_to_anthesis = r.number("truss_degree_days_to_anthesis");
+        ph.flowers_per_truss_curve = r.curve("flowers_per_truss_curve");
+    });
+    run("fruit", [&](TableReader& r) {
+        auto& f = p.fruit;
+        f.rank_fraction = r.number_array("rank_fraction");
+        f.rank_anthesis_delay_days = r.number_array("rank_anthesis_delay_days");
+        f.anthesis_jitter_days = r.number("anthesis_jitter_days");
+        f.rank_potential_fresh_g = r.number_array("rank_potential_fresh_g");
+        f.size_variation_fraction = r.number("size_variation_fraction");
+        f.pollination_mean_curve = r.curve("pollination_mean_curve");
+        f.pollination_spread = r.number("pollination_spread");
+        f.set_threshold = r.number("set_threshold");
+        f.deformed_threshold = r.number("deformed_threshold");
+        f.pollination_size_curve = r.curve("pollination_size_curve");
+        f.dry_matter_fraction = r.number("dry_matter_fraction");
+        f.base_temp_degC = r.number("base_temp_degC");
+        f.degree_days_to_harvest = r.number("degree_days_to_harvest");
+        f.growth_shape_curve = r.curve("growth_shape_curve");
+        f.size_class_bounds_g = r.number_array("size_class_bounds_g");
+        f.base_brix = r.number("base_brix");
+        f.brix_supply_curve = r.curve("brix_supply_curve");
+        f.brix_k_curve = r.curve("brix_k_curve");
+        f.brix_n_excess_curve = r.curve("brix_n_excess_curve");
+        f.brix_water_curve = r.curve("brix_water_curve");
+        f.firmness_ca_curve = r.curve("firmness_ca_curve");
+        f.firmness_temp_curve = r.curve("firmness_temp_curve");
+        f.firmness_n_excess_curve = r.curve("firmness_n_excess_curve");
+        f.abortion_rate_per_development_index = r.number("abortion_rate_per_development_index");
+        f.abortion_window_index = r.number("abortion_window_index");
+        f.abortion_satisfaction_curve = r.curve("abortion_satisfaction_curve");
+        f.rank_abortion_weight = r.number_array("rank_abortion_weight");
+        f.thinnable_max_index = r.number("thinnable_max_index");
+        f.brix_day_temp_score_curve = r.curve("brix_day_temp_score_curve");
+        f.brix_night_temp_score_curve = r.curve("brix_night_temp_score_curve");
+        f.brix_day_weight = r.number("brix_day_weight");
+        f.brix_night_weight = r.number("brix_night_weight");
+        f.brix_temp_score_curve = r.curve("brix_temp_score_curve");
+        f.day_solar_threshold_W_per_m2 = r.number("day_solar_threshold_W_per_m2");
+    });
+    run("denitrification", [&](TableReader& r) {
+        auto& d = p.denitrification;
+        d.rate_per_hour = r.number("rate_per_hour");
+        d.o2_curve = r.curve("o2_curve");
+        d.temp_curve = r.curve("temp_curve");
+        d.carbon_curve = r.curve("carbon_curve");
+        d.H_eq_per_eq_N = r.number("H_eq_per_eq_N");
     });
     run("soil_water", [&](TableReader& r) {
         p.soil_water.evap_mm_per_hour_per_W_per_m2 = r.number("evap_mm_per_hour_per_W_per_m2");
@@ -550,7 +719,6 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.par_fraction = r.number("par_fraction");
         c.light_use_efficiency_g_per_MJ = r.number("light_use_efficiency_g_per_MJ");
         c.temp_curve = r.curve("temp_curve");
-        c.leaf_allocation_fraction = r.number("leaf_allocation_fraction");
         c.water_stress_curve = r.curve("water_stress_curve");
         c.salt_stress_curve = r.curve("salt_stress_curve");
         c.nutrient_stress_curve = r.curve("nutrient_stress_curve");
@@ -572,11 +740,45 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.mn_uptake_rate_per_g_root_per_hour = r.number("mn_uptake_rate_per_g_root_per_hour");
         c.mn_max_uptake_ratio = r.number("mn_max_uptake_ratio");
         c.mn_toxicity_curve = r.curve("mn_toxicity_curve");
+        c.vegetative_leaf_fraction = r.number("vegetative_leaf_fraction");
+        c.vegetative_crown_fraction = r.number("vegetative_crown_fraction");
+        c.vegetative_root_fraction = r.number("vegetative_root_fraction");
+        c.max_fruit_assimilate_fraction = r.number("max_fruit_assimilate_fraction");
+        c.maintenance_rate_leaf_per_hour = r.number("maintenance_rate_leaf_per_hour");
+        c.maintenance_rate_crown_per_hour = r.number("maintenance_rate_crown_per_hour");
+        c.maintenance_rate_root_per_hour = r.number("maintenance_rate_root_per_hour");
+        c.maintenance_rate_fruit_per_hour = r.number("maintenance_rate_fruit_per_hour");
+        c.maintenance_temp_curve = r.curve("maintenance_temp_curve");
+        c.leaf_senescence_rate_per_hour = r.number("leaf_senescence_rate_per_hour");
+        c.fruit_target_N_g_per_g = r.number("fruit_target_N_g_per_g");
+        c.fruit_target_P_g_per_g = r.number("fruit_target_P_g_per_g");
+        c.fruit_target_K_g_per_g = r.number("fruit_target_K_g_per_g");
+        c.fruit_target_Ca_g_per_g = r.number("fruit_target_Ca_g_per_g");
+        c.fruit_target_Mg_g_per_g = r.number("fruit_target_Mg_g_per_g");
+        c.fruit_target_Mn_g_per_g = r.number("fruit_target_Mn_g_per_g");
+        c.co2_g_per_g_dry_matter = r.number("co2_g_per_g_dry_matter");
+        c.co2_growth_curve = r.curve("co2_growth_curve");
+        c.cold_leaf_damage_curve = r.curve("cold_leaf_damage_curve");
+        c.cold_fruit_loss_curve = r.curve("cold_fruit_loss_curve");
+        c.n_luxury_uptake_ratio = r.number("n_luxury_uptake_ratio");
+        c.n_uptake_rate_per_g_root_per_hour = r.number("n_uptake_rate_per_g_root_per_hour");
     });
     if (!status) {
         return std::unexpected(std::move(status.error()));
     }
 
+    for (TableReader& r : root.table_array("seedling_grade", true)) {
+        sim::SeedlingGradeDef g;
+        g.id = r.string("id");
+        g.leaf_g_per_plant = r.number("leaf_g_per_plant");
+        g.crown_g_per_plant = r.number("crown_g_per_plant");
+        g.root_g_per_plant = r.number("root_g_per_plant");
+        g.initial_induction_index = r.number("initial_induction_index");
+        if (auto done = r.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+        p.seedling_grades.push_back(std::move(g));
+    }
     for (TableReader& r : root.table_array("compost", true)) {
         sim::CompostDef c;
         c.id = r.string("id");
@@ -665,6 +867,7 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
     TableReader house = root.child("house");
     doc.scenario.bed_rows = house.small_integer("bed_rows");
     doc.scenario.bed_cols = house.small_integer("bed_cols");
+    doc.scenario.cover_layers = house.small_integer("cover_layers");
     if (auto done = house.finish(); !done) {
         return std::unexpected(std::move(done.error()));
     }
@@ -698,12 +901,13 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
         return std::unexpected(std::move(done.error()));
     }
 
-    // [crop]은 선택이에요. 있으면 두 키가 모두 필수예요.
+    // [crop]은 선택이에요. 있으면 seedling_grade와 plants_per_m2가 모두 필수예요.
     if (root.has("crop")) {
         TableReader crop = root.child("crop");
         sim::CropInit init;
-        init.leaf_g_per_m2 = crop.number("leaf_g_per_m2");
-        init.root_g_per_m2 = crop.number("root_g_per_m2");
+        init.seedling_grade = crop.string("seedling_grade");
+        init.plants_per_m2 = crop.number("plants_per_m2");
+        init.initial_establishment_index = crop.number("initial_establishment_index");
         if (auto done = crop.finish(); !done) {
             return std::unexpected(std::move(done.error()));
         }

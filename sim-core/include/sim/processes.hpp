@@ -21,8 +21,11 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
 
 #include "sim/event.hpp"
+#include "sim/house.hpp"
+#include "sim/rng.hpp"
 #include "sim/params.hpp"
 #include "sim/scenario.hpp"
 #include "sim/soil.hpp"
@@ -31,9 +34,39 @@ namespace sim::process {
 
 // ---- temperature.cpp (docs/spec/soil-temperature.md) ----
 
-[[nodiscard]] double house_air_temp_degC(const HouseParams& params, const WeatherHour& weather);
-[[nodiscard]] double inside_solar_W_per_m2(const HouseParams& params, const WeatherHour& weather);
 void relax_soil_temperature(SoilCell& cell, const SoilTemperatureParams& params, double house_air_temp_degC);
+
+// ---- house_climate.cpp (docs/spec/house-climate.md, M4) ----
+
+// 피복·창 상태에서 나오는 열·빛 계수
+struct CoverState {
+    double transmittance_factor = 0.0;      // τ = layer_transmittance ^ 겹수
+    double conductance_W_per_m2_per_K = 0.0;  // U
+    double vent_W_per_m2_per_K = 0.0;         // V = vent_conductance × path
+    double path_index = 0.0;                  // Π (열린 창 수 / 2)
+};
+[[nodiscard]] CoverState cover_state(const HouseParams& params, const HouseState& house);
+[[nodiscard]] double inside_solar_W_per_m2(const HouseParams& params, const HouseState& house,
+                                           const WeatherHour& weather);
+// 평형 기온과 난방 출력 (house-climate "평형 기온과 난방")
+struct HouseEquilibrium {
+    double air_temp_degC = 0.0;
+    double heat_W_per_m2 = 0.0;
+};
+[[nodiscard]] HouseEquilibrium house_equilibrium(const HouseParams& params, const HouseState& house,
+                                                 const WeatherHour& weather);
+// 월드 생성: 겹수, 창 닫힘, 난방 꺼짐, 기온 = 첫 틱 T_eq, 이동 평균 = 기온, CO2 = 첫 틱 시각의 바깥 값
+[[nodiscard]] HouseState initial_house(const HouseParams& params, int cover_layers, const WeatherHour& weather,
+                                       int hour);
+// 하우스 단계 2: 평형·난방 → 기온(열 관성) → 이동 평균, 바깥 CO2·하우스 안 일사(파생값), 난방 에너지 장부
+void update_house_air(HouseState& house, const HouseParams& params, const WeatherHour& weather, int hour);
+// 하우스 단계 4: 이번 틱 작물 순흡수(셀 평균 g 건물/m², 음수 = 방출)와 토양 호흡 C(셀 평균 g/m²)로 CO2 갱신
+void update_house_co2(HouseState& house, const HouseParams& params, const CropParams& crop_params,
+                      double crop_net_dry_matter_g_per_m2, double soil_respired_C_g_per_m2);
+// SetCoverLayers 적용: 늘린 겹의 창은 닫힘, 줄인 겹(안쪽부터)의 창 상태는 사라짐
+void set_cover_layers(HouseState& house, int layers);
+// SetCoverLayers 허용 날짜인지 (cover_change_window_doy 양 끝 포함)
+[[nodiscard]] bool in_cover_change_window(const HouseParams& params, int day_of_year);
 
 // ---- soil_water.cpp (docs/spec/soil-water.md + M2 변경) ----
 
@@ -77,6 +110,12 @@ void nitrify(SoilCell& cell, const NitrificationParams& params, const SoilChemis
 [[nodiscard]] std::optional<NitriteThresholdExceededEvent> check_nitrite_alarm(SoilCell& cell,
                                                                                const NitrificationParams& params,
                                                                                std::uint32_t tile_index);
+
+// ---- denitrification.cpp (docs/spec/denitrification.md, M4) ----
+
+// 셀 단계 f1: lost = no3 × min(1, rate × o2(aeration) × temp(soil_temp) × carbon(labile_C)).
+// 장부 N_gas_g, acid_H_eq_this_tick += lost / no3_N_g_per_eq × H_eq_per_eq_N (음수 = H+ 소비)
+void denitrify(SoilCell& cell, const DenitrificationParams& params, const IonParams& ions, Ledger& ledger);
 
 // ---- soil_chemistry.cpp (docs/spec/soil-chemistry.md) ----
 
@@ -154,10 +193,13 @@ void sync_nh4_solution(SoilCell& cell, double old_nh4_N_g_per_m2);
 // 셀 단계 f3: 유효 ↔ 고정 인산. 두 이동량은 틱 시작 값으로 계산하고 각자 원천 풀로 제한
 void fix_phosphorus(SoilCell& cell, const PhosphorusParams& params);
 
-// ---- crop.cpp (docs/spec/strawberry-minimal.md) ----
+// ---- crop.cpp (docs/spec/strawberry-minimal.md + M4 strawberry-fruit.md) ----
 
-// 시나리오 정식: present = alive = true, root_health = 1, 체내 양분 = 적정 농도 × (잎 + 뿌리)
-[[nodiscard]] Crop plant_crop(const CropInit& init, const CropParams& params);
+[[nodiscard]] const SeedlingGradeDef* find_seedling_grade(const Params& params, std::string_view id);
+
+// 시나리오 정식: present = alive = true, root_health = 1, 기관 건물 = 포기당 값 × 재식 밀도,
+// induction = 등급 초기값, 체내 양분 = 요구량(적정 농도 × 기관 건물), 수확 기록 크기 구간 = 경계 수 + 1
+[[nodiscard]] Crop plant_crop(const SeedlingGradeDef& grade, double plants_per_m2, const Params& params);
 
 // 받는 빛 비율 = light_interception_curve(LAI). 살아 있지 않으면 0
 [[nodiscard]] double canopy_interception(const Crop& crop, const CropParams& params);
@@ -173,7 +215,17 @@ struct WaterSaltFactors {
 [[nodiscard]] double transpiration_demand_mm(const Crop& crop, const CropParams& params, double inside_solar_W_per_m2,
                                              const WaterSaltFactors& factors);
 
-// 원소별 충족도 (0~1)와 과잉 지수 (≥0). X = N, P, K, Ca, Mg, Mn (M3)
+// 원소별 요구량 (M4 strawberry-fruit "요구량"): target_X × (잎 + 관부 + 뿌리) + fruit_target_X × 과실
+struct NutrientRequirement {
+    double N = 0.0, P = 0.0, K = 0.0, Ca = 0.0, Mg = 0.0, Mn = 0.0;
+};
+[[nodiscard]] NutrientRequirement nutrient_requirement(const Crop& crop, const CropParams& params);
+
+// 영양 기관 건물 (잎 + 관부 + 뿌리)과 전체 건물 (+ 과실)
+[[nodiscard]] double vegetative_biomass_g_per_m2(const Crop& crop);
+[[nodiscard]] double total_biomass_g_per_m2(const Crop& crop);
+
+// 원소별 충족도 (0~1)와 과잉 지수 (≥0). X = N, P, K, Ca, Mg, Mn (M3). M4: 분모는 요구량
 struct NutrientStatus {
     double sufficiency_N = 0.0, sufficiency_P = 0.0, sufficiency_K = 0.0, sufficiency_Ca = 0.0, sufficiency_Mg = 0.0;
     double excess_N = 0.0, excess_P = 0.0, excess_K = 0.0, excess_Ca = 0.0, excess_Mg = 0.0;
@@ -185,10 +237,50 @@ struct NutrientStatus {
 // 셀 단계 h (살아 있는 작물만): 스트레스(+Mn 결핍·독성) → 생장 → 흡수(토양 풀에서 빼고 체내·장부 *_uptake_g,
 //   pending_H 기록. 양이온은 용액 상태에서, Ca·Mg 길항은 능력과 수요 상한에) → 뿌리 건강도(손상 4종 또는 회복) →
 //   뿌리 고사(양분 반환, 양이온은 총량과 용액에) → 고사 판정. 고사하면 이벤트를 돌려줌
-[[nodiscard]] std::optional<PlantDiedEvent> update_crop(Crop& crop, SoilCell& cell, const Params& params,
-                                                        const NutrientAvailability& available,
-                                                        double inside_solar_W_per_m2, double house_air_temp_degC,
-                                                        StressCombination mode, std::uint32_t tile_index,
-                                                        Ledger& ledger);
+// M4: 작물 단계 h의 환경 (하우스 단계 2의 결과와 틱 정보)
+struct CropEnvironment {
+    double inside_solar_W_per_m2 = 0.0;
+    double house_air_temp_degC = 0.0;
+    double house_air_temp_mean_degC = 0.0;
+    double house_co2_ppm = 0.0;  // 틱 시작 때 값
+    int day_of_year = 1;
+    std::uint64_t tick = 0;
+    StressCombination mode = StressCombination::Minimum;
+    std::uint32_t tile_index = 0;
+};
+
+struct CropTickResult {
+    std::optional<PlantDiedEvent> died;
+    std::optional<FruitHarvestedEvent> harvested;
+};
+
+// M4 셀 단계 h (살아 있는 작물만): h0 저온 피해 → h1 생물계절(활착·화아분화·화방·꽃 만들기·개화 판정) →
+//   h2 스트레스 → h3 총생산 − 유지 호흡 → 분배 → h4 과실 진행·품질 → 수확(반출) → h5 흡수 →
+//   h6 뿌리 건강도·고사 → 낙엽 → 고사 판정. 난수는 biology_rng에서 (타일 → 화방 → 과실 순)
+[[nodiscard]] CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params,
+                                         const NutrientAvailability& available, const CropEnvironment& env,
+                                         Pcg32& biology_rng, Ledger& ledger);
+
+// ---- phenology.cpp (docs/spec/strawberry-phenology.md, M4) ----
+
+// h1: 활착 → 화아분화(새 화방) → 화방 발달·개화(꽃 만들기). 활착 배율을 돌려줘요.
+double update_phenology(Crop& crop, const Params& params, const CropEnvironment& env, Pcg32& biology_rng);
+
+// ---- fruit.cpp (docs/spec/strawberry-fruit.md, M4) ----
+
+// 꽃 만들기 (화방 개화 시): 소수부 난수 1회, 과위 최대 나머지 배분, 과위별 개화 지연
+void create_flowers(Crop& crop, std::uint32_t truss_index, double flowers_per_m2, const FruitParams& params,
+                    std::uint64_t tick, Pcg32& biology_rng);
+// 개화 판정 (anthesis_tick ≤ tick인 꽃): 수정률 난수 → 낙화/기형/최대 생체중(크기 난수)
+void judge_anthesis(Crop& crop, const FruitParams& params, double house_air_temp_mean_degC, std::uint64_t tick,
+                    Pcg32& biology_rng);
+// 과실 진행 증가분 (적산온도 / 일 / 수확 적산온도)
+[[nodiscard]] double fruit_development_increment(const FruitParams& params, double house_air_temp_degC);
+// 6c 적화·적과: per_plant × plants_per_m2를 난수 반올림한 개수만큼 높은 과위·늦게 핀 것부터 제거, 건물·양분은 토양으로.
+// 실제로 딴 개수를 돌려줘요.
+std::uint64_t thin_flowers(Crop& crop, SoilCell& cell, const Params& params, double per_plant, Pcg32& biology_rng,
+                           Ledger& ledger);
+// 크기 구간 인덱스 (경계 이상이면 다음 구간)
+[[nodiscard]] std::size_t size_class_index(const FruitParams& params, double fresh_g);
 
 }  // namespace sim::process

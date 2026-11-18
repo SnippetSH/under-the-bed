@@ -36,6 +36,14 @@ std::expected<void, Error> curve_y_positive(const PiecewiseLinear& curve, std::s
     return {};
 }
 
+// 곡선 y가 0~1 계수·비율인 경우
+std::expected<void, Error> factor_curve(const PiecewiseLinear& curve, std::string_view name) {
+    SIM_CHECK(validate_curve(curve, name));
+    return curve_y_at_most_one(curve, name);
+}
+
+constexpr std::int64_t kMaxCoverLayers = 64;  // 창 상태 배열 크기 상한 (검증용 안전장치)
+
 }  // namespace
 
 std::expected<void, Error> require(bool ok, std::string_view what) {
@@ -67,10 +75,6 @@ std::expected<void, Error> validate_params(const Params& p) {
                     std::format("params schema_version {} is not supported (expected {})", p.schema_version,
                                 kParamsSchemaVersion));
     }
-
-    SIM_CHECK(finite(p.house.base_offset_degC, "house.base_offset_degC"));
-    SIM_CHECK(non_negative(p.house.solar_gain_degC_per_W_per_m2, "house.solar_gain_degC_per_W_per_m2"));
-    SIM_CHECK(fraction(p.house.solar_transmittance_factor, "house.solar_transmittance_factor"));
 
     SIM_CHECK(non_negative(p.soil_water.evap_mm_per_hour_per_W_per_m2, "soil_water.evap_mm_per_hour_per_W_per_m2"));
     SIM_CHECK(non_negative(p.soil_water.evap_base_mm_per_hour, "soil_water.evap_base_mm_per_hour"));
@@ -196,7 +200,6 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(fraction(crop.par_fraction, "crop.par_fraction"));
     SIM_CHECK(positive(crop.light_use_efficiency_g_per_MJ, "crop.light_use_efficiency_g_per_MJ"));
     SIM_CHECK(validate_curve(crop.temp_curve, "crop.temp_curve"));
-    SIM_CHECK(fraction(crop.leaf_allocation_fraction, "crop.leaf_allocation_fraction"));
     SIM_CHECK(validate_curve(crop.water_stress_curve, "crop.water_stress_curve"));
     SIM_CHECK(validate_curve(crop.salt_stress_curve, "crop.salt_stress_curve"));
     SIM_CHECK(validate_curve(crop.nutrient_stress_curve, "crop.nutrient_stress_curve"));
@@ -215,6 +218,177 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(fraction(crop.death_root_health, "crop.death_root_health"));
     SIM_CHECK(fraction(crop.root_dieback_per_damage, "crop.root_dieback_per_damage"));
     SIM_CHECK(fraction(crop.dry_matter_C_fraction, "crop.dry_matter_C_fraction"));
+
+    // ---- M4 ----
+    const HouseParams& hs = p.house;
+    SIM_CHECK(fraction(hs.layer_transmittance_factor, "house.layer_transmittance_factor"));
+    SIM_CHECK(positive(hs.layer_resistance_m2K_per_W, "house.layer_resistance_m2K_per_W"));
+    SIM_CHECK(non_negative(hs.infiltration_W_per_m2_per_K, "house.infiltration_W_per_m2_per_K"));
+    SIM_CHECK(fraction(hs.window_bypass_fraction, "house.window_bypass_fraction"));
+    SIM_CHECK(non_negative(hs.vent_conductance_W_per_m2_per_K, "house.vent_conductance_W_per_m2_per_K"));
+    SIM_CHECK(fraction(hs.solar_heat_gain_fraction, "house.solar_heat_gain_fraction"));
+    SIM_CHECK(non_negative(hs.ground_heat_W_per_m2, "house.ground_heat_W_per_m2"));
+    SIM_CHECK(fraction(hs.air_relax_rate_per_hour, "house.air_relax_rate_per_hour"));
+    SIM_CHECK(non_negative(hs.heater_capacity_W_per_m2, "house.heater_capacity_W_per_m2"));
+    SIM_CHECK(finite(hs.heater_setpoint_min_degC, "house.heater_setpoint_min_degC"));
+    SIM_CHECK(finite(hs.heater_setpoint_max_degC, "house.heater_setpoint_max_degC"));
+    SIM_CHECK(require(hs.heater_setpoint_min_degC <= hs.heater_setpoint_max_degC,
+                      "house.heater_setpoint_min_degC must be <= heater_setpoint_max_degC"));
+    SIM_CHECK(fraction(hs.temp_mean_relax_rate_per_hour, "house.temp_mean_relax_rate_per_hour"));
+    SIM_CHECK(require(hs.cover_change_window_doy[0] >= 1 && hs.cover_change_window_doy[1] <= kDaysPerYear &&
+                          hs.cover_change_window_doy[0] <= hs.cover_change_window_doy[1],
+                      "house.cover_change_window_doy must satisfy 1 <= start <= end <= 365"));
+    SIM_CHECK(require(hs.min_cover_layers >= 1 && hs.min_cover_layers <= hs.max_cover_layers &&
+                          hs.max_cover_layers <= kMaxCoverLayers,
+                      "house cover layers must satisfy 1 <= min_cover_layers <= max_cover_layers <= 64"));
+    SIM_CHECK(require(hs.outside_co2_ppm_by_hour.size() == static_cast<std::size_t>(kHoursPerDay),
+                      "house.outside_co2_ppm_by_hour must have exactly 24 entries"));
+    SIM_CHECK(require(!hs.window_open_levels.empty(), "house.window_open_levels must not be empty"));
+    for (std::size_t i = 0; i < hs.window_open_levels.size(); ++i) {
+        SIM_CHECK(fraction(hs.window_open_levels[i], "house.window_open_levels entry"));
+        SIM_CHECK(require(i == 0 || hs.window_open_levels[i] > hs.window_open_levels[i - 1],
+                          "house.window_open_levels must be strictly ascending"));
+    }
+    SIM_CHECK(require(hs.window_open_levels.front() == 0.0, "house.window_open_levels must start with 0 (closed)"));
+    for (const double ppm : hs.outside_co2_ppm_by_hour) {
+        SIM_CHECK(positive(ppm, "house.outside_co2_ppm_by_hour entry"));
+    }
+    SIM_CHECK(positive(hs.air_volume_m3_per_m2, "house.air_volume_m3_per_m2"));
+    SIM_CHECK(positive(hs.co2_mg_per_m3_per_ppm, "house.co2_mg_per_m3_per_ppm"));
+    SIM_CHECK(non_negative(hs.infiltration_air_changes_per_hour, "house.infiltration_air_changes_per_hour"));
+    SIM_CHECK(non_negative(hs.vent_air_changes_per_hour, "house.vent_air_changes_per_hour"));
+    SIM_CHECK(positive(hs.co2_floor_ppm, "house.co2_floor_ppm"));
+
+    SIM_CHECK(validate_curve(p.calendar.day_length_curve, "calendar.day_length_curve"));
+    for (const auto& point : p.calendar.day_length_curve.points) {
+        SIM_CHECK(require(point[1] > 0.0 && point[1] <= 24.0, "calendar.day_length_curve y must be within (0, 24]"));
+    }
+
+    const PhenologyParams& ph = p.phenology;
+    SIM_CHECK(non_negative(ph.establishment_rate_per_hour, "phenology.establishment_rate_per_hour"));
+    SIM_CHECK(factor_curve(ph.establishment_temp_curve, "phenology.establishment_temp_curve"));
+    SIM_CHECK(factor_curve(ph.establishment_growth_curve, "phenology.establishment_growth_curve"));
+    SIM_CHECK(non_negative(ph.induction_rate_per_hour, "phenology.induction_rate_per_hour"));
+    SIM_CHECK(factor_curve(ph.induction_day_length_curve, "phenology.induction_day_length_curve"));
+    SIM_CHECK(factor_curve(ph.induction_temp_curve, "phenology.induction_temp_curve"));
+    SIM_CHECK(factor_curve(ph.induction_nitrogen_curve, "phenology.induction_nitrogen_curve"));
+    SIM_CHECK(finite(ph.truss_base_temp_degC, "phenology.truss_base_temp_degC"));
+    SIM_CHECK(positive(ph.truss_degree_days_to_anthesis, "phenology.truss_degree_days_to_anthesis"));
+    SIM_CHECK(validate_curve(ph.flowers_per_truss_curve, "phenology.flowers_per_truss_curve"));
+
+    std::set<std::string, std::less<>> grade_ids;
+    for (const SeedlingGradeDef& g : p.seedling_grades) {
+        SIM_CHECK(require(!g.id.empty() && grade_ids.insert(g.id).second,
+                          std::format("seedling grade id '{}' must be non-empty and unique", g.id)));
+        SIM_CHECK(non_negative(g.leaf_g_per_plant, std::format("seedling grade '{}' leaf_g_per_plant", g.id)));
+        SIM_CHECK(non_negative(g.crown_g_per_plant, std::format("seedling grade '{}' crown_g_per_plant", g.id)));
+        SIM_CHECK(non_negative(g.root_g_per_plant, std::format("seedling grade '{}' root_g_per_plant", g.id)));
+        SIM_CHECK(require(g.leaf_g_per_plant + g.crown_g_per_plant + g.root_g_per_plant > 0.0,
+                          std::format("seedling grade '{}' leaf + crown + root must be > 0", g.id)));
+        SIM_CHECK(require(std::isfinite(g.initial_induction_index) && g.initial_induction_index >= 0.0 &&
+                              g.initial_induction_index <= 1.0,  // 3차: 1 = 분화 완료 모종 (활착 직후 첫 화방)
+                          std::format("seedling grade '{}' initial_induction_index must be within [0, 1]", g.id)));
+    }
+
+    const FruitParams& fr = p.fruit;
+    SIM_CHECK(require(!fr.rank_fraction.empty() && fr.rank_fraction.size() == fr.rank_anthesis_delay_days.size() &&
+                          fr.rank_fraction.size() == fr.rank_potential_fresh_g.size(),
+                      "fruit rank arrays must be non-empty and have equal length"));
+    double rank_fraction_sum = 0.0;
+    for (const double f : fr.rank_fraction) {
+        SIM_CHECK(fraction(f, "fruit.rank_fraction entry"));
+        rank_fraction_sum += f;
+    }
+    SIM_CHECK(require(std::abs(rank_fraction_sum - 1.0) <= 1e-9, "fruit.rank_fraction must sum to 1"));
+    SIM_CHECK(non_negative(fr.anthesis_jitter_days, "fruit.anthesis_jitter_days"));
+    for (const double d : fr.rank_anthesis_delay_days) {
+        SIM_CHECK(non_negative(d, "fruit.rank_anthesis_delay_days entry"));
+    }
+    for (const double g : fr.rank_potential_fresh_g) {
+        SIM_CHECK(positive(g, "fruit.rank_potential_fresh_g entry"));
+    }
+    SIM_CHECK(require(std::isfinite(fr.size_variation_fraction) && fr.size_variation_fraction >= 0.0 &&
+                          fr.size_variation_fraction < 1.0,
+                      "fruit.size_variation_fraction must be within [0, 1)"));
+    SIM_CHECK(factor_curve(fr.pollination_mean_curve, "fruit.pollination_mean_curve"));
+    SIM_CHECK(fraction(fr.pollination_spread, "fruit.pollination_spread"));
+    SIM_CHECK(fraction(fr.set_threshold, "fruit.set_threshold"));
+    SIM_CHECK(fraction(fr.deformed_threshold, "fruit.deformed_threshold"));
+    SIM_CHECK(require(fr.set_threshold <= fr.deformed_threshold, "fruit.set_threshold must be <= deformed_threshold"));
+    SIM_CHECK(validate_curve(fr.pollination_size_curve, "fruit.pollination_size_curve"));
+    SIM_CHECK(curve_y_positive(fr.pollination_size_curve, "fruit.pollination_size_curve"));
+    SIM_CHECK(require(std::isfinite(fr.dry_matter_fraction) && fr.dry_matter_fraction > 0.0 &&
+                          fr.dry_matter_fraction <= 1.0,
+                      "fruit.dry_matter_fraction must be within (0, 1]"));
+    SIM_CHECK(finite(fr.base_temp_degC, "fruit.base_temp_degC"));
+    SIM_CHECK(positive(fr.degree_days_to_harvest, "fruit.degree_days_to_harvest"));
+    SIM_CHECK(factor_curve(fr.growth_shape_curve, "fruit.growth_shape_curve"));
+    SIM_CHECK(require(!fr.size_class_bounds_g.empty(), "fruit.size_class_bounds_g must not be empty"));
+    for (std::size_t i = 0; i < fr.size_class_bounds_g.size(); ++i) {
+        SIM_CHECK(positive(fr.size_class_bounds_g[i], "fruit.size_class_bounds_g entry"));
+        SIM_CHECK(require(i == 0 || fr.size_class_bounds_g[i] > fr.size_class_bounds_g[i - 1],
+                          "fruit.size_class_bounds_g must be strictly ascending"));
+    }
+    SIM_CHECK(positive(fr.base_brix, "fruit.base_brix"));
+    SIM_CHECK(validate_curve(fr.brix_supply_curve, "fruit.brix_supply_curve"));
+    SIM_CHECK(validate_curve(fr.brix_k_curve, "fruit.brix_k_curve"));
+    SIM_CHECK(validate_curve(fr.brix_n_excess_curve, "fruit.brix_n_excess_curve"));
+    SIM_CHECK(validate_curve(fr.brix_water_curve, "fruit.brix_water_curve"));
+    SIM_CHECK(factor_curve(fr.firmness_ca_curve, "fruit.firmness_ca_curve"));
+    SIM_CHECK(factor_curve(fr.firmness_temp_curve, "fruit.firmness_temp_curve"));
+    SIM_CHECK(factor_curve(fr.firmness_n_excess_curve, "fruit.firmness_n_excess_curve"));
+    // 6b 낙과, 6c 적화·적과, 당도 온도 주·야간
+    SIM_CHECK(non_negative(fr.abortion_rate_per_development_index, "fruit.abortion_rate_per_development_index"));
+    SIM_CHECK(fraction(fr.abortion_window_index, "fruit.abortion_window_index"));
+    SIM_CHECK(factor_curve(fr.abortion_satisfaction_curve, "fruit.abortion_satisfaction_curve"));
+    SIM_CHECK(require(fr.rank_abortion_weight.size() == fr.rank_fraction.size(),
+                      "fruit.rank_abortion_weight must have one entry per rank"));
+    for (const double v : fr.rank_abortion_weight) {
+        SIM_CHECK(non_negative(v, "fruit.rank_abortion_weight entry"));
+    }
+    SIM_CHECK(fraction(fr.thinnable_max_index, "fruit.thinnable_max_index"));
+    SIM_CHECK(factor_curve(fr.brix_day_temp_score_curve, "fruit.brix_day_temp_score_curve"));
+    SIM_CHECK(factor_curve(fr.brix_night_temp_score_curve, "fruit.brix_night_temp_score_curve"));
+    SIM_CHECK(fraction(fr.brix_day_weight, "fruit.brix_day_weight"));
+    SIM_CHECK(fraction(fr.brix_night_weight, "fruit.brix_night_weight"));
+    SIM_CHECK(require(std::abs(fr.brix_day_weight + fr.brix_night_weight - 1.0) <= 1e-9,
+                      "fruit.brix_day_weight + brix_night_weight must be 1"));
+    SIM_CHECK(validate_curve(fr.brix_temp_score_curve, "fruit.brix_temp_score_curve"));
+    SIM_CHECK(non_negative(fr.day_solar_threshold_W_per_m2, "fruit.day_solar_threshold_W_per_m2"));
+
+    const DenitrificationParams& dn = p.denitrification;
+    SIM_CHECK(non_negative(dn.rate_per_hour, "denitrification.rate_per_hour"));
+    SIM_CHECK(factor_curve(dn.o2_curve, "denitrification.o2_curve"));
+    SIM_CHECK(factor_curve(dn.temp_curve, "denitrification.temp_curve"));
+    SIM_CHECK(factor_curve(dn.carbon_curve, "denitrification.carbon_curve"));
+    SIM_CHECK(finite(dn.H_eq_per_eq_N, "denitrification.H_eq_per_eq_N"));
+
+    SIM_CHECK(fraction(crop.vegetative_leaf_fraction, "crop.vegetative_leaf_fraction"));
+    SIM_CHECK(fraction(crop.vegetative_crown_fraction, "crop.vegetative_crown_fraction"));
+    SIM_CHECK(fraction(crop.vegetative_root_fraction, "crop.vegetative_root_fraction"));
+    SIM_CHECK(require(std::abs(crop.vegetative_leaf_fraction + crop.vegetative_crown_fraction +
+                               crop.vegetative_root_fraction - 1.0) <= 1e-9,
+                      "crop vegetative_*_fraction values must sum to 1"));
+    SIM_CHECK(fraction(crop.max_fruit_assimilate_fraction, "crop.max_fruit_assimilate_fraction"));
+    SIM_CHECK(non_negative(crop.maintenance_rate_leaf_per_hour, "crop.maintenance_rate_leaf_per_hour"));
+    SIM_CHECK(non_negative(crop.maintenance_rate_crown_per_hour, "crop.maintenance_rate_crown_per_hour"));
+    SIM_CHECK(non_negative(crop.maintenance_rate_root_per_hour, "crop.maintenance_rate_root_per_hour"));
+    SIM_CHECK(non_negative(crop.maintenance_rate_fruit_per_hour, "crop.maintenance_rate_fruit_per_hour"));
+    SIM_CHECK(validate_curve(crop.maintenance_temp_curve, "crop.maintenance_temp_curve"));
+    SIM_CHECK(non_negative(crop.leaf_senescence_rate_per_hour, "crop.leaf_senescence_rate_per_hour"));
+    SIM_CHECK(positive(crop.fruit_target_N_g_per_g, "crop.fruit_target_N_g_per_g"));
+    SIM_CHECK(positive(crop.fruit_target_P_g_per_g, "crop.fruit_target_P_g_per_g"));
+    SIM_CHECK(positive(crop.fruit_target_K_g_per_g, "crop.fruit_target_K_g_per_g"));
+    SIM_CHECK(positive(crop.fruit_target_Ca_g_per_g, "crop.fruit_target_Ca_g_per_g"));
+    SIM_CHECK(positive(crop.fruit_target_Mg_g_per_g, "crop.fruit_target_Mg_g_per_g"));
+    SIM_CHECK(positive(crop.fruit_target_Mn_g_per_g, "crop.fruit_target_Mn_g_per_g"));
+    SIM_CHECK(positive(crop.co2_g_per_g_dry_matter, "crop.co2_g_per_g_dry_matter"));
+    SIM_CHECK(validate_curve(crop.co2_growth_curve, "crop.co2_growth_curve"));
+    SIM_CHECK(factor_curve(crop.cold_leaf_damage_curve, "crop.cold_leaf_damage_curve"));
+    SIM_CHECK(factor_curve(crop.cold_fruit_loss_curve, "crop.cold_fruit_loss_curve"));
+    SIM_CHECK(require(std::isfinite(crop.n_luxury_uptake_ratio) && crop.n_luxury_uptake_ratio >= 1.0,
+                      "crop.n_luxury_uptake_ratio must be finite and >= 1"));
+    SIM_CHECK(non_negative(crop.n_uptake_rate_per_g_root_per_hour, "crop.n_uptake_rate_per_g_root_per_hour"));
 
     std::set<std::string, std::less<>> compost_ids;
     for (const CompostDef& c : p.composts) {
@@ -269,6 +443,9 @@ std::expected<void, Error> validate_scenario(const Scenario& s) {
                     std::format("bed grid must be at least 1x1, got {}x{}", s.bed_rows, s.bed_cols));
     }
 
+    SIM_CHECK(require(s.cover_layers >= 1 && s.cover_layers <= kMaxCoverLayers,
+                      std::format("cover_layers must be within 1..{}, got {}", kMaxCoverLayers, s.cover_layers)));
+
     const SoilInit& soil = s.soil;
     SIM_CHECK(positive(soil.field_capacity_mm, "soil.field_capacity_mm"));
     SIM_CHECK(non_negative(soil.water_mm, "soil.water_mm"));
@@ -296,10 +473,9 @@ std::expected<void, Error> validate_scenario(const Scenario& s) {
     SIM_CHECK(non_negative(soil.p_fixed_g_per_m2, "soil.p_fixed_g_per_m2"));
 
     if (s.crop) {
-        SIM_CHECK(non_negative(s.crop->leaf_g_per_m2, "crop.leaf_g_per_m2"));
-        SIM_CHECK(non_negative(s.crop->root_g_per_m2, "crop.root_g_per_m2"));
-        SIM_CHECK(require(s.crop->leaf_g_per_m2 + s.crop->root_g_per_m2 > 0.0,
-                          "crop leaf + root biomass must be > 0"));
+        SIM_CHECK(require(!s.crop->seedling_grade.empty(), "crop.seedling_grade must not be empty"));
+        SIM_CHECK(positive(s.crop->plants_per_m2, "crop.plants_per_m2"));
+        SIM_CHECK(fraction(s.crop->initial_establishment_index, "crop.initial_establishment_index"));
     }
     SIM_CHECK(require(s.stress_combination == StressCombination::Minimum ||
                           s.stress_combination == StressCombination::Product,
@@ -323,6 +499,23 @@ std::expected<void, Error> validate_scenario(const Scenario& s) {
                         std::format("weather_hourly[{}] relative humidity is outside 0..100", i));
         }
     }
+    return {};
+}
+
+std::expected<void, Error> validate_scenario_against_params(const Scenario& s, const Params& p) {
+    if (s.crop) {
+        bool found = false;
+        for (const SeedlingGradeDef& g : p.seedling_grades) {
+            if (g.id == s.crop->seedling_grade) {
+                found = true;
+                break;
+            }
+        }
+        SIM_CHECK(require(found, std::format("crop.seedling_grade '{}' is not defined in params", s.crop->seedling_grade)));
+    }
+    SIM_CHECK(require(s.cover_layers >= p.house.min_cover_layers && s.cover_layers <= p.house.max_cover_layers,
+                      std::format("cover_layers {} is outside params range {}..{}", s.cover_layers,
+                                  p.house.min_cover_layers, p.house.max_cover_layers)));
     return {};
 }
 

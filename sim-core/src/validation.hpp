@@ -20,6 +20,8 @@ namespace sim::validation {
 
 [[nodiscard]] std::expected<void, Error> validate_params(const Params& p);
 [[nodiscard]] std::expected<void, Error> validate_scenario(const Scenario& s);
+// 시나리오가 params와 맞는지 (모종 등급 존재, 피복 겹수 범위). World::create가 위 두 검증 뒤에 불러요.
+[[nodiscard]] std::expected<void, Error> validate_scenario_against_params(const Scenario& s, const Params& p);
 
 }  // namespace sim::validation
 
