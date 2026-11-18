@@ -52,7 +52,7 @@ struct SoilInit {
 struct CropInit {
     std::string seedling_grade;
     double plants_per_m2 = 0.0;
-    double initial_establishment_index = 0.0;  // 프로토타입 점검 2차 (F): 0 = 새로 정식, 1 = 활착된 작물(M2·M3 이행)
+    double initial_establishment_index = 0.0;  // 활착 시작값 0~1 (필수): 0 = 막 정식한 작기, 1 = 이미 자란 작물(M2·M3 이행)
 
     bool operator==(const CropInit&) const = default;
 };

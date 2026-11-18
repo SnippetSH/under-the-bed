@@ -21,13 +21,13 @@ struct HouseParams {
     double layer_resistance_m2K_per_W = 0.0;       // 피복 한 겹(+ 공기층)의 단열 저항
     double infiltration_W_per_m2_per_K = 0.0;      // 창을 닫아도 새는 열
     double window_bypass_fraction = 0.0;           // 완전히 열린 창 하나가 그 겹의 단열을 없애는 비율 (개방률에 비례)
-    std::vector<double> window_open_levels;        // 허용 개방률 (6차 디렉터 결정: 0, 0.3, 0.5, 0.7, 1.0)
+    std::vector<double> window_open_levels;        // 허용 개방률 (0부터 엄격 오름차순, 0~1. 디렉터 결정: 0, 0.3, 0.5, 0.7, 1.0)
     double vent_conductance_W_per_m2_per_K = 0.0;  // 모든 겹 양쪽이 열렸을 때 환기 열 교환
     double solar_heat_gain_fraction = 0.0;         // 투과 일사 중 기온을 올리는 몫
     double ground_heat_W_per_m2 = 0.0;             // 지중 열 등 기본 열 유입
     double air_relax_rate_per_hour = 0.0;          // 열 관성
     double heater_capacity_W_per_m2 = 0.0;
-    double heater_setpoint_min_degC = 0.0;  // SetHeater 설정 온도 허용 범위 (명세에 키 이름이 없어 데이터 작업과 맞춤)
+    double heater_setpoint_min_degC = 0.0;  // SetHeater 설정 온도 허용 범위 (enqueue 검증)
     double heater_setpoint_max_degC = 0.0;
     double temp_mean_relax_rate_per_hour = 0.0;    // 기온 이동 평균 (strawberry-phenology)
     std::array<std::int64_t, 2> cover_change_window_doy{};  // 피복 겹수 변경 가능 기간 [시작, 끝] day_of_year
@@ -78,11 +78,11 @@ struct SeedlingGradeDef {
     bool operator==(const SeedlingGradeDef&) const = default;
 };
 
-// docs/spec/strawberry-fruit.md "과실" (과위 배열은 길이가 같아요)
+// docs/spec/strawberry-fruit.md "과실" (과위 배열 4개 rank_*는 길이가 같아요 = 과위 수)
 struct FruitParams {
     std::vector<double> rank_fraction;
     std::vector<double> rank_anthesis_delay_days;
-    double anthesis_jitter_days = 0.0;  // 6차: 과실마다 개화 시점 편차 (±, 일)
+    double anthesis_jitter_days = 0.0;  // 과실마다 개화 시점 편차 (±, 일)
     std::vector<double> rank_potential_fresh_g;
     double size_variation_fraction = 0.0;
     PiecewiseLinear pollination_mean_curve;  // x = 하우스 기온 이동 평균 °C
@@ -96,7 +96,7 @@ struct FruitParams {
     PiecewiseLinear growth_shape_curve;      // x = 진행도, y = 최대 크기 중 도달 비율
     std::vector<double> size_class_bounds_g;  // 오름차순, 구간 수 = 경계 수 + 1
     double base_brix = 0.0;
-    PiecewiseLinear brix_supply_curve;   // x = supply_ratio
+    PiecewiseLinear brix_supply_curve;   // x = 크기 충족도 이동 평균 (size_satisfaction_mean)
     PiecewiseLinear brix_k_curve;        // x = K 충족도
     PiecewiseLinear brix_n_excess_curve; // x = N 과잉 지수
     PiecewiseLinear brix_water_curve;    // x = relative_water
@@ -104,7 +104,7 @@ struct FruitParams {
     PiecewiseLinear firmness_temp_curve; // x = 하우스 기온 °C
     PiecewiseLinear firmness_n_excess_curve;
     // 6b 낙과, 6c 적화·적과 (2026-11-18 디렉터 결정)
-    double abortion_rate_per_development_index = 0.0;  // 5차: 진행도 1당 낙과 확률 (p_tick = 이 값 × dD × ...)
+    double abortion_rate_per_development_index = 0.0;  // 진행도 1당 낙과 확률 (p_tick = 이 값 × dD × 곡선 × 과위 배율)
     double abortion_window_index = 0.0;
     PiecewiseLinear abortion_satisfaction_curve;  // x = size_satisfaction_mean
     std::vector<double> rank_abortion_weight;     // 과위 수와 같은 길이
@@ -343,7 +343,7 @@ struct CropParams {
     PiecewiseLinear co2_growth_curve;        // x = 하우스 CO2 ppm
     PiecewiseLinear cold_leaf_damage_curve;  // x = 하우스 기온 °C, y = 시간당 잎 손실 비율
     PiecewiseLinear cold_fruit_loss_curve;   // x = 하우스 기온 °C, y = 시간당 과실·꽃 손실 비율
-    // 프로토타입 점검 2차 (구조 변경 E): N 전용 사치 흡수 상한·흡수 속도 (M3 Ca·Mg 전용 속도와 같은 방식)
+    // N 전용 사치 흡수 상한·흡수 속도 (strawberry-minimal 3번, M3 Ca·Mg 전용 속도와 같은 방식)
     double n_luxury_uptake_ratio = 0.0;
     double n_uptake_rate_per_g_root_per_hour = 0.0;
 

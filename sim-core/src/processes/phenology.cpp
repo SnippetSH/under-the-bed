@@ -7,7 +7,8 @@
 
 namespace sim::process {
 
-double update_phenology(Crop& crop, const Params& params, const CropEnvironment& env, Pcg32& biology_rng) {
+double update_phenology(Crop& crop, const Params& params, const CropEnvironment& env, double fruit_dry_g_per_m2,
+                        Pcg32& biology_rng) {
     const PhenologyParams& ph = params.phenology;
     const double air_degC = env.house_air_temp_degC;
 
@@ -20,7 +21,7 @@ double update_phenology(Crop& crop, const Params& params, const CropEnvironment&
     // 2. 화아분화: 활착이 끝난 뒤에만 진행해요 ("활착 전에는 화아분화가 진행되지 않아요")
     if (crop.establishment_index >= 1.0) {
         const double day_length_h = params.calendar.day_length_curve(static_cast<double>(env.day_of_year));
-        const double required_N = nutrient_requirement(crop, params.crop).N;
+        const double required_N = nutrient_requirement(crop, params.crop, fruit_dry_g_per_m2).N;
         const double n_ratio = required_N > 0.0 ? std::max(0.0, crop.plant_N_g_per_m2) / required_N : 1.0;
         crop.induction_index += std::max(0.0, ph.induction_rate_per_hour) *
                                 ph.induction_day_length_curve(day_length_h) * ph.induction_temp_curve(air_degC) *

@@ -1,7 +1,6 @@
 #pragma once
 
 // 파라미터·시나리오 값 검증 (World::create, World::deserialize가 사용)
-// M2 항목 검증은 패키지 0b에서 채워요 (docs/spec/m2-overview.md "구현 작업 분할").
 
 #include <expected>
 #include <string_view>

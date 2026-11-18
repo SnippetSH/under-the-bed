@@ -286,7 +286,7 @@ std::expected<void, Error> validate_params(const Params& p) {
         SIM_CHECK(require(g.leaf_g_per_plant + g.crown_g_per_plant + g.root_g_per_plant > 0.0,
                           std::format("seedling grade '{}' leaf + crown + root must be > 0", g.id)));
         SIM_CHECK(require(std::isfinite(g.initial_induction_index) && g.initial_induction_index >= 0.0 &&
-                              g.initial_induction_index <= 1.0,  // 3차: 1 = 분화 완료 모종 (활착 직후 첫 화방)
+                              g.initial_induction_index <= 1.0,  // 1 = 분화 완료 모종 (활착 직후 첫 화방)
                           std::format("seedling grade '{}' initial_induction_index must be within [0, 1]", g.id)));
     }
 

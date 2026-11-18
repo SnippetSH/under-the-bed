@@ -13,14 +13,14 @@ layer_transmittance_factor = 0.9          # 피복 한 겹의 일사 투과율. 
 layer_resistance_m2K_per_W = 0.13         # 피복 한 겹(+ 공기층)의 단열 저항 (지면 면적 기준). 3중 U 약 2.6 W/m²K. 게임용 임의값
 infiltration_W_per_m2_per_K = 0.5         # 창을 닫아도 새는 열. 게임용 임의값
 window_bypass_fraction = 0.5              # 열린 창 하나가 그 겹의 단열을 없애는 비율 (양쪽 열면 단열 0). 게임용 임의값
-window_open_levels = [0, 0.3, 0.5, 0.7, 1.0]  # 허용 개방률. 디렉터 결정 (6차)
+window_open_levels = [0, 0.3, 0.5, 0.7, 1.0]  # 허용 개방률 (0부터 엄격 오름차순, 0~1). 디렉터 결정 (2026-11-18, 단계 개방)
 vent_conductance_W_per_m2_per_K = 30.0    # 모든 겹 양쪽이 열렸을 때 환기 열 교환 (맞통풍). 게임용 임의값
 solar_heat_gain_fraction = 0.18  # 투과 일사 중 기온을 올리는 몫 (M1 식과 맞추던 0.063에서 올림: 닫힌 3중 1월 맑은 한낮 약 20~25 °C). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 0.063]
 ground_heat_W_per_m2 = 6.1                # 지중 열 등 기본 열 유입 (M1 base_offset 2 °C와 맞춤). 게임용 임의값
 air_relax_rate_per_hour = 0.7             # 기온이 평형값을 따라가는 시간당 비율 (열 관성). 게임용 임의값
 heater_capacity_W_per_m2 = 150.0          # 난방기 최대 출력 (3중 닫힘에서 바깥보다 약 +45 °C까지). 게임용 임의값
-heater_setpoint_min_degC = 0.0            # 난방 설정 온도 하한 (SetHeater 명령 검증용). 게임용 임의값, 명세에 없던 키를 프로토타입에서 신설
-heater_setpoint_max_degC = 30.0           # 난방 설정 온도 상한 (SetHeater 명령 검증용). 게임용 임의값, 명세에 없던 키를 프로토타입에서 신설
+heater_setpoint_min_degC = 0.0            # 난방 설정 온도 하한 (SetHeater 명령 검증용). 게임용 임의값 (2026-11-18 프로토타입 점검으로 신설)
+heater_setpoint_max_degC = 30.0           # 난방 설정 온도 상한 (SetHeater 명령 검증용). 게임용 임의값 (2026-11-18 프로토타입 점검으로 신설)
 temp_mean_relax_rate_per_hour = 0.042     # 하우스 기온 이동 평균의 시간당 완화 비율 (약 1/24, strawberry-phenology). 게임용 임의값
 cover_change_window_doy = [91, 243]       # 피복 겹수를 바꿀 수 있는 기간 [시작, 끝] day_of_year (4월 1일~8월 31일). 디렉터 결정(휴작기)
 min_cover_layers = 2                      # 피복 겹수 하한. 게임용 임의값
@@ -50,12 +50,12 @@ induction_temp_curve = [[3, 0], [8, 0.5], [12, 1], [22, 1], [26, 0.3], [30, 0]] 
 induction_nitrogen_curve = [[0, 1], [1.1, 1], [1.3, 0.6], [1.5, 0.25]]  # x = 체내 N 비율(체내 N / 요구량). 질소 과다 지연. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 [[0, 1], [1.0, 1], [1.15, 0.6], [1.3, 0.25]]]
 truss_base_temp_degC = 5.0                # 화방 발달 적산온도 기준. 게임용 임의값
 truss_degree_days_to_anthesis = 350.0  # 분화 -> 개화 적산온도 °C·일 (가을 약 35~40일). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 600.0]
-flowers_per_truss_curve = [[1, 6], [3, 12], [6, 18], [10, 22]]  # x = 포기당 관부 건물 g, y = 포기당 꽃 수. 게임용 임의값 (승인값, 4차 점검에서 복원)
+flowers_per_truss_curve = [[1, 6], [3, 12], [6, 18], [10, 22]]  # x = 포기당 관부 건물 g, y = 포기당 꽃 수. 게임용 임의값
 
 [fruit]  # docs/spec/strawberry-fruit.md. 전부 게임용 임의값
-rank_fraction = [0.06, 0.11, 0.22, 0.39, 0.22]  # 꽃 수 중 과위별 비율 (합 1). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 [0.07, 0.13, 0.27, 0.53]]
-rank_anthesis_delay_days = [0, 4, 7, 10, 12]  # 화방 개화 후 과위별 개화 지연 일. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 [0.0, 2.0, 4.0, 6.0]]
-anthesis_jitter_days = 4.0  # 과실마다 개화 시점 편차 (±, 일). 게임용 임의값 (6차)
+rank_fraction = [0.06, 0.11, 0.22, 0.39, 0.22]  # 꽃 수 중 과위별 비율 (합 1, 과위 배열 4개는 길이가 같아야 해요). 게임용 임의값 (2026-11-18 프로토타입 점검으로 4 → 5과위) [이전 [0.07, 0.13, 0.27, 0.53]]
+rank_anthesis_delay_days = [0, 4, 7, 10, 12]  # 화방 개화 후 과위별 개화 지연 일. 디렉터 지정 (2026-11-18 프로토타입 점검으로 조정) [이전 [0.0, 2.0, 4.0, 6.0]]
+anthesis_jitter_days = 4.0  # 과실마다 개화 시점 편차 (±, 일, 생물 변이). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 3.0]
 rank_potential_fresh_g = [35, 25, 17, 12, 8]  # 과위별 최대 생체중 g. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 [35.0, 25.0, 16.0, 10.0]]
 size_variation_fraction = 0.1             # 개체별 최대 생체중 변이 폭 (±). 게임용 임의값
 pollination_mean_curve = [[3, 0.2], [5, 0.3], [8, 0.6], [12, 0.92], [25, 0.92], [30, 0.65], [35, 0.35]]  # x = 하우스 기온 이동 평균 °C, y = 평균 수정률. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 [[3, 0.35], [8, 0.65], [12, 0.92], [25, 0.92], [30, 0.65], [35, 0.35]]]
@@ -68,13 +68,13 @@ base_temp_degC = 5.0                      # 비대 적산온도 기준. 게임�
 degree_days_to_harvest = 350.0  # 개화 -> 수확 적산온도 °C·일 (가을 약 30일, 겨울 약 60일). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 450.0]
 growth_shape_curve = [[0, 0], [0.2, 0.05], [0.5, 0.35], [0.8, 0.85], [1, 1]]  # x = 진행도, y = 최대 크기 중 도달 비율 (누적 S자). 게임용 임의값
 size_class_bounds_g = [10.0, 15.0, 20.0, 25.0]  # 크기 구간 경계 g (5개 구간, 판매 등급은 M7). 게임용 임의값
-abortion_rate_per_development_index = 8.0  # 진행도 1당 낙과 확률 (5차: 시간당 → 진행도당). 게임용 임의값
+abortion_rate_per_development_index = 8.0  # 진행도 1당 낙과 확률 (곡선·과위 배율 1일 때). 게임용 임의값 (2026-11-18 프로토타입 점검으로 신설, 시간당 abortion_rate_per_hour 0.01을 대체)
 thinnable_max_index = 0.3                 # 적화·적과로 딸 수 있는 최대 진행도. 게임용 임의값
-rank_abortion_weight = [0.1, 0.4, 1.0, 1.4, 1.8]  # 과위별 낙과 배율 (6차: 5과위). 게임용 임의값
-abortion_satisfaction_curve = [[0,1],[0.9,0.6],[1,0.1]]  # x = 크기 충족도 이동 평균, y = 낙과 확률 배율. 게임용 임의값
-abortion_window_index = 0.35  # 이 진행도 미만의 어린 과실만 떨어짐. 게임용 임의값
+rank_abortion_weight = [0.1, 0.4, 1.0, 1.4, 1.8]  # 과위별 낙과 배율 (늦게 핀 작은 과위가 잘 떨어짐). 게임용 임의값
+abortion_satisfaction_curve = [[0,1],[0.9,0.6],[1,0.1]]  # x = 크기 충족도 이동 평균, y = 낙과 확률 배율. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 [[0,1],[0.6,0.5],[0.85,0],[1,0]]]
+abortion_window_index = 0.35  # 이 진행도 미만의 어린 과실만 떨어짐. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 0.25]
 base_brix = 10.0                          # 모든 계수가 1일 때 당도 °Brix. 딸기 일반 8~12 범위
-brix_supply_curve = [[0, 0.7], [0.5, 0.85], [1, 1]]  # x = 과실 공급 비율. 게임용 임의값
+brix_supply_curve = [[0, 0.7], [0.5, 0.85], [1, 1]]  # x = 크기 충족도 이동 평균 size_satisfaction_mean (과실 건물 / 목표 건물). 게임용 임의값
 day_solar_threshold_W_per_m2 = 0.0        # 하우스 안 일사가 이보다 크면 낮
 brix_temp_score_curve = [[0, 0.75], [1, 1.15]]  # x = K_temp, y = 당도 배율. 게임용 임의값
 brix_night_weight = 0.4
@@ -143,7 +143,7 @@ buffer_eq_per_pH_per_eq_cec = 0.15        # 광물 CEC 1 eq당 pH 완충력. 게
 [antagonism]  # docs/spec/cation-exchange.md "흡수 길항". x = 길항 지수 (용액 K+NH4 당량 / 용액 Ca+Mg 당량)
 ca_curve = [[0.0, 1.0], [0.2, 1.0], [0.4, 0.6], [0.7, 0.35], [1.2, 0.15]]  # y = Ca 흡수 능력·수요 상한 배율. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정)
 mg_curve = [[0.0, 1.0], [0.18, 1.0], [0.35, 0.55], [0.6, 0.3], [1.2, 0.1]]  # y = Mg 흡수 능력·수요 상한 배율 (Ca보다 민감). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정)
-min_demand_factor = 0.6                   # Ca·Mg 수요 상한에 거는 길항 배율의 하한. 게임용 임의값, 세포벽 등 최소 Ca·Mg, 2026-11-18 4차 프로토타입 점검 후 신설
+min_demand_factor = 0.6                   # Ca·Mg 수요 상한에 거는 길항 배율의 하한. 게임용 임의값, 세포벽 등 최소 Ca·Mg, 2026-11-18 M3 프로토타입 점검 후 신설
 
 [phosphorus]  # docs/spec/phosphorus.md
 fixation_rate_per_hour = 0.0015           # 유효 -> 고정 최대 시간당 비율. 게임용 임의값 (pH 곡선 1에서 반감기 약 19일)
@@ -221,17 +221,17 @@ target_K_g_per_g = 0.020                  # 대략 1.1~2.5%
 target_Ca_g_per_g = 0.012                 # 대략 0.5~1.5%
 target_Mg_g_per_g = 0.004                 # 대략 0.25~0.45%
 luxury_uptake_ratio = 1.3                 # 적정 농도의 몇 배까지 더 먹는지. 게임용 임의값
-uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율 (N·P·K. Ca·Mg·Mn은 전용 속도). 게임용 임의값
+uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율 (P·K. N·Ca·Mg·Mn은 전용 속도). 게임용 임의값
 ca_uptake_rate_per_g_root_per_hour = 0.00019  # Ca 전용 흡수 비율 (s5_standard 낮 흡수 능력 여유 약 4배). 게임용 임의값, Ca는 뿌리 끝에서만 흡수돼 효율이 낮음, 2026-11-18 프로토타입 점검으로 신설
 mg_uptake_rate_per_g_root_per_hour = 0.00021  # Mg 전용 흡수 비율 (여유 약 4배). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설
-n_luxury_uptake_ratio = 1.2  # N 전용 사치 흡수 상한 (적정 대비). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설 (N 비율이 공급을 따라가게) (2026-11-18 프로토타입 점검으로 조정) [이전 1.5]
-n_uptake_rate_per_g_root_per_hour = 0.00006  # N 전용 흡수 속도. 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설 (2026-11-18 프로토타입 점검으로 조정) [이전 0.0005]
+n_luxury_uptake_ratio = 1.2  # N 전용 사치 흡수 상한 (적정 대비). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설 (N 비율이 공급을 따라가게, 점검 중 1.5 -> 1.2)
+n_uptake_rate_per_g_root_per_hour = 0.00006  # N 전용 흡수 속도 (N은 일반 속도를 쓰지 않음). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설 (점검 중 0.0005 -> 0.00006)
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015  # 하우스 안 일사 x 받는 빛 비율 1 W/m²당 증산. 게임용 임의값 (맑은 날 하루 약 1.5~2.5 mm)
 root_recovery_rate_per_hour = 0.002       # 손상이 없을 때 뿌리 건강도 회복 비율. 게임용 임의값
 death_root_health = 0.05                  # 이 아래로 내려가면 고사. 게임용 임의값
 root_dieback_per_damage = 1.0             # 손상 비율 1당 죽는 뿌리 건물 비율. 게임용 임의값 (과습 손상이 생장에 남도록)
 target_Mn_g_per_g = 0.0001                # 적정 체내 농도 (딸기 잎 분석 적정 범위 대략 50~200 mg/kg)
-mn_uptake_rate_per_g_root_per_hour = 0.00001  # 뿌리 1 g당 용액 Mn에서 시간당 가져가는 비율. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정, M3 3차: 0.00002 -> 0.00004, M4 2차: 0.00004 -> 0.00001 작기 내내 쌓여 독성) [이전 0.00004]
+mn_uptake_rate_per_g_root_per_hour = 0.00001  # 뿌리 1 g당 용액 Mn에서 시간당 가져가는 비율. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정: M3 0.00002 -> 0.00004, M4 0.00004 -> 0.00001 작기 내내 쌓여 독성) [이전 0.00004]
 mn_max_uptake_ratio = 30.0                # 적정 농도의 몇 배까지 쌓일 수 있는지. 게임용 임의값 (망간은 수동적으로 쌓여 독성까지 감)
 mn_toxicity_curve = [[0, 1], [5, 1], [10, 0.7], [20, 0.3], [30, 0.1]]  # x = 체내 Mn / 적정량, y = 생장 계수. 게임용 임의값 (약 500 mg/kg부터 장해)
 dry_matter_C_fraction = 0.45              # 건물 중 탄소 비율. 식물 건물 일반값
@@ -261,24 +261,24 @@ co2_growth_curve = [[50, 0], [100, 0.4], [200, 0.75], [400, 1.0], [800, 1.2], [1
 # 모종 등급 (docs/spec/strawberry-phenology.md, ADR-0006). 전부 게임용 임의값
 [[seedling_grade]]
 id = "A"
-leaf_g_per_plant = 4.0                    # 포기당 잎 건물. 게임용 임의값 (화아분화가 거의 된 큰 모종)
+leaf_g_per_plant = 4.0                    # 포기당 잎 건물. 게임용 임의값 (화아분화가 끝난 큰 모종)
 crown_g_per_plant = 3.0                   # 포기당 관부 건물. 게임용 임의값
 root_g_per_plant = 2.0                    # 포기당 뿌리 건물. 게임용 임의값
-initial_induction_index = 1.0  # 촉성 모종은 꽃눈이 이미 분화. (2026-11-18 프로토타입 점검으로 조정)
+initial_induction_index = 1.0  # 초기 화아분화 진행도 (0~1, 1 = 분화 완료). 촉성 모종은 꽃눈이 이미 분화. (2026-11-18 프로토타입 점검으로 조정) [이전 0.8]
 
 [[seedling_grade]]
 id = "B"
 leaf_g_per_plant = 3.5                    # 게임용 임의값 (보통 모종)
 crown_g_per_plant = 2.0
 root_g_per_plant = 1.5
-initial_induction_index = 0.8  # 촉성 모종은 꽃눈이 이미 분화. (2026-11-18 프로토타입 점검으로 조정)
+initial_induction_index = 0.8  # 촉성 모종은 꽃눈이 이미 분화. (2026-11-18 프로토타입 점검으로 조정) [이전 0.4]
 
 [[seedling_grade]]
 id = "C"
 leaf_g_per_plant = 2.5                    # 게임용 임의값 (작고 늦은 모종)
 crown_g_per_plant = 1.2
 root_g_per_plant = 1.0
-initial_induction_index = 0.3  # 촉성 모종은 꽃눈이 이미 분화. (2026-11-18 프로토타입 점검으로 조정)
+initial_induction_index = 0.3  # 촉성 모종은 꽃눈이 이미 분화. (2026-11-18 프로토타입 점검으로 조정) [이전 0.0]
 
 # 퇴비 정의. 모든 값은 게임용 임의값 (docs/spec/organic-matter.md, soil-chemistry.md)
 [[compost]]

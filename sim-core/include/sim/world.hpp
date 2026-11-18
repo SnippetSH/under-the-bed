@@ -31,7 +31,7 @@ struct Tile {
     bool operator==(const Tile&) const = default;
 };
 
-// 시뮬레이션 월드. 공개 인터페이스는 docs/spec/core-api.md, 틱 순서는 docs/spec/m1-overview.md를 따라요.
+// 시뮬레이션 월드. 공개 인터페이스는 docs/spec/core-api.md, 틱 순서는 docs/spec/m4-overview.md를 따라요.
 // 공개 함수는 예외를 던지지 않고, 실패할 수 있는 호출은 std::expected를 돌려줘요.
 class World {
 public:
@@ -39,7 +39,9 @@ public:
     [[nodiscard]] static std::expected<World, Error> create(Params params, Scenario scenario);
 
     // 2. 명령 투입: 검증 후 큐에 넣고 일련번호를 돌려줘요. 다음 틱 시작 시 투입 순서대로 적용돼요.
-    //    모르는 퇴비·비료 ID, 음수·비유한 양, 그리드 밖 영역은 거부하고 큐에 넣지 않아요.
+    //    모르는 퇴비·비료·석회 ID, 음수·비유한 양, 그리드 밖 영역은 거부하고 큐에 넣지 않아요.
+    //    M4: 없는 겹의 창·허용 단계가 아닌 개방률, 범위 밖 난방 설정 온도, 범위 밖 겹수나
+    //    휴작기(cover_change_window_doy) 밖에 적용될 피복 변경도 거부해요 (house-climate "명령").
     [[nodiscard]] std::expected<std::uint64_t, Error> enqueue(Command command);
 
     // 3. 틱 진행: N틱 진행해요. 호출할 때마다 events()가 비워져요.

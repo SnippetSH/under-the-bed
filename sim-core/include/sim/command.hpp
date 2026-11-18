@@ -71,11 +71,11 @@ struct TillCommand {
 
 enum class WindowSide : std::uint8_t { Left = 0, Right = 1 };
 
-// 측창 한 개 열기/닫기. layer 0 = 가장 바깥
+// 측창 한 개의 개방률 변경. layer 0 = 가장 바깥, layer < 지금 겹수
 struct SetWindowCommand {
     int layer = 0;
     WindowSide side = WindowSide::Left;
-    double open_fraction = 0.0;  // 6차: house.window_open_levels 중 하나
+    double open_fraction = 0.0;  // house.window_open_levels 중 하나 (아니면 enqueue에서 거부)
 
     bool operator==(const SetWindowCommand&) const = default;
 };

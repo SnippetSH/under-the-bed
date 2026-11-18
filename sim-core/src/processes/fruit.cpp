@@ -5,6 +5,7 @@
 #include <numeric>
 #include <vector>
 
+#include "fruit_list.hpp"
 #include "sim/calendar.hpp"
 #include "sim/processes.hpp"
 
@@ -52,7 +53,7 @@ void create_flowers(Crop& crop, std::uint32_t truss_index, double flowers_per_m2
 
     for (std::size_t r = 0; r < ranks; ++r) {
         for (std::uint64_t k = 0; k < counts[r]; ++k) {
-            // 6차: 과실마다 개화 시점 편차 (biology 스트림, 과실 생성 순). 최소 지금
+            // 과실마다 개화 시점 편차 (biology 스트림, 과실 생성 순). 최소 지금
             const double u_jitter = biology_rng.next_unit_double();
             const double delay_days =
                 params.rank_anthesis_delay_days[r] + params.anthesis_jitter_days * (2.0 * u_jitter - 1.0);
@@ -69,20 +70,20 @@ void create_flowers(Crop& crop, std::uint32_t truss_index, double flowers_per_m2
 
 void judge_anthesis(Crop& crop, const FruitParams& params, double house_air_temp_mean_degC, std::uint64_t tick,
                     Pcg32& biology_rng) {
+    if (params.rank_potential_fresh_g.empty()) {
+        return;  // 검증된 파라미터에서는 일어나지 않아요 (과위 배열 길이 ≥ 1)
+    }
     const double mean_pollination = params.pollination_mean_curve(house_air_temp_mean_degC);
-    bool any_dropped = false;
-    for (Fruit& fruit : crop.fruits) {
+    // 판정은 목록 순서대로 (난수 수열 고정). 수정률이 착과 문턱보다 낮으면 꽃이 떨어져 목록에서 빠져요(물질 이동 없음).
+    detail::remove_fruits_if(crop.fruits, [&](Fruit& fruit) {
         if (fruit.set || fruit.anthesis_tick > tick) {
-            continue;
+            return false;
         }
         const double u = biology_rng.next_unit_double();
         const double p = std::clamp(mean_pollination + params.pollination_spread * (2.0 * u - 1.0), 0.0, 1.0);
         fruit.pollination_index = p;
         if (p < params.set_threshold) {
-            // 낙화: 목록에서 제거 (물질 이동 없음). 표시만 하고 아래에서 지워요.
-            fruit.weight_sum = -1.0;
-            any_dropped = true;
-            continue;
+            return true;
         }
         const double u_size = biology_rng.next_unit_double();
         fruit.set = true;
@@ -91,10 +92,8 @@ void judge_anthesis(Crop& crop, const FruitParams& params, double house_air_temp
         fruit.potential_fresh_g = std::max(0.0, params.rank_potential_fresh_g[rank] *
                                                     params.pollination_size_curve(p) *
                                                     (1.0 + params.size_variation_fraction * (2.0 * u_size - 1.0)));
-    }
-    if (any_dropped) {
-        std::erase_if(crop.fruits, [](const Fruit& f) { return !f.set && f.weight_sum < 0.0; });
-    }
+        return false;
+    });
 }
 
 double fruit_development_increment(const FruitParams& params, double house_air_temp_degC) {

@@ -901,7 +901,8 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
         return std::unexpected(std::move(done.error()));
     }
 
-    // [crop]은 선택이에요. 있으면 seedling_grade와 plants_per_m2가 모두 필수예요.
+    // [crop]은 선택이에요. 있으면 seedling_grade, plants_per_m2, initial_establishment_index가 모두 필수예요
+    // (활착 시작값을 기본값으로 숨기지 않아요, m4-overview "시나리오 TOML").
     if (root.has("crop")) {
         TableReader crop = root.child("crop");
         sim::CropInit init;

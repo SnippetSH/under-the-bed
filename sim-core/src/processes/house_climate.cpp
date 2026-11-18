@@ -26,7 +26,7 @@ constexpr double kMg_per_g = 1000.0;
 CoverState cover_state(const HouseParams& params, const HouseState& house) {
     double transmittance = 1.0;
     double resistance_m2K_per_W = 0.0;
-    // 6차: 직렬 개구부 경로 path = sqrt(n) / sqrt(Σ 1/a_l²), a_l = (왼쪽 + 오른쪽 개방률) / 2. 어느 겹이든 0이면 0
+    // 직렬 개구부 경로 path = sqrt(n) / sqrt(Σ 1/a_l²), a_l = (왼쪽 + 오른쪽 개방률) / 2. 어느 겹이든 0이면 0
     double inverse_area_sq_sum = 0.0;
     bool any_closed_layer = house.window_open_fraction.empty();
     for (const auto& layer : house.window_open_fraction) {

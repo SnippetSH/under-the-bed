@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <vector>
 
+#include "fruit_list.hpp"
 #include "sim/processes.hpp"
 
 namespace sim::process {
@@ -83,6 +84,31 @@ double return_litter(Crop& crop, SoilCell& cell, const CropParams& params, doubl
     return litter_C_g_per_m2;
 }
 
+// 충족도·과잉 지수 (분모 = 요구량, 관부·과실 포함)
+NutrientStatus status_from_requirement(const Crop& crop, const NutrientRequirement& required) {
+    const double ratio_N = nutrient_ratio(crop.plant_N_g_per_m2, required.N);
+    const double ratio_P = nutrient_ratio(crop.plant_P_g_per_m2, required.P);
+    const double ratio_K = nutrient_ratio(crop.plant_K_g_per_m2, required.K);
+    const double ratio_Ca = nutrient_ratio(crop.plant_Ca_g_per_m2, required.Ca);
+    const double ratio_Mg = nutrient_ratio(crop.plant_Mg_g_per_m2, required.Mg);
+    const double ratio_Mn = nutrient_ratio(crop.plant_Mn_g_per_m2, required.Mn);
+    return NutrientStatus{
+        .sufficiency_N = std::min(1.0, ratio_N),
+        .sufficiency_P = std::min(1.0, ratio_P),
+        .sufficiency_K = std::min(1.0, ratio_K),
+        .sufficiency_Ca = std::min(1.0, ratio_Ca),
+        .sufficiency_Mg = std::min(1.0, ratio_Mg),
+        .excess_N = non_negative(ratio_N - 1.0),
+        .excess_P = non_negative(ratio_P - 1.0),
+        .excess_K = non_negative(ratio_K - 1.0),
+        .excess_Ca = non_negative(ratio_Ca - 1.0),
+        .excess_Mg = non_negative(ratio_Mg - 1.0),
+        .sufficiency_Mn = std::min(1.0, ratio_Mn),
+        .excess_Mn = non_negative(ratio_Mn - 1.0),
+        .plant_Mn_ratio = ratio_Mn,
+    };
+}
+
 // h0 저온 피해 (house-climate "저온 피해"): 잎은 낙엽 규칙으로, 과실·꽃은 개체마다 난수, 안 핀 화방의 꽃은 비율로
 void apply_cold_damage(Crop& crop, SoilCell& cell, const CropParams& params, double air_degC, Pcg32& biology_rng,
                        Ledger& ledger) {
@@ -102,14 +128,14 @@ void apply_cold_damage(Crop& crop, SoilCell& cell, const CropParams& params, dou
         }
         const double before = total_biomass_g_per_m2(crop);
         double lost_dry_g_per_m2 = 0.0;
-        for (Fruit& fruit : crop.fruits) {
+        // 과실·꽃마다 손실 판정 (목록 순서대로 난수 1회)
+        detail::remove_fruits_if(crop.fruits, [&](const Fruit& fruit) {
             if (biology_rng.next_unit_double() < fruit_loss_fraction) {
                 lost_dry_g_per_m2 += non_negative(fruit.dry_g);
-                fruit.dry_g = 0.0;
-                fruit.weight_sum = -1.0;  // 제거 표시
+                return true;
             }
-        }
-        std::erase_if(crop.fruits, [](const Fruit& f) { return f.weight_sum < 0.0; });
+            return false;
+        });
         // 언 과실은 버림: 낙엽처럼 토양에 (C는 C_leaf_litter_g, strawberry-fruit "보존·불변 조건")
         ledger.C_leaf_litter_g += return_litter(crop, cell, params, lost_dry_g_per_m2, before);
     }
@@ -137,57 +163,58 @@ TempScores temp_scores(const Fruit& fruit, const FruitParams& fp) {
     return s;
 }
 
-// 6b 낙과
-// 5차 (디렉터 승인): p_tick = abortion_rate_per_development_index × dD × curve(크기 충족도) × rank_weight.
+// 6b 낙과 (디렉터 결정 12번): p_tick = abortion_rate_per_development_index × dD × curve(크기 충족도) × rank_weight.
 // 같은 부족이면 계절(진행 속도)과 무관하게 같은 비율이 떨어져요.
+// fruit_dry_g_per_m2: 들어올 때 지금 과실 건물 합, 나갈 때 남은 과실의 건물 합 (목록 순서)
 void abort_young_fruits(Crop& crop, SoilCell& cell, const Params& params, double development_increment,
-                        Pcg32& biology_rng, Ledger& ledger) {
+                        Pcg32& biology_rng, Ledger& ledger, double& fruit_dry_g_per_m2) {
     const FruitParams& fp = params.fruit;
     const double base = std::max(0.0, fp.abortion_rate_per_development_index) * std::max(0.0, development_increment) *
                         fp.abortion_satisfaction_curve(crop.size_satisfaction_mean);
-    if (!(base > 0.0)) {
+    if (!(base > 0.0) || fp.rank_abortion_weight.empty()) {
         return;
     }
-    const double before = total_biomass_g_per_m2(crop);
+    const double before = vegetative_biomass_g_per_m2(crop) + fruit_dry_g_per_m2;
     double lost_dry_g = 0.0;
+    double kept_dry_g = 0.0;
     std::uint64_t aborted = 0;
-    for (Fruit& fruit : crop.fruits) {
-        if (!fruit.set || fruit.development_index >= fp.abortion_window_index) {
-            continue;
-        }
-        const std::size_t rank = std::min<std::size_t>(fruit.rank, fp.rank_abortion_weight.size() - 1);
-        const double p = base * fp.rank_abortion_weight[rank];
-        if (biology_rng.next_unit_double() < p) {
-            if (fruit.truss_index < crop.trusses.size()) {
-                ++crop.trusses[fruit.truss_index].aborted_fruits;
+    // 착과된 어린 과실마다 목록 순서대로 난수 1회
+    detail::remove_fruits_if(crop.fruits, [&](const Fruit& fruit) {
+        if (fruit.set && fruit.development_index < fp.abortion_window_index) {
+            const std::size_t rank = std::min<std::size_t>(fruit.rank, fp.rank_abortion_weight.size() - 1);
+            const double p = base * fp.rank_abortion_weight[rank];
+            if (biology_rng.next_unit_double() < p) {
+                if (fruit.truss_index < crop.trusses.size()) {
+                    ++crop.trusses[fruit.truss_index].aborted_fruits;
+                }
+                lost_dry_g += non_negative(fruit.dry_g);
+                ++aborted;
+                return true;
             }
-            lost_dry_g += non_negative(fruit.dry_g);
-            fruit.dry_g = 0.0;
-            fruit.weight_sum = -1.0;  // 제거 표시
-            ++aborted;
         }
-    }
+        kept_dry_g += fruit.dry_g;
+        return false;
+    });
+    fruit_dry_g_per_m2 = kept_dry_g;
     if (aborted > 0) {
-        std::erase_if(crop.fruits, [](const Fruit& f) { return f.weight_sum < 0.0; });
         crop.harvest.aborted_fruits += aborted;
         ledger.C_leaf_litter_g += return_litter(crop, cell, params.crop, lost_dry_g, before);
     }
 }
 
-// 자동 수확 (strawberry-fruit 6번). 딴 과실을 목록에서 지우고 수확 기록·장부·이벤트를 만들어요.
+// 자동 수확 (strawberry-fruit 6번). 익은 과실(진행도 ≥ 1)이 있을 때만 불러요.
+// 딴 과실을 목록에서 지우고 수확 기록·장부·이벤트를 만들어요.
+// fruit_dry_g_per_m2: 들어올 때 지금 과실 건물 합, 나갈 때 남은 과실의 건물 합 (목록 순서)
 std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params& params, std::uint64_t tick,
-                                                       std::uint32_t tile_index, Ledger& ledger) {
+                                                       std::uint32_t tile_index, Ledger& ledger,
+                                                       double& fruit_dry_g_per_m2) {
     const FruitParams& fp = params.fruit;
     const CropParams& cp = params.crop;
-    bool any_ripe = false;
-    for (const Fruit& fruit : crop.fruits) {
-        any_ripe = any_ripe || (fruit.set && fruit.development_index >= 1.0);
-    }
-    if (!any_ripe || !(fp.dry_matter_fraction > 0.0)) {
+    if (!(fp.dry_matter_fraction > 0.0)) {
         return std::nullopt;
     }
     // 반출 비율은 수확 전 포기 전체의 체내량 ÷ 요구량
-    const NutrientRequirement required = nutrient_requirement(crop, cp);
+    const NutrientRequirement required = nutrient_requirement(crop, cp, fruit_dry_g_per_m2);
     std::uint32_t normal_count = 0;
     std::uint32_t deformed_count = 0;
     double harvested_dry_g = 0.0;
@@ -199,9 +226,11 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
     if (record.harvested_size_class_counts.size() != fp.size_class_bounds_g.size() + 1) {
         record.harvested_size_class_counts.resize(fp.size_class_bounds_g.size() + 1, 0);
     }
-    for (Fruit& fruit : crop.fruits) {
+    double kept_dry_g = 0.0;
+    detail::remove_fruits_if(crop.fruits, [&](const Fruit& fruit) {
         if (!fruit.set || fruit.development_index < 1.0) {
-            continue;
+            kept_dry_g += fruit.dry_g;
+            return false;
         }
         const double dry_g = non_negative(fruit.dry_g);
         const double fresh_g = dry_g / fp.dry_matter_fraction;
@@ -239,9 +268,12 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
             brix_weighted += brix * fresh_g;
             firmness_weighted += firmness * fresh_g;
         }
-        fruit.weight_sum = -1.0;  // 제거 표시 (set인 과실은 weight_sum ≥ 0)
+        return true;
+    });
+    fruit_dry_g_per_m2 = kept_dry_g;
+    if (normal_count + deformed_count == 0) {
+        return std::nullopt;
     }
-    std::erase_if(crop.fruits, [](const Fruit& f) { return f.weight_sum < 0.0; });
     if (!record.has_first_harvest) {
         record.has_first_harvest = true;
         record.first_harvest_tick = tick;
@@ -271,10 +303,11 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
     };
 }
 
-// (C) 따라잡기 수요: 이번 틱 진행도에서의 목표 건물 − 현재 건물 (밤에 못 받은 몫도 다음 낮에 채워요)
-double fruit_catch_up_demand_g(const Fruit& fruit, const FruitParams& fp, double development_increment) {
+// 과실 목표 건물 = 최대 생체중 × 건물 비율 × shape(새 진행도 D′) (strawberry-fruit 4번).
+// 따라잡기 수요는 목표 − 지금 건물이라 밤에 못 받은 몫도 다음 낮에 다시 요구해요.
+double fruit_target_dry_g(const Fruit& fruit, const FruitParams& fp, double development_increment) {
     const double next = std::min(1.0, fruit.development_index + development_increment);
-    return non_negative(fruit.potential_fresh_g * fp.dry_matter_fraction * fp.growth_shape_curve(next) - fruit.dry_g);
+    return fruit.potential_fresh_g * fp.dry_matter_fraction * fp.growth_shape_curve(next);
 }
 
 }  // namespace
@@ -317,15 +350,18 @@ double vegetative_biomass_g_per_m2(const Crop& crop) {
 double total_biomass_g_per_m2(const Crop& crop) { return vegetative_biomass_g_per_m2(crop) + crop.fruit_g_per_m2(); }
 
 NutrientRequirement nutrient_requirement(const Crop& crop, const CropParams& params) {
+    return nutrient_requirement(crop, params, crop.fruit_g_per_m2());
+}
+
+NutrientRequirement nutrient_requirement(const Crop& crop, const CropParams& params, double fruit_dry_g_per_m2) {
     const double vegetative = vegetative_biomass_g_per_m2(crop);
-    const double fruit = crop.fruit_g_per_m2();
     return NutrientRequirement{
-        .N = params.target_N_g_per_g * vegetative + params.fruit_target_N_g_per_g * fruit,
-        .P = params.target_P_g_per_g * vegetative + params.fruit_target_P_g_per_g * fruit,
-        .K = params.target_K_g_per_g * vegetative + params.fruit_target_K_g_per_g * fruit,
-        .Ca = params.target_Ca_g_per_g * vegetative + params.fruit_target_Ca_g_per_g * fruit,
-        .Mg = params.target_Mg_g_per_g * vegetative + params.fruit_target_Mg_g_per_g * fruit,
-        .Mn = params.target_Mn_g_per_g * vegetative + params.fruit_target_Mn_g_per_g * fruit,
+        .N = params.target_N_g_per_g * vegetative + params.fruit_target_N_g_per_g * fruit_dry_g_per_m2,
+        .P = params.target_P_g_per_g * vegetative + params.fruit_target_P_g_per_g * fruit_dry_g_per_m2,
+        .K = params.target_K_g_per_g * vegetative + params.fruit_target_K_g_per_g * fruit_dry_g_per_m2,
+        .Ca = params.target_Ca_g_per_g * vegetative + params.fruit_target_Ca_g_per_g * fruit_dry_g_per_m2,
+        .Mg = params.target_Mg_g_per_g * vegetative + params.fruit_target_Mg_g_per_g * fruit_dry_g_per_m2,
+        .Mn = params.target_Mn_g_per_g * vegetative + params.fruit_target_Mn_g_per_g * fruit_dry_g_per_m2,
     };
 }
 
@@ -356,28 +392,7 @@ NutrientStatus nutrient_status(const Crop& crop, const CropParams& params) {
     if (!crop.present) {
         return {};
     }
-    const NutrientRequirement required = nutrient_requirement(crop, params);
-    const double ratio_N = nutrient_ratio(crop.plant_N_g_per_m2, required.N);
-    const double ratio_P = nutrient_ratio(crop.plant_P_g_per_m2, required.P);
-    const double ratio_K = nutrient_ratio(crop.plant_K_g_per_m2, required.K);
-    const double ratio_Ca = nutrient_ratio(crop.plant_Ca_g_per_m2, required.Ca);
-    const double ratio_Mg = nutrient_ratio(crop.plant_Mg_g_per_m2, required.Mg);
-    const double ratio_Mn = nutrient_ratio(crop.plant_Mn_g_per_m2, required.Mn);
-    return NutrientStatus{
-        .sufficiency_N = std::min(1.0, ratio_N),
-        .sufficiency_P = std::min(1.0, ratio_P),
-        .sufficiency_K = std::min(1.0, ratio_K),
-        .sufficiency_Ca = std::min(1.0, ratio_Ca),
-        .sufficiency_Mg = std::min(1.0, ratio_Mg),
-        .excess_N = non_negative(ratio_N - 1.0),
-        .excess_P = non_negative(ratio_P - 1.0),
-        .excess_K = non_negative(ratio_K - 1.0),
-        .excess_Ca = non_negative(ratio_Ca - 1.0),
-        .excess_Mg = non_negative(ratio_Mg - 1.0),
-        .sufficiency_Mn = std::min(1.0, ratio_Mn),
-        .excess_Mn = non_negative(ratio_Mn - 1.0),
-        .plant_Mn_ratio = ratio_Mn,
-    };
+    return status_from_requirement(crop, nutrient_requirement(crop, params));
 }
 
 std::uint64_t thin_flowers(Crop& crop, SoilCell& cell, const Params& params, double per_plant, Pcg32& biology_rng,
@@ -389,7 +404,7 @@ std::uint64_t thin_flowers(Crop& crop, SoilCell& cell, const Params& params, dou
     const double wanted = std::max(0.0, per_plant) * std::max(0.0, crop.plants_per_m2);
     const double whole = std::floor(wanted);
     const double u = biology_rng.next_unit_double();  // 소수부 난수 반올림 (항상 1회)
-    auto count = static_cast<std::uint64_t>(whole) + (u < wanted - whole ? 1u : 0u);
+    const double rounded = whole + (u < wanted - whole ? 1.0 : 0.0);
     // 후보: 꽃(아직 안 핀 것) + 진행도 < thinnable_max_index 인 어린 과실
     std::vector<std::size_t> candidates;
     for (std::size_t i = 0; i < crop.fruits.size(); ++i) {
@@ -410,20 +425,22 @@ std::uint64_t thin_flowers(Crop& crop, SoilCell& cell, const Params& params, dou
         }
         return a > b;
     });
-    count = std::min<std::uint64_t>(count, candidates.size());
+    // 후보 수로 먼저 제한해요 (아주 큰 per_plant도 정수 변환이 넘치지 않게)
+    const std::size_t count = rounded >= static_cast<double>(candidates.size())
+                                  ? candidates.size()
+                                  : static_cast<std::size_t>(rounded);
     if (count == 0) {
         return 0;
     }
     const double before = total_biomass_g_per_m2(crop);
     double lost_dry_g = 0.0;
-    for (std::uint64_t k = 0; k < count; ++k) {
-        Fruit& f = crop.fruits[candidates[k]];
-        lost_dry_g += non_negative(f.dry_g);
-        f.dry_g = 0.0;
-        f.set = false;
-        f.weight_sum = -1.0;  // 제거 표시
+    std::vector<bool> thinned(crop.fruits.size(), false);
+    for (std::size_t k = 0; k < count; ++k) {
+        lost_dry_g += non_negative(crop.fruits[candidates[k]].dry_g);
+        thinned[candidates[k]] = true;
     }
-    std::erase_if(crop.fruits, [](const Fruit& f) { return f.weight_sum < 0.0; });
+    std::size_t index = 0;
+    detail::remove_fruits_if(crop.fruits, [&](const Fruit&) { return thinned[index++]; });
     crop.harvest.thinned_fruits += count;
     ledger.C_leaf_litter_g += return_litter(crop, cell, params.crop, lost_dry_g, before);
     return count;
@@ -442,13 +459,18 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
     // ---- h0. 저온 피해 ----
     apply_cold_damage(crop, cell, cp, air_degC, biology_rng, ledger);
 
+    // 달린 과실 건물 합 (Crop::fruit_g_per_m2()와 같은 목록 순서 합). 꽃(set = false)은 건물이 0이라
+    // 꽃 만들기·개화 판정(낙화)은 이 합을 바꾸지 않아요. 이 아래에서 과실 건물이나 목록이 바뀌면
+    // 그 단계가 같은 순서로 다시 구해 이 값을 갱신해요 (분배, 수확, 낙과).
+    double fruit_dry_g_per_m2 = crop.fruit_g_per_m2();
+
     // ---- h1. 생물계절 (활착 → 화아분화 → 화방 발달·꽃 만들기) → 개화 판정 ----
-    const double growth_factor_establish = update_phenology(crop, params, env, biology_rng);
+    const double growth_factor_establish = update_phenology(crop, params, env, fruit_dry_g_per_m2, biology_rng);
     judge_anthesis(crop, fp, env.house_air_temp_mean_degC, env.tick, biology_rng);
 
     // ---- h2. 스트레스 계수 ----
     const WaterSaltFactors water_salt = water_salt_factors(cell, cp);
-    const NutrientStatus status = nutrient_status(crop, cp);
+    const NutrientStatus status = status_from_requirement(crop, nutrient_requirement(crop, cp, fruit_dry_g_per_m2));
     // StressFactor 순서 그대로 (동률이면 앞선 요인을 기록)
     const std::array<double, kStressFactorCount> factors{
         water_salt.water,
@@ -487,7 +509,6 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
                                       cp.par_fraction * kMJ_per_W_h * interception * cp.temp_curve(air_degC);
     const double gross_g_per_m2 = non_negative(potential_g_per_m2 * cp.co2_growth_curve(env.house_co2_ppm) *
                                                combined_factor * growth_factor_establish);
-    const double fruit_dry_g_per_m2 = crop.fruit_g_per_m2();
     const double respiration_g_per_m2 =
         non_negative((non_negative(crop.leaf_g_per_m2) * cp.maintenance_rate_leaf_per_hour +
                       non_negative(crop.crown_g_per_m2) * cp.maintenance_rate_crown_per_hour +
@@ -496,28 +517,42 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
                      cp.maintenance_temp_curve(air_degC));
     const double net_g_per_m2 = gross_g_per_m2 - respiration_g_per_m2;
 
-    // 과실 잠재 증가 (착과된 과실, 이번 틱 진행도 증가분 기준)
+    // 분배 (strawberry-fruit 4번): 착과된 과실의 따라잡기 수요 = 새 진행도의 목표 건물 − 지금 건물
     const double development_increment = fruit_development_increment(fp, air_degC);
     double fruit_demand_g_per_m2 = 0.0;
     for (const Fruit& fruit : crop.fruits) {
-        if (!fruit.set) {
-            continue;
+        if (fruit.set) {
+            fruit_demand_g_per_m2 += non_negative(fruit_target_dry_g(fruit, fp, development_increment) - fruit.dry_g);
         }
-        fruit_demand_g_per_m2 += fruit_catch_up_demand_g(fruit, fp, development_increment);
     }
     const double fruit_supply_g_per_m2 =
         net_g_per_m2 > 0.0 ? std::min(fruit_demand_g_per_m2, net_g_per_m2 * cp.max_fruit_assimilate_fraction) : 0.0;
     const double supply_ratio =
         fruit_demand_g_per_m2 > 0.0 ? std::clamp(fruit_supply_g_per_m2 / fruit_demand_g_per_m2, 0.0, 1.0) : 1.0;
-    if (fruit_supply_g_per_m2 > 0.0) {
-        for (Fruit& fruit : crop.fruits) {
-            if (!fruit.set) {
-                continue;
-            }
-            fruit.dry_g += fruit_catch_up_demand_g(fruit, fp, development_increment) * supply_ratio;
-        }
-    }
     if (net_g_per_m2 > 0.0) {
+        // 과실 증가 = 수요 × 공급 비율, 같은 순회에서 크기 충족도(5번)의 합도 구해요 (분배 뒤 건물 기준).
+        // 크기 충족도(틱) = Σ 건물 ÷ Σ 목표 건물 (착과된 과실, 과실이 없으면 1, 0~1).
+        // 순생장 > 0인 틱에만 하우스 기온 이동 평균과 같은 완화 비율로 이동 평균해요.
+        double set_dry_g = 0.0;
+        double set_target_g = 0.0;
+        double all_dry_g = 0.0;
+        for (Fruit& fruit : crop.fruits) {
+            if (fruit.set) {
+                const double target_g = fruit_target_dry_g(fruit, fp, development_increment);
+                if (fruit_supply_g_per_m2 > 0.0) {
+                    fruit.dry_g += non_negative(target_g - fruit.dry_g) * supply_ratio;
+                }
+                set_dry_g += non_negative(fruit.dry_g);
+                set_target_g += non_negative(target_g);
+            }
+            all_dry_g += fruit.dry_g;
+        }
+        fruit_dry_g_per_m2 = all_dry_g;
+        const double size_satisfaction = set_target_g > 0.0 ? std::clamp(set_dry_g / set_target_g, 0.0, 1.0) : 1.0;
+        crop.size_satisfaction_mean += (size_satisfaction - crop.size_satisfaction_mean) *
+                                       std::min(1.0, params.house.temp_mean_relax_rate_per_hour);
+
+        // 나머지(순생장 − 과실 공급)를 잎·관부·뿌리에 vegetative_*_fraction대로
         const double rest_g_per_m2 = non_negative(net_g_per_m2 - fruit_supply_g_per_m2);
         crop.leaf_g_per_m2 += rest_g_per_m2 * cp.vegetative_leaf_fraction;
         crop.crown_g_per_m2 += rest_g_per_m2 * cp.vegetative_crown_fraction;
@@ -536,31 +571,21 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
     crop.last_respiration_g_per_m2 = respiration_g_per_m2;
     crop.last_growth_g_per_m2 = net_g_per_m2;
     crop.last_supply_ratio = supply_ratio;
-    // (P2) 당도용 크기 충족도: 착과된 과실의 Σ건물 ÷ Σ(최대 생체중 × 건물 비율 × shape(이번 틱 진행도)), 과실 없으면 1.
-    //      순생산 > 0인 틱에만, 하우스 기온 이동 평균과 같은 완화 비율로 이동 평균
-    if (net_g_per_m2 > 0.0) {
-        double fruit_dry_g = 0.0;
-        double fruit_target_g = 0.0;
-        for (const Fruit& fruit : crop.fruits) {
-            if (!fruit.set) {
-                continue;
-            }
-            const double next = std::min(1.0, fruit.development_index + development_increment);
-            fruit_dry_g += non_negative(fruit.dry_g);
-            fruit_target_g += non_negative(fruit.potential_fresh_g * fp.dry_matter_fraction * fp.growth_shape_curve(next));
-        }
-        const double size_satisfaction = fruit_target_g > 0.0 ? std::clamp(fruit_dry_g / fruit_target_g, 0.0, 1.0) : 1.0;
-        crop.size_satisfaction_mean += (size_satisfaction - crop.size_satisfaction_mean) *
-                                       std::min(1.0, params.house.temp_mean_relax_rate_per_hour);
-    }
 
-    // ---- h4. 과실 진행·품질 적산 → 자동 수확 ----
+    // ---- h4. 과실 진행·품질 적산 → 자동 수확 → 낙과 ----
     {
         const double q_brix = fp.brix_supply_curve(crop.size_satisfaction_mean) *
                               fp.brix_k_curve(status.sufficiency_K) * fp.brix_n_excess_curve(status.excess_N) *
                               fp.brix_water_curve(cell.relative_water());
         const double q_firmness = fp.firmness_ca_curve(status.sufficiency_Ca) * fp.firmness_temp_curve(air_degC) *
                                   fp.firmness_n_excess_curve(status.excess_N);
+        // 당도 온도 점수 (주·야간 이중 가중): 낮은 하우스 안 일사 가중, 밤은 시간 가중 (Δt = 1틱).
+        // 이번 틱 모든 과실에 같은 값이라 한 번만 계산해요.
+        const bool is_day = env.inside_solar_W_per_m2 > fp.day_solar_threshold_W_per_m2;
+        const double day_score_weighted =
+            is_day ? fp.brix_day_temp_score_curve(air_degC) * env.inside_solar_W_per_m2 : 0.0;
+        const double night_score = is_day ? 0.0 : fp.brix_night_temp_score_curve(air_degC);
+        bool any_ripe = false;
         for (Fruit& fruit : crop.fruits) {
             if (!fruit.set) {
                 continue;
@@ -569,27 +594,29 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
             fruit.brix_factor_sum += q_brix * development_increment;
             fruit.firmness_factor_sum += q_firmness * development_increment;
             fruit.weight_sum += development_increment;
-            // 당도 온도 점수 (주·야간 이중 가중): 낮은 일사 가중, 밤은 시간 가중 (Δt = 1틱)
-            if (env.inside_solar_W_per_m2 > fp.day_solar_threshold_W_per_m2) {
-                fruit.day_score_sum += fp.brix_day_temp_score_curve(air_degC) * env.inside_solar_W_per_m2;
+            if (is_day) {
+                fruit.day_score_sum += day_score_weighted;
                 fruit.day_weight_sum += env.inside_solar_W_per_m2;
             } else {
-                fruit.night_score_sum += fp.brix_night_temp_score_curve(air_degC);
+                fruit.night_score_sum += night_score;
                 fruit.night_weight_sum += 1.0;
             }
+            any_ripe = any_ripe || fruit.development_index >= 1.0;
         }
-        result.harvested = harvest_ripe_fruits(crop, params, env.tick, env.tile_index, ledger);
+        if (any_ripe) {
+            result.harvested = harvest_ripe_fruits(crop, params, env.tick, env.tile_index, ledger, fruit_dry_g_per_m2);
+        }
         // 6b 낙과: 착과된 어린 과실(진행도 < abortion_window_index)마다 난수 < p 이면 떨어짐 (biology 스트림)
-        abort_young_fruits(crop, cell, params, development_increment, biology_rng, ledger);
+        abort_young_fruits(crop, cell, params, development_increment, biology_rng, ledger, fruit_dry_g_per_m2);
     }
 
     // ---- h5. 흡수 (요구량에 관부·과실 포함, 흡수 능력에 활착 배율) ----
-    const NutrientRequirement required = nutrient_requirement(crop, cp);
+    const NutrientRequirement required = nutrient_requirement(crop, cp, fruit_dry_g_per_m2);
     const double root_capacity_factor =
         std::min(1.0, cp.uptake_rate_per_g_root_per_hour * non_negative(crop.root_g_per_m2) * crop.root_health) *
         water_salt.water * water_salt.salt * growth_factor_establish;
 
-    // M3 길항 (cation-exchange "흡수 길항"): h 시작 시점 용액 상태로 한 번 계산.
+    // M3 길항 (cation-exchange "흡수 길항"): 흡수 직전 용액 상태로 한 번 계산.
     {
         const IonParams& ions = params.ions;
         const double monovalent_eq = non_negative(cell.k_solution_g_per_m2) / ions.k_g_per_eq +
@@ -611,7 +638,7 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
         const double available_nh4_g_per_m2 = non_negative(available.nh4_N);
         const double available_no3_g_per_m2 = non_negative(available.no3_N);
         const double available_N_g_per_m2 = available_nh4_g_per_m2 + available_no3_g_per_m2;
-        // (E) N 전용 사치 흡수 상한·흡수 속도
+        // N 전용 사치 흡수 상한·흡수 속도 (strawberry-minimal 3번, strawberry-fruit 8번)
         const double n_capacity_factor =
             std::min(1.0, cp.n_uptake_rate_per_g_root_per_hour * non_negative(crop.root_g_per_m2) * crop.root_health) *
             water_salt.water * water_salt.salt * growth_factor_establish;
@@ -703,7 +730,7 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
     crop.root_health = std::clamp(crop.root_health, 0.0, 1.0);
 
     if (damage_per_hour > 0.0) {
-        const double before = total_biomass_g_per_m2(crop);
+        const double before = vegetative_biomass_g_per_m2(crop) + fruit_dry_g_per_m2;
         const double dead_root_g_per_m2 = std::min(
             non_negative(crop.root_g_per_m2),
             non_negative(crop.root_g_per_m2) * std::min(1.0, damage_per_hour) * cp.root_dieback_per_damage);
@@ -715,7 +742,7 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
 
     // 낙엽 (strawberry-fruit 7번, 뿌리 고사와 같은 규칙)
     {
-        const double before = total_biomass_g_per_m2(crop);
+        const double before = vegetative_biomass_g_per_m2(crop) + fruit_dry_g_per_m2;
         const double dead_leaf_g_per_m2 =
             non_negative(crop.leaf_g_per_m2) * std::min(1.0, non_negative(cp.leaf_senescence_rate_per_hour));
         if (dead_leaf_g_per_m2 > 0.0) {

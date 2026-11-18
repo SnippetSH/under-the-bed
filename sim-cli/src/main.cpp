@@ -9,9 +9,10 @@
 // M3 파생 열: 교환성 양(*_exchangeable_* = 총량 − 용액), 토양 P 총량(p_total = 유효 + 고정),
 // 작물 Mn 충족도·과잉 지수·체내 비율, 길항 배율, stress_hours 10개(StressFactor 순서).
 // M4 파생 열: 하우스(house_air_temp_mean_degC, house_co2_ppm, outside_co2_ppm, 난방 에너지·출력, 피복 겹수,
-// 열린 창 수, 난방 켜짐, 하우스 안 일사, 맞통풍 경로 지수), 작물(관부, 과실 건물, 과실·꽃·화방 수, 활착·화아분화 지수,
-// 과실 공급 비율, 총생산·유지 호흡), 수확 누적(정상과·기형과 생체중·개수, 하우스 전체 가중 평균 당도·경도,
-// 크기 구간별 개수, 첫 수확 틱), 장부 M4 항목. 수확 열은 작물이 있는 타일 평균(개수는 타일당 평균)이에요.
+// 열린 창 수·개방률 합, 난방 켜짐, 하우스 안 일사, 환기 경로 지수), 작물(관부, 과실 건물, 과실·꽃·화방 수,
+// 활착·화아분화 지수, 과실 공급 비율, 크기 충족도 이동 평균, 총생산·유지 호흡), 수확 누적(정상과·기형과 생체중·개수,
+// 하우스 전체 가중 평균 당도·경도·온도 점수, 낙과·적과 수, 크기 구간별 개수, 첫 수확 틱), 장부 M4 항목.
+// 수확 열은 작물이 있는 타일 평균(개수는 타일당 평균)이에요. 진단 열은 m4-overview "진단·리포트용 기록"이에요.
 // 명령 일정표([[schedule]])는 해당 틱을 처리하기 직전에 enqueue해요.
 // --no-hash를 주면 state_hash 열을 비워 둬요 (긴 실행을 빠르게). 최종 해시는 그래도 찍어요.
 // 표준 출력에는 이벤트 종류별 횟수, 수확 합계, 최종 상태 해시를 찍어요.
@@ -24,7 +25,6 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
-#include <limits>
 #include <fstream>
 #include <optional>
 #include <print>
@@ -536,46 +536,6 @@ int main(int argc, char** argv) {
     }
     std::println("harvest_total fresh_g={} count={} deformed_fresh_g={} deformed_count={}", harvest_fresh_g,
                  harvest_count, harvest_deformed_fresh_g, harvest_deformed_count);
-    // 화방별 진단 (프로토타입 5차): 타일 평균 분화·개화 일, 수확 시작·끝 일(타일 최소·최대), m²당 수확·낙과
-    {
-        const sim::Snapshot snap = world->snapshot();
-        std::size_t max_trusses = 0;
-        for (const sim::Crop& crop : snap.crops) {
-            max_trusses = std::max(max_trusses, crop.trusses.size());
-        }
-        for (std::size_t i = 0; i < max_trusses; ++i) {
-            double n = 0.0, init_d = 0.0, open_d = 0.0, flowers = 0.0, harvested = 0.0, fresh = 0.0, aborted = 0.0;
-            double opened = 0.0;
-            std::uint64_t first = std::numeric_limits<std::uint64_t>::max();
-            std::uint64_t last = 0;
-            for (const sim::Crop& crop : snap.crops) {
-                if (i >= crop.trusses.size()) {
-                    continue;
-                }
-                const sim::Truss& t = crop.trusses[i];
-                n += 1.0;
-                init_d += static_cast<double>(t.initiated_tick) / 24.0;
-                if (t.opened) {
-                    opened += 1.0;
-                    open_d += static_cast<double>(t.opened_tick) / 24.0;
-                }
-                flowers += t.flowers_per_m2;
-                harvested += static_cast<double>(t.harvested_fruits);
-                fresh += t.harvested_fresh_g;
-                aborted += static_cast<double>(t.aborted_fruits);
-                if (t.harvested_fruits > 0) {
-                    first = std::min(first, t.first_harvest_tick);
-                    last = std::max(last, t.last_harvest_tick);
-                }
-            }
-            const double tiles = static_cast<double>(snap.crops.size());
-            std::println("truss {} tiles={} init_day={:.1f} open_day={} harvest_days={} flowers_per_m2={:.1f} "
-                         "harvested_per_m2={:.1f} fresh_g_per_m2={:.0f} aborted_per_m2={:.1f}",
-                         i, n, init_d / n, opened > 0 ? std::format("{:.1f}", open_d / opened) : std::string("-"),
-                         last > 0 ? std::format("{:.1f}-{:.1f}", first / 24.0, last / 24.0) : std::string("-"),
-                         flowers / n, harvested / tiles, fresh / tiles, aborted / tiles);
-        }
-    }
     std::println("final_state_hash=0x{:016x}", world->state_hash());
     return kExitOk;
 }

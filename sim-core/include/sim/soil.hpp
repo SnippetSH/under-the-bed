@@ -157,7 +157,8 @@ struct Truss {
     double development_index = 0.0;  // 분화 → 개화 0~1
     double flowers_per_m2 = 0.0;     // 분화 시 정해짐 (저온 피해로 줄 수 있음)
     bool opened = false;
-    // 프로토타입 진단용 (명세 밖, 5차): 개화 틱, 화방별 수확·낙과
+    // 진단·리포트용 기록 (m4-overview "진단·리포트용 기록"). 결과를 바꾸지 않아요.
+    // 개화 틱, 이 화방에서 딴 정상과·기형과 개수·생체중, 낙과 수, 첫·마지막 수확 틱
     std::uint64_t opened_tick = 0;
     std::uint64_t harvested_fruits = 0;
     double harvested_fresh_g = 0.0;
@@ -202,7 +203,8 @@ struct HarvestRecord {
     std::vector<std::uint64_t> harvested_size_class_counts;  // 길이 = 경계 수 + 1
     bool has_first_harvest = false;
     std::uint64_t first_harvest_tick = 0;
-    // 프로토타입 진단용 (명세 밖, 4차 점검): 낙과·적과 개수, 정상과의 온도 점수 × 생체중 합
+    // 진단·리포트용 기록 (m4-overview "진단·리포트용 기록"). 결과를 바꾸지 않아요.
+    // 낙과·적화·적과 개수, 정상과의 낮·밤·합산 온도 점수 × 생체중 합
     std::uint64_t aborted_fruits = 0;
     std::uint64_t thinned_fruits = 0;
     double harvested_day_score_weighted = 0.0;
@@ -239,11 +241,12 @@ struct Crop {
     std::vector<Truss> trusses;
     std::vector<Fruit> fruits;
     HarvestRecord harvest;
-    // 이번 틱 값 (스냅샷·CO2 수지용)
+    // 이번 틱 값 (진단·리포트용 기록, CO2 수지가 총생산 − 유지 호흡을 읽어요)
     double last_gross_g_per_m2 = 0.0;        // 총생산
     double last_respiration_g_per_m2 = 0.0;  // 유지 호흡
     double last_supply_ratio = 1.0;          // 과실 공급 비율
-    // 프로토타입 점검 3차 (P2): 크기 충족도(Σ과실 건물 ÷ Σ목표 건물)의 이동 평균. 순생산 > 0인 틱에만 갱신 (당도 계수의 x)
+    // 크기 충족도(Σ 과실 건물 ÷ Σ 목표 건물)의 이동 평균 (strawberry-fruit 5번). 순생장 > 0인 틱에만 갱신.
+    // 당도의 공급 입력과 낙과 확률이 읽어요. 시작값 1, 저장 상태
     double size_satisfaction_mean = 1.0;
 
     // 달려 있는 과실 건물 합 g/m² (꽃은 0)

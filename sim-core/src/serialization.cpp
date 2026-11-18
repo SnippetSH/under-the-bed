@@ -28,10 +28,10 @@ constexpr std::size_t kWeatherHourBytes = 24;       // f64 × 3
 constexpr std::size_t kCurvePointBytes = 16;        // f64 × 2
 constexpr std::size_t kQueuedCommandMinBytes = 12;  // seq u64 + variant index u32
 constexpr std::size_t kMinStringBytes = 8;          // 길이 u64
-constexpr std::size_t kTrussBytes = 65;             // u64 + f64 + f64 + u8 + 진단 u64 x 5 + f64
+constexpr std::size_t kTrussBytes = 73;             // u64 + f64 x 2 + u8 + 진단(u64 x 5 + f64)
 constexpr std::size_t kFruitBytes = 106;            // u32 x 2 + u64 + u8 x 2 + f64 x 11
 constexpr std::size_t kF64Bytes = 8;
-constexpr std::size_t kWindowLayerBytes = 16;  // f64 x 2 (6차 개방률)
+constexpr std::size_t kWindowLayerBytes = 16;  // f64 x 2 (왼쪽·오른쪽 개방률)
 
 std::unexpected<Error> fail(ErrorCode code, std::string message) {
     return std::unexpected(Error{code, std::move(message)});
@@ -377,6 +377,36 @@ void read_crop(detail::ByteReader& r, Crop& c) {
     h.harvested_day_score_weighted = r.f64();
     h.harvested_night_score_weighted = r.f64();
     h.harvested_temp_score_weighted = r.f64();
+}
+
+// 세이브의 작물 구조 검사: 과위·화방 인덱스가 범위 안이고, 꽃(set = false)은 건물이 0이고,
+// 크기 구간 개수가 params와 맞는지. 시뮬레이션이 이 불변 조건에 기대어 인덱스를 써요.
+bool crop_structure_is_valid(const Crop& crop, const Params& params) {
+    if (!crop.present) {
+        return crop.trusses.empty() && crop.fruits.empty();
+    }
+    if (crop.harvest.harvested_size_class_counts.size() != params.fruit.size_class_bounds_g.size() + 1) {
+        return false;
+    }
+    const std::size_t ranks = params.fruit.rank_fraction.size();
+    for (const Fruit& fruit : crop.fruits) {
+        if (fruit.rank >= ranks || fruit.truss_index >= crop.trusses.size()) {
+            return false;
+        }
+        if (!fruit.set && fruit.dry_g != 0.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_window_open_level(const HouseParams& params, double open_fraction) {
+    for (const double level : params.window_open_levels) {
+        if (open_fraction == level) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---- 정적 입력 ----
@@ -1266,8 +1296,8 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     for (auto& layer : house_.window_open_fraction) {
         const double left = r.f64();
         const double right = r.f64();
-        if (!(left >= 0.0 && left <= 1.0) || !(right >= 0.0 && right <= 1.0)) {
-            return fail(ErrorCode::InvalidData, "house window open fraction is invalid");
+        if (!is_window_open_level(params_.house, left) || !is_window_open_level(params_.house, right)) {
+            return fail(ErrorCode::InvalidData, "house window open fraction is not an allowed level");
         }
         layer = {left, right};
     }
@@ -1326,6 +1356,9 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     for (Tile& tile : tiles_) {
         read_cell(r, tile.soil);
         read_crop(r, tile.crop);
+        if (r.ok() && !crop_structure_is_valid(tile.crop, params_)) {
+            return fail(ErrorCode::InvalidData, "saved crop has inconsistent trusses, fruits or harvest record");
+        }
     }
 
     ledger_.water_in_mm = r.f64();
