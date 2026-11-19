@@ -104,6 +104,7 @@ induction_temp_curve = [[3, 0], [12, 1], [30, 0]]
 induction_nitrogen_curve = [[0, 1], [1.0, 1], [1.3, 0.25]]
 truss_base_temp_degC = 5.0
 truss_degree_days_to_anthesis = 600.0
+induction_spread_index = 0
 flowers_per_truss_curve = [[1, 6], [10, 22]]
 [fruit]
 rank_fraction = [0.07, 0.13, 0.27, 0.53]
@@ -155,6 +156,7 @@ drainage_compaction_curve = [[0, 1.0], [1.0, 0.1]]
 [soil_temperature]
 relax_rate_per_hour = 0.04
 heat_degC_per_g_C = 0.4
+evap_cooling_degC_per_mm = 0.0
 [organic_matter]
 labile_decay_rate_per_hour = 0.004
 stable_decay_rate_per_hour = 0.00002
@@ -261,8 +263,16 @@ luxury_uptake_ratio = 1.3
 uptake_rate_per_g_root_per_hour = 0.002
 ca_uptake_rate_per_g_root_per_hour = 0.00019
 mg_uptake_rate_per_g_root_per_hour = 0.00021
-n_luxury_uptake_ratio = 1.3
+n_luxury_max_ratio = 1.3
+n_luxury_uptake_curve = [[0, 1], [1.3, 1]]
+mn_uptake_regulation_curve = [[0, 1], [100, 1]]
+uptake_temp_curve = [[0, 1], [40, 1]]
 n_uptake_rate_per_g_root_per_hour = 0.000015
+reserve_capacity_fraction = 0
+reserve_fill_fraction = 0
+reserve_release_rate_per_hour = 0
+maintenance_activity_curve = [[-1, 1], [1, 1]]
+rgr_mean_relax_rate_per_hour = 0
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015
 root_recovery_rate_per_hour = 0.002
 death_root_health = 0.05
@@ -520,10 +530,11 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
     }
 }
 
+// 2026-11-19 디렉터 승인: 비교 대상을 test_params()에서 repo_params()(test_params + M5a 사전 작업 값)로 바꿈
 TEST_CASE("Repository params.toml matches the spec values used by tests", "[unit][loader][data]") {
     auto loaded = simdata::load_params(test::repo_path("data/params.toml"));
     REQUIRE(loaded.has_value());
-    CHECK(*loaded == test::test_params());
+    CHECK(*loaded == test::repo_params());
 }
 
 TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {

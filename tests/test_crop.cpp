@@ -72,10 +72,10 @@ std::optional<sim::PlantDiedEvent> run_until_death(sim::Crop& crop, sim::SoilCel
 }
 
 // 체내 양분을 사치 흡수 한도(요구량 x 배율)에 맞춰 흡수가 0이 되게 해요.
-// M4: 요구량에 관부·과실이 들어가고(strawberry-fruit 8번), N은 자기 상한(n_luxury_uptake_ratio)을 가져요.
+// M4: 요구량에 관부·과실이 들어가고(strawberry-fruit 8번), N은 자기 상한(n_luxury_max_ratio)을 가져요.
 void fill_to_luxury(sim::Crop& crop, const sim::CropParams& cp) {
     const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(crop, cp);
-    crop.plant_N_g_per_m2 = required.N * cp.n_luxury_uptake_ratio;
+    crop.plant_N_g_per_m2 = required.N * cp.n_luxury_max_ratio;
     crop.plant_P_g_per_m2 = required.P * cp.luxury_uptake_ratio;
     crop.plant_K_g_per_m2 = required.K * cp.luxury_uptake_ratio;
     crop.plant_Ca_g_per_m2 = required.Ca * cp.luxury_uptake_ratio;
@@ -320,7 +320,7 @@ TEST_CASE("Crop at luxury nutrient content takes up nothing", "[unit][crop]") {
     const auto status = sim::process::nutrient_status(crop, params.crop);
     CHECK(status.sufficiency_N == 1.0);
     // N 과잉 지수는 N 전용 상한 0.2, 나머지는 일반 사치 상한 0.3
-    CHECK_THAT(status.excess_N, WithinRel(params.crop.n_luxury_uptake_ratio - 1.0, 1e-9));
+    CHECK_THAT(status.excess_N, WithinRel(params.crop.n_luxury_max_ratio - 1.0, 1e-9));
     CHECK_THAT(status.excess_K, WithinRel(params.crop.luxury_uptake_ratio - 1.0, 1e-9));
     CHECK_THAT(status.excess_Ca, WithinRel(params.crop.luxury_uptake_ratio - 1.0, 1e-9));
 }
@@ -358,10 +358,10 @@ TEST_CASE("N uptake uses its own rate the establishment factor and its own luxur
     const double factor = params.phenology.establishment_growth_curve(index);
     REQUIRE(factor < 0.5);
     CHECK(run(params, 0.0) == Catch::Approx(base * factor));
-    // 체내 N이 요구량의 n_luxury_uptake_ratio(1.2)에 닿으면 수요 0
+    // 체내 N이 요구량의 n_luxury_max_ratio(1.2)에 닿으면 수요 0
     sim::SoilCell cell = test::test_cell();
     sim::Crop capped = make_crop(params);
-    capped.plant_N_g_per_m2 = sim::process::nutrient_requirement(capped, cp).N * cp.n_luxury_uptake_ratio;
+    capped.plant_N_g_per_m2 = sim::process::nutrient_requirement(capped, cp).N * cp.n_luxury_max_ratio;
     sim::Ledger ledger;
     (void)step(capped, cell, params, full_availability(cell), kNightSolar_W_per_m2, ledger);
     CHECK(ledger.N_uptake_g == 0.0);
@@ -492,7 +492,7 @@ TEST_CASE("Crop uptake never exceeds availability, demand or the soil pool", "[u
                                   const sim::process::NutrientAvailability& available) {
         const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(crop, params.crop);
         const double demand_N =
-            std::max(0.0, required.N * params.crop.n_luxury_uptake_ratio - crop.plant_N_g_per_m2);
+            std::max(0.0, required.N * params.crop.n_luxury_max_ratio - crop.plant_N_g_per_m2);
         const double demand_P =
             std::max(0.0, required.P * params.crop.luxury_uptake_ratio - crop.plant_P_g_per_m2);
         const double demand_K =
@@ -532,7 +532,7 @@ TEST_CASE("Crop uptake never exceeds availability, demand or the soil pool", "[u
         crop.root_g_per_m2 = 5000.0;
         // 사치 흡수 상한 바로 아래: 요구량이 유효량보다 훨씬 작음 (N 상한 1.2, 나머지 1.3)
         const sim::process::NutrientRequirement required = sim::process::nutrient_requirement(crop, params.crop);
-        crop.plant_N_g_per_m2 = 0.999 * params.crop.n_luxury_uptake_ratio * required.N;
+        crop.plant_N_g_per_m2 = 0.999 * params.crop.n_luxury_max_ratio * required.N;
         crop.plant_P_g_per_m2 = 0.999 * params.crop.luxury_uptake_ratio * required.P;
         crop.plant_K_g_per_m2 = 0.999 * params.crop.luxury_uptake_ratio * required.K;
         const sim::SoilCell cell = test::test_cell();

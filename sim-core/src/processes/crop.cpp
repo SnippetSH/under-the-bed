@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "fruit_list.hpp"
+#include "sim/calendar.hpp"
 #include "sim/processes.hpp"
 
 namespace sim::process {
@@ -514,8 +515,18 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
                       non_negative(crop.crown_g_per_m2) * cp.maintenance_rate_crown_per_hour +
                       non_negative(crop.root_g_per_m2) * cp.maintenance_rate_root_per_hour +
                       fruit_dry_g_per_m2 * cp.maintenance_rate_fruit_per_hour) *
-                     cp.maintenance_temp_curve(air_degC));
+                     cp.maintenance_temp_curve(air_degC) * cp.maintenance_activity_curve(crop.rgr_mean_per_day));
     const double net_g_per_m2 = gross_g_per_m2 - respiration_g_per_m2;
+    // RGR 이동 평균 (strawberry-fruit 4번 유지 호흡 활성 보정): 이번 틱 순생장 ÷ 전체 건물(영양 기관 + 과실 + 저장), 시간당 → 일당(× 24)
+    {
+        const double total_g_per_m2 =
+            vegetative_biomass_g_per_m2(crop) + fruit_dry_g_per_m2 + non_negative(crop.reserve_g_per_m2);
+        if (total_g_per_m2 > 0.0) {
+            const double rgr_tick_per_day = net_g_per_m2 / total_g_per_m2 * kHoursPerDay;
+            crop.rgr_mean_per_day +=
+                (rgr_tick_per_day - crop.rgr_mean_per_day) * std::min(1.0, cp.rgr_mean_relax_rate_per_hour);
+        }
+    }
 
     // 분배 (strawberry-fruit 4번): 착과된 과실의 따라잡기 수요 = 새 진행도의 목표 건물 − 지금 건물
     const double development_increment = fruit_development_increment(fp, air_degC);
@@ -525,10 +536,25 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
             fruit_demand_g_per_m2 += non_negative(fruit_target_dry_g(fruit, fp, development_increment) - fruit.dry_g);
         }
     }
-    const double fruit_supply_g_per_m2 =
+    // 광합성에서 과실로 가는 몫
+    const double assimilate_supply_g_per_m2 =
         net_g_per_m2 > 0.0 ? std::min(fruit_demand_g_per_m2, net_g_per_m2 * cp.max_fruit_assimilate_fraction) : 0.0;
+    // 저장 탄수화물 (strawberry-fruit 4b) 쓰기 2: 순생장 > 0인 틱에 과실 공급이 수요보다 작으면 모자란 몫을
+    // 저장에서 꺼내요 (틱당 저장 × reserve_release_rate_per_hour까지). 저장 → 과실 내부 이동이라 CO2 수지는 그대로.
+    double reserve_release_g_per_m2 = 0.0;
+    if (net_g_per_m2 > 0.0 && assimilate_supply_g_per_m2 < fruit_demand_g_per_m2) {
+        reserve_release_g_per_m2 =
+            std::min({fruit_demand_g_per_m2 - assimilate_supply_g_per_m2,
+                      non_negative(crop.reserve_g_per_m2) * std::min(1.0, cp.reserve_release_rate_per_hour),
+                      non_negative(crop.reserve_g_per_m2)});
+        crop.reserve_g_per_m2 = non_negative(crop.reserve_g_per_m2 - reserve_release_g_per_m2);
+    }
+    const double fruit_supply_g_per_m2 = assimilate_supply_g_per_m2 + reserve_release_g_per_m2;
     const double supply_ratio =
         fruit_demand_g_per_m2 > 0.0 ? std::clamp(fruit_supply_g_per_m2 / fruit_demand_g_per_m2, 0.0, 1.0) : 1.0;
+    // 채우기: 광합성만으로 과실이 다 채워진 틱(또는 과실 수요 없음)
+    const bool reserve_fill_allowed =
+        fruit_demand_g_per_m2 > 0.0 ? assimilate_supply_g_per_m2 >= fruit_demand_g_per_m2 : true;
     if (net_g_per_m2 > 0.0) {
         // 과실 증가 = 수요 × 공급 비율, 같은 순회에서 크기 충족도(5번)의 합도 구해요 (분배 뒤 건물 기준).
         // 크기 충족도(틱) = Σ 건물 ÷ Σ 목표 건물 (착과된 과실, 과실이 없으면 1, 0~1).
@@ -553,15 +579,29 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
                                        std::min(1.0, params.house.temp_mean_relax_rate_per_hour);
 
         // 나머지(순생장 − 과실 공급)를 잎·관부·뿌리에 vegetative_*_fraction대로
-        const double rest_g_per_m2 = non_negative(net_g_per_m2 - fruit_supply_g_per_m2);
+        double rest_g_per_m2 = non_negative(net_g_per_m2 - assimilate_supply_g_per_m2);
+        // 저장 채우기: 영양 생장 몫의 reserve_fill_fraction을 저장으로, 상한 = capacity × (관부 + 뿌리)
+        if (reserve_fill_allowed && cp.reserve_capacity_fraction > 0.0) {
+            const double capacity_g_per_m2 = cp.reserve_capacity_fraction * (non_negative(crop.crown_g_per_m2) +
+                                                                             non_negative(crop.root_g_per_m2));
+            const double fill_g_per_m2 =
+                std::min(rest_g_per_m2 * std::clamp(cp.reserve_fill_fraction, 0.0, 1.0),
+                         non_negative(capacity_g_per_m2 - non_negative(crop.reserve_g_per_m2)));
+            crop.reserve_g_per_m2 = non_negative(crop.reserve_g_per_m2) + fill_g_per_m2;
+            rest_g_per_m2 -= fill_g_per_m2;
+        }
         crop.leaf_g_per_m2 += rest_g_per_m2 * cp.vegetative_leaf_fraction;
         crop.crown_g_per_m2 += rest_g_per_m2 * cp.vegetative_crown_fraction;
         crop.root_g_per_m2 += rest_g_per_m2 * cp.vegetative_root_fraction;
     } else if (net_g_per_m2 < 0.0) {
-        // 부족분을 잎·관부·뿌리에서 건물 비율대로 (과실은 줄이지 않음). 탄소는 공기로(장부 밖), 체내 양분은 그대로.
+        // 저장 쓰기 1: 부족분을 저장에서 먼저 (strawberry-fruit 4b)
+        const double from_reserve_g_per_m2 = std::min(non_negative(crop.reserve_g_per_m2), -net_g_per_m2);
+        crop.reserve_g_per_m2 = non_negative(crop.reserve_g_per_m2 - from_reserve_g_per_m2);
+        const double deficit_g_per_m2 = non_negative(-net_g_per_m2 - from_reserve_g_per_m2);
+        // 남은 부족분을 잎·관부·뿌리에서 건물 비율대로 (과실은 줄이지 않음). 탄소는 공기로(장부 밖), 체내 양분은 그대로.
         const double vegetative = vegetative_biomass_g_per_m2(crop);
-        if (vegetative > 0.0) {
-            const double keep = 1.0 - std::min(1.0, -net_g_per_m2 / vegetative);
+        if (vegetative > 0.0 && deficit_g_per_m2 > 0.0) {
+            const double keep = 1.0 - std::min(1.0, deficit_g_per_m2 / vegetative);
             crop.leaf_g_per_m2 = non_negative(crop.leaf_g_per_m2) * keep;
             crop.crown_g_per_m2 = non_negative(crop.crown_g_per_m2) * keep;
             crop.root_g_per_m2 = non_negative(crop.root_g_per_m2) * keep;
@@ -612,7 +652,10 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
 
     // ---- h5. 흡수 (요구량에 관부·과실 포함, 흡수 능력에 활착 배율) ----
     const NutrientRequirement required = nutrient_requirement(crop, cp, fruit_dry_g_per_m2);
+    // 근권 온도 배율 (strawberry-minimal 3번, m5-overview 13.1): 모든 원소의 흡수 능력에 곱해요
+    const double uptake_temp_factor = cp.uptake_temp_curve(cell.soil_temp_degC);
     const double root_capacity_factor =
+        uptake_temp_factor *
         std::min(1.0, cp.uptake_rate_per_g_root_per_hour * non_negative(crop.root_g_per_m2) * crop.root_health) *
         water_salt.water * water_salt.salt * growth_factor_establish;
 
@@ -641,9 +684,10 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
         // N 전용 사치 흡수 상한·흡수 속도 (strawberry-minimal 3번, strawberry-fruit 8번)
         const double n_capacity_factor =
             std::min(1.0, cp.n_uptake_rate_per_g_root_per_hour * non_negative(crop.root_g_per_m2) * crop.root_health) *
-            water_salt.water * water_salt.salt * growth_factor_establish;
+            water_salt.water * water_salt.salt * growth_factor_establish * uptake_temp_factor *
+            cp.n_luxury_uptake_curve(nutrient_ratio(crop.plant_N_g_per_m2, required.N));
         const double uptake_N_g_per_m2 =
-            std::min(demand_g_per_m2(crop.plant_N_g_per_m2, required.N, cp.n_luxury_uptake_ratio, 1.0),
+            std::min(demand_g_per_m2(crop.plant_N_g_per_m2, required.N, cp.n_luxury_max_ratio, 1.0),
                      available_N_g_per_m2 * n_capacity_factor);
         double nh4_uptake_g_per_m2 = 0.0;
         double no3_uptake_g_per_m2 = 0.0;
@@ -675,11 +719,11 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
     const double ca_capacity_g_per_m2 =
         non_negative(available.ca) *
         (std::min(1.0, cp.ca_uptake_rate_per_g_root_per_hour * root_mass_health_g_per_m2) * water_salt.water *
-         water_salt.salt * crop.antagonism_Ca_factor * growth_factor_establish);
+         water_salt.salt * crop.antagonism_Ca_factor * growth_factor_establish * uptake_temp_factor);
     const double mg_capacity_g_per_m2 =
         non_negative(available.mg) *
         (std::min(1.0, cp.mg_uptake_rate_per_g_root_per_hour * root_mass_health_g_per_m2) * water_salt.water *
-         water_salt.salt * crop.antagonism_Mg_factor * growth_factor_establish);
+         water_salt.salt * crop.antagonism_Mg_factor * growth_factor_establish * uptake_temp_factor);
     const double ca_demand_g_per_m2 =
         demand_g_per_m2(crop.plant_Ca_g_per_m2, required.Ca, cp.luxury_uptake_ratio,
                         std::max(params.antagonism.min_demand_factor, crop.antagonism_Ca_factor));
@@ -698,7 +742,8 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
             non_negative(available.mn) *
             std::min(1.0, cp.mn_uptake_rate_per_g_root_per_hour * non_negative(crop.root_g_per_m2) *
                               crop.root_health) *
-            water_salt.water * water_salt.salt * growth_factor_establish;
+            water_salt.water * water_salt.salt * growth_factor_establish * uptake_temp_factor *
+            cp.mn_uptake_regulation_curve(nutrient_ratio(crop.plant_Mn_g_per_m2, required.Mn));
         ledger.Mn_uptake_g += transfer_from_solution(cell.mn_g_per_m2, cell.mn_solution_g_per_m2,
                                                      crop.plant_Mn_g_per_m2,
                                                      std::min(mn_demand_g_per_m2, mn_capacity_g_per_m2));
@@ -735,8 +780,21 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
             non_negative(crop.root_g_per_m2),
             non_negative(crop.root_g_per_m2) * std::min(1.0, damage_per_hour) * cp.root_dieback_per_damage);
         if (dead_root_g_per_m2 > 0.0) {
+            // 저장 잃기 (strawberry-fruit 4b): 저장은 관부·뿌리에 있다고 보고, 죽은 뿌리 / (관부 + 뿌리) 비율만큼 토양 이분해성 C로.
+            // 저장에는 양분이 없어서 양분 share(before)에는 넣지 않아요.
+            const double storage_organs_g_per_m2 =
+                non_negative(crop.crown_g_per_m2) + non_negative(crop.root_g_per_m2);
+            double lost_reserve_g_per_m2 = 0.0;
+            if (storage_organs_g_per_m2 > 0.0 && crop.reserve_g_per_m2 > 0.0) {
+                lost_reserve_g_per_m2 =
+                    crop.reserve_g_per_m2 * std::min(1.0, dead_root_g_per_m2 / storage_organs_g_per_m2);
+                crop.reserve_g_per_m2 = non_negative(crop.reserve_g_per_m2 - lost_reserve_g_per_m2);
+            }
             crop.root_g_per_m2 -= dead_root_g_per_m2;
             ledger.C_root_litter_g += return_litter(crop, cell, cp, dead_root_g_per_m2, before);
+            const double reserve_C_g_per_m2 = lost_reserve_g_per_m2 * cp.dry_matter_C_fraction;
+            cell.labile_C_g_per_m2 += reserve_C_g_per_m2;
+            ledger.C_root_litter_g += reserve_C_g_per_m2;
         }
     }
 
@@ -753,6 +811,13 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
 
     if (crop.root_health < cp.death_root_health) {
         crop.alive = false;
+        // 포기 사망 (strawberry-fruit 4b): 저장 전부를 토양 이분해성 C로 (구조 건물은 지금처럼 죽은 포기에 남아요)
+        if (crop.reserve_g_per_m2 > 0.0) {
+            const double reserve_C_g_per_m2 = crop.reserve_g_per_m2 * cp.dry_matter_C_fraction;
+            crop.reserve_g_per_m2 = 0.0;
+            cell.labile_C_g_per_m2 += reserve_C_g_per_m2;
+            ledger.C_root_litter_g += reserve_C_g_per_m2;
+        }
         result.died =
             PlantDiedEvent{.tile_index = env.tile_index, .cause = static_cast<RootDamageCause>(dominant_cause_index)};
     }

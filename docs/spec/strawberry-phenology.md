@@ -1,6 +1,7 @@
 # 딸기 생물계절: 활착, 화아분화, 화방 발달, 개화·착과, 모종 등급
 
 - 상태: 승인 (2026-11-18, 프로토타입 점검 결과 반영본 최종 승인)
+- M5a 사전 작업 반영 (2026-11-19 승인, [m5-overview](m5-overview.md) 13장): 화아분화 질소 곡선 A, 포기 간 화아분화 차이
 - 마일스톤: M4
 - 관련: [m4-overview](m4-overview.md), [strawberry-fruit](strawberry-fruit.md), [strawberry-minimal](strawberry-minimal.md), [ADR-0006](../decisions/0006-off-season-and-disinfection.md), 계획서 5장
 
@@ -56,9 +57,10 @@
 | `phenology.induction_rate_per_hour` | 최적 조건에서 화아분화 진행 속도 | 0.002 | 약 21일에 화방 1개 |
 | `phenology.induction_day_length_curve` | x = 낮 길이 h | `[[8,1],[11.5,1],[12.5,0.6],[13.5,0.1],[14,0]]` | 단일 식물. 봄 장일에서 분화가 멈춰 작기가 자연히 끝나요 |
 | `phenology.induction_temp_curve` | x = 하우스 기온 °C | `[[3,0],[8,0.5],[12,1],[22,1],[26,0.3],[30,0]]` | 저온(10~20 °C)에서 촉진, 고온에서 억제 |
-| `phenology.induction_nitrogen_curve` | x = 체내 N 비율(체내 N / 요구량, 요구량에는 관부·과실 포함) | `[[0,1],[1.1,1],[1.3,0.6],[1.5,0.25]]` | 질소 과다로 분화 지연 (계획서 5장). (2026-11-18 프로토타입 점검으로 조정: 이전 `[[0,1],[1.0,1],[1.15,0.6],[1.3,0.25]]`. 체내 N 비율이 쉽게 포화해 분화를 막던 문제(1차 점검)에 맞춘 조정) |
+| `phenology.induction_nitrogen_curve` | x = 체내 N 비율(체내 N / 요구량, 요구량에는 관부·과실 포함) | `[[0,1],[1.05,1],[1.15,0.7],[1.5,0.5]]` | 질소 과다로 분화 지연 (계획서 5장). (M5a 사전 작업, 디렉터 선택 A: 부드러운 N 상한으로 표준이 겨울 약 1.05, 과다가 1.3~1.4가 되어 다시 맞춤. S14 첫 수확 +4~5일, 과다 누적 약 −20%) [이전 `[[0,1],[1.1,1],[1.3,0.6],[1.5,0.25]]` (2026-11-18 점검), 그전 `[[0,1],[1.0,1],[1.15,0.6],[1.3,0.25]]`] |
 | `phenology.truss_base_temp_degC` | 화방 발달 적산온도 기준 | 5 | |
 | `phenology.truss_degree_days_to_anthesis` | 분화 → 개화 적산온도 | 350 | °C·일. 가을 약 35~40일 (2026-11-18 프로토타입 점검으로 조정: 이전 600. 화방이 너무 느려 수확이 늦었어요) |
+| `phenology.induction_spread_index` (M5a 사전 작업, 신설) | 정식 때 셀마다 화아분화 진행도를 0~이 값만큼 늦춰요 (포기 간 생육 차이). 0이면 꺼짐, 범위 [0, 1] | 0.4 | 게임용 임의값. 아래 2번 "포기 간 차이" |
 | `phenology.flowers_per_truss_curve` | x = 포기당 관부 건물 g, y = 포기당 꽃 수 | `[[1,6],[3,12],[6,18],[10,22]]` | 관부가 굵을수록 꽃이 많아요 |
 | `house.temp_mean_relax_rate_per_hour` | 이동 평균의 시간당 완화 비율 | 0.042 | 약 1/24 |
 
@@ -99,6 +101,18 @@ if induction ≥ 1: 새 화방 추가, induction −= 1
 - 새 화방의 꽃 수: `flowers_per_m2 = flowers_per_truss_curve(관부 / plants_per_m2) × plants_per_m2`. 분화할 때의 포기 세력으로 정해져요.
 - 방향: 가을 단일·저온에서 화방이 이어서 생기고, 봄 장일이 되면 멈춰요. 질소 과다·고온이면 늦어져요.
 
+**포기 간 차이 (정식 때, M5a 사전 작업, 2026-11-19 승인)**
+
+```
+induction_spread_index > 0이면 월드 생성 때 타일 순서(행 우선)대로 셀마다:
+    induction_index = max(0, 모종 등급 initial_induction_index − induction_spread_index × U[0,1))     (biology 난수)
+```
+
+- 셀(1 m², 8포기)은 한 덩어리로 움직이고 하우스의 모든 셀이 같은 환경을 받아서, 차이가 없으면 80셀의 화방이 한꺼번에 분화·개화해요. 그러면 1월 초 탄소가 모자란 시기에 하우스 전체의 어린 과실이 한꺼번에 떨어져 겨울 월별 수확이 크게 출렁였어요(m5-overview 13.4b 5차). 셀마다 시작 진행도를 다르게 두면 화방 파동이 흩어져요.
+- 값이 0이면 난수를 뽑지 않아요. 그래서 M1~M4 시나리오·테스트의 biology 난수 순서가 그대로예요.
+- 이후 화아분화는 같은 식으로 진행하고, 셀 사이의 차이(위상)가 유지돼요.
+- M5a `Plant` 명령([m5-overview](m5-overview.md) 8장)으로 다시 심을 때도 같은 규칙을 써야 해요.
+
 ### 3. 화방 발달과 개화
 
 ```
@@ -131,7 +145,15 @@ if development ≥ 1 and not opened: 개화 → 꽃 만들기 ([strawberry-fruit
 | 적산온도 350 °C·일 도달 | 개화, 꽃(과실) 생성 |
 | 모종 A 대 C | 초기 화아분화 진행도·건물이 A가 큼 |
 | `initial_induction_index` 1.2 또는 −0.1 | 검증에서 거부 (범위 [0, 1]) |
+| (M5a 사전 작업) `induction_spread_index` 0 대 0.4, 같은 시드 | 0이면 모든 셀이 등급 시작값, 0.4면 셀 절반 넘게 서로 다르고 모두 [시작값 − 0.4, 시작값] 안. 같은 시드 두 번은 같은 배치 |
 | 활착 시작값 1 대 0 | 1 쪽은 활착 배율 1로 바로 생장·흡수, 0 쪽은 약 10일에 걸쳐 올라감 |
+
+시나리오(M5a 사전 작업, `tests/test_m4_scenarios.cpp`):
+
+| 이름 | 기대 |
+| --- | --- |
+| Induction spread evens out the winter harvest | season_standard에서 포기 간 차이를 끄면(0) 12·1·2월 수확의 (최대 − 최소) / 평균이 커짐 (0.4: 0.185, 0: 0.210) |
+| M5a prework standard season has an even winter and rising spring harvest | season_standard 12·1·2월이 평균 ±10% 안, 3 < 4 < 5월 (733 / 608 / 680 / 1,017 / 1,270 / 1,751 g/m²) |
 
 ## 단순화와 비목표
 

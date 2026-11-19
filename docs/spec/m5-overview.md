@@ -325,6 +325,8 @@ M4 작기 결과에서 체내 N 상태(`excess_index_N`, 사치 상한 1.2에서
 
 ## 13. M5a 사전 작업: 기준 모델 보정 (2026-11-19 디렉터 결정 14·15)
 
+- **상태: 승인·구현 완료 (2026-11-19).** 디렉터가 5b차 결과의 값·구조, 테스트 #31 기대값 변경(비교 대상 `test::repo_params()`), 새 1작기 기준값을 일괄 승인했어요. `feature/m5a`에 정식 구현(프로토타입 비교용 스위치 `uptake_temp_n_only` 제거, 세이브 v7), 단위 테스트 `tests/test_m5a_prework.cpp`, 인과 시나리오 테스트 3개(`[scenario][m5a]`, test_m4_scenarios.cpp), 기준값 `tests/baselines/m4_season_summary.json` 갱신. 바뀐 내용은 strawberry-minimal·strawberry-fruit(4b 저장 탄수화물)·soil-temperature·manganese·strawberry-phenology 명세에 반영했어요.
+
 M5a 프로토타입의 1작기 회귀가 "M5a 때문에 바뀐 것"만 잡도록, **M4 결과(1작기 기준값)를 바꾸는 보정을 먼저 따로** 해요. 명세 승인 → 프로토타입 1~2차 → 새 기준값 승인 → 구현·병합 → 그 뒤 M5a.
 
 ### 13.1 작물 N 흡수 (strawberry-minimal·strawberry-fruit 변경)
@@ -359,9 +361,9 @@ soil_temp −= evaporated_mm × evap_cooling_degC_per_mm         (셀 b, 완화 
 
 - 문제: 12~2월은 광합성 공급이 과실 수요의 3~15%뿐이라 어린 과실이 수확 수의 약 2배 떨어지고, 밤 호흡이 잎·관부·뿌리 구조를 바로 깎아요. 실제 딸기는 가을에 관부·뿌리에 저장한 탄수화물로 겨울 과실을 받쳐요.
 - 상태: 작물 `reserve_g_per_m2`(건물 환산 g/m², 양분 없음).
-- 채우기: 과실 공급 비율이 1(과실이 다 채워짐)인 틱에 잎·관부·뿌리 몫의 `crop.reserve_fill_fraction`을 저장으로. 상한 = `crop.reserve_capacity_fraction` × (관부 + 뿌리).
+- 채우기: 광합성만으로 과실 수요가 다 채워진 틱(또는 과실 수요가 없는 틱, 저장에서 꺼내 채운 틱은 제외)에 잎·관부·뿌리 몫의 `crop.reserve_fill_fraction`을 저장으로. 상한 = `crop.reserve_capacity_fraction` × (관부 + 뿌리).
 - 쓰기: (1) 순생장이 음수면 부족분을 저장에서 먼저, 모자라면 구조에서. (2) 과실 공급이 수요보다 작으면 모자란 몫을 저장에서 꺼내요(틱당 저장의 `crop.reserve_release_rate_per_hour`까지).
-- 잃기: 뿌리 고사·포기 사망 때 같은 비율로 토양 이분해성 C로(장부 `C_leaf_litter`와 같은 규칙).
+- 잃기: 뿌리 고사 때 죽은 뿌리 / (관부 + 뿌리) 비율만큼, 포기 사망 때 전부 토양 이분해성 C로(장부 `C_root_litter`, 저장은 관부·뿌리에 있다고 봄).
 - 목표: 12·1·2월 수확이 고르고(서로 ±10% 안), 3 < 4 < 5월로 서서히 늘고, 표준 누적 약 5.8 kg/m²(광이용효율 2.1, 필요하면 다시 맞춤). 겨울 낙과 감소.
 
 ### 13.4b 프로토타입 진행 기록 (2026-11-19, `proto/m5a-pre`, 워크트리 `B:\Projects\FarmingGame-proto-m5a-pre`)
@@ -383,7 +385,7 @@ soil_temp −= evaporated_mm × evap_cooling_degC_per_mm         (셀 b, 완화 
 ### 13.5 산출물
 
 - 프로토타입 1~2차: 위 두 변경, 체내 N 월별 표(표준·과다·웃거름 없음), A3b 지온, 1작기 회귀 표(옛 기준값 대비).
-- 승인되면 strawberry-minimal·strawberry-fruit·soil-temperature 명세 갱신, `tests/baselines/m4_season_summary.json` 갱신(디렉터 승인), balancing 27 정리.
+- 승인되면 strawberry-minimal·strawberry-fruit·soil-temperature 명세 갱신, `tests/baselines/m4_season_summary.json` 갱신(디렉터 승인), balancing 27 정리. → 2026-11-19 승인·반영 완료(위 상태 줄, 망간·생물계절 명세와 balancing 31 포함).
 
 ## 14. 프로토타입 계획 (M5a 초안 승인 뒤, 13장 사전 작업 병합 뒤)
 

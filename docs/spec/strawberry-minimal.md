@@ -3,6 +3,7 @@
 - 상태: 승인 (2026-11-18)
 - M3 반영: 2026-11-18 ([m3-overview](m3-overview.md))
 - M4 반영: 2026-11-18 ([m4-overview](m4-overview.md)). `(M4 점검)` 표시는 프로토타입 점검으로 바뀐 값, `(M4, 2026-11-18)` 표시는 "M1~M3 명세 변경" 표의 구조 변경이에요. 분배·호흡·과실·낙엽의 상세는 [strawberry-fruit](strawberry-fruit.md), 생물계절·활착은 [strawberry-phenology](strawberry-phenology.md)가 정본이에요
+- M5a 사전 작업 반영 (2026-11-19 승인, [m5-overview](m5-overview.md) 13장): `(M5a 사전 작업)` 표시는 근권 온도 흡수 배율(모든 원소), 부드러운 N 사치 상한, Mn 흡수 조절, 광이용효율 변경이에요
 - 마일스톤: M2
 - 관련: [m2-overview](m2-overview.md), [soil-chemistry](soil-chemistry.md), [aeration](aeration.md), 계획서 5장
 
@@ -40,7 +41,7 @@
 | `crop.specific_leaf_area_m2_per_g` | 잎 1 g당 잎 면적 | 0.02 | 200 cm²/g |
 | `crop.light_interception_curve` | x = LAI, y = 받는 빛 비율 | `[[0,0],[0.5,0.3],[1,0.5],[2,0.75],[3,0.88],[4,0.94]]` | 지수 감쇠(k≈0.7) 모양 |
 | `crop.par_fraction` | 일사 중 광합성 유효광 비율 | 0.48 | 일반값 |
-| `crop.light_use_efficiency_g_per_MJ` | 받은 PAR 1 MJ당 건물 생산 | 2.25 | 작물 일반 범위 (M4 점검, 2026-11-18 프로토타입 점검으로 조정: 이전 2.5. 5차 디렉터 승인) |
+| `crop.light_use_efficiency_g_per_MJ` | 받은 PAR 1 MJ당 건물 생산 | 2.1 | 작물 일반 범위 (M5a 사전 작업, 2026-11-19 디렉터 결정) [이전 2.25 (M4 점검 5차 디렉터 승인), 그전 2.5] |
 | `crop.temp_curve` | x = 하우스 기온 °C | `[[3,0],[8,0.3],[15,0.8],[20,1.0],[25,1.0],[30,0.6],[35,0.2],[40,0]]` | 딸기 생장 적온 대략 18~25 °C |
 | ~~`crop.leaf_allocation_fraction`~~ | **(M4, 2026-11-18 삭제)** 현재 값이 아니에요. 생장 분배는 과실 따라잡기 수요 우선, 나머지를 `vegetative_*_fraction`으로 잎·관부·뿌리에 나눠요([strawberry-fruit](strawberry-fruit.md) 4번) | - | - |
 | `crop.water_stress_curve` | x = relative_water | `[[0.2,0],[0.4,0.3],[0.6,0.9],[0.75,1.0],[2.0,1.0]]` | |
@@ -55,8 +56,12 @@
 | `crop.luxury_uptake_ratio` | 적정 농도의 몇 배까지 더 먹는지 (과잉 지수의 원천) | 1.3 | |
 | `crop.uptake_rate_per_g_root_per_hour` | 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율. (M3) N·P·K에 써요. Ca·Mg·Mn은 아래 전용 속도. (M4 점검) **N도 전용 속도로 옮겨서 P·K에만 써요** | 0.002 | |
 | `crop.ca_uptake_rate_per_g_root_per_hour`, `crop.mg_uptake_rate_per_g_root_per_hour` (M3, 2026-11-18) | Ca·Mg 전용 흡수 속도. 일반 속도(0.002)는 Ca·Mg 흡수 능력이 필요량의 30~100배가 돼 길항이 무효였어요 | 0.00019, 0.00021 | 게임용 임의값. [cation-exchange](cation-exchange.md) |
-| `crop.mn_uptake_rate_per_g_root_per_hour`, `crop.mn_max_uptake_ratio`, `crop.mn_toxicity_curve` (M3, 2026-11-18) | Mn 전용 흡수 속도, 수요 상한 배수, 독성 곡선 | 0.00001, 30, 곡선은 [manganese](manganese.md) | 게임용 임의값 (M4 점검, 2026-11-18 프로토타입 점검으로 조정: 속도 이전 0.00004) |
-| `crop.n_luxury_uptake_ratio` (M4 점검, 신설) | N 전용 사치 흡수 상한 (적정 대비 배수). N 체내 비율이 공급을 따라가게 (Ca·Mg 전용 속도와 같은 패턴) | 1.2 | 게임용 임의값 (2026-11-18 프로토타입 점검으로 신설, 점검 중 1.5 → 1.2로 조정) |
+| `crop.mn_uptake_rate_per_g_root_per_hour`, `crop.mn_max_uptake_ratio`, `crop.mn_toxicity_curve` (M3, 2026-11-18) | Mn 전용 흡수 속도, 수요 상한 배수, 독성 곡선 | 0.00002, 30, 곡선은 [manganese](manganese.md) | 게임용 임의값 (M5a 사전 작업: 속도 0.00001 → 0.00002, 체내 Mn 과잉은 아래 조절 곡선이 막아요. 그전 M4 점검 0.00004 → 0.00001) |
+| `crop.mn_uptake_regulation_curve` (M5a 사전 작업, 신설) | x = 체내 Mn / 요구량, y = Mn 흡수 능력 배율 | `[[0,1],[1,1],[1.5,0.2],[2,0.03],[100,0.03]]` | 게임용 임의값. [manganese](manganese.md) 4번 |
+| ~~`crop.n_luxury_uptake_ratio`~~ | **(M5a 사전 작업 삭제)** 하드 상한 1.2는 아래 두 키로 바뀌었어요. 겨울에 표준·과다 처방 모두 체내 N 비율이 1.2에 붙어 구분되지 않았어요([m5-overview](m5-overview.md) 12장 "질소 과다 분석") | - | [이전 1.2 (M4 점검)] |
+| `crop.n_luxury_max_ratio` (M5a 사전 작업, 신설) | N 수요 상한 (적정 대비 배수, 부드러운 상한의 끝) | 1.6 | 게임용 임의값 |
+| `crop.n_luxury_uptake_curve` (M5a 사전 작업, 신설) | x = 체내 N / 요구량, y = N 흡수 능력 배율 (부드러운 사치 상한) | `[[0,1],[0.9,1],[1.1,0.4],[1.3,0.1],[1.5,0]]` | 게임용 임의값. 표준 12~2월 체내 N 비율 약 1.04~1.06, N 과다 1.31~1.39 |
+| `crop.uptake_temp_curve` (M5a 사전 작업, 신설) | x = 토양 온도 °C, y = **모든 원소**(N·P·K·Ca·Mg·Mn)의 흡수 능력 배율 (근권 온도) | `[[5,0.2],[10,0.45],[15,0.75],[20,1],[30,1],[35,0.7]]` | 게임용 임의값. 2026-11-19 디렉터 결정 "모든 원소" |
 | `crop.n_uptake_rate_per_g_root_per_hour` (M4 점검, 신설) | N 전용 흡수 속도 (N은 일반 속도 0.002를 더 이상 쓰지 않아요) | 0.00006 | 게임용 임의값 (2026-11-18 프로토타입 점검으로 신설, 점검 중 0.0005 → 0.00006으로 조정) |
 | `antagonism.ca_curve`, `antagonism.mg_curve`, `antagonism.min_demand_factor` (M3, 2026-11-18) | Ca·Mg 길항 배율 곡선, 수요 상한 배율의 하한 | 곡선과 하한 0.6은 [cation-exchange](cation-exchange.md) | 게임용 임의값 |
 | `crop.transpiration_mm_per_hour_per_W_per_m2` | 하우스 안 일사 × 받는 빛 비율 1 W/m²당 증산 | 0.0015 | 맑은 날 하루 약 1.5~2.5 mm |
@@ -131,11 +136,20 @@ uptake_X   = min(demand_X, capacity_X)
 - (M4 점검, 2026-11-18 프로토타입 점검으로 신설) **N은 자기 사치 흡수 상한과 흡수 속도를 가져요**(Ca·Mg 패턴). 일반 `luxury_uptake_ratio`(1.3)·`uptake_rate_per_g_root`(0.002)로는 체내 N 비율이 쉽게 포화해 화아분화가 막혔어요(프로토타입 1차 점검). N 비율이 공급 수준을 따라가도록 전용 값으로 나눴어요. 흡수 능력에는 활착 배율(`growth_factor_establish`)이 들어가요([strawberry-phenology](strawberry-phenology.md)):
   ```
   demand_N   = max(0, target_N × n_luxury_uptake_ratio × (요구 건물) − plant_N)          (요구 건물은 strawberry-fruit 8번: 관부·과실 포함)
+                                                                                     (M5a 사전 작업: 아래 부드러운 상한 식으로 바뀜)
   capacity_N = (NH4 유효량 + NO3 유효량) × min(1, n_uptake_rate_per_g_root × root × root_health) × water × salt × growth_factor_establish
   ```
   P·K의 능력식에도 `growth_factor_establish`가 곱해져요. Ca·Mg·Mn도 같아요(길항 배율 등은 위 식 그대로).
+- (M5a 사전 작업, 2026-11-19 승인) **부드러운 N 사치 상한**: 하드 상한(`n_luxury_uptake_ratio` 1.2)을 없애고 수요 상한을 `n_luxury_max_ratio`(1.6)로 넓힌 대신, N 흡수 능력에 체내 N 비율 곡선을 곱해요. 체내 N이 많을수록 흡수가 서서히 줄어 비율이 공급을 따라가요:
+  ```
+  demand_N   = max(0, requirement_N × n_luxury_max_ratio − plant_N)
+  capacity_N = (NH4 유효량 + NO3 유효량) × min(1, n_uptake_rate_per_g_root × root × root_health) × water × salt
+               × growth_factor_establish × uptake_temp_curve(soil_temp) × n_luxury_uptake_curve(plant_N / requirement_N)
+  ```
+- (M5a 사전 작업, 2026-11-19 승인) **근권 온도**: 모든 원소(N·P·K·Ca·Mg·Mn)의 `capacity_X`에 `uptake_temp_curve(셀 토양 온도)`를 곱해요(디렉터 결정 "모든 원소"). 겨울 흙이 차가우면 흡수가 줄어 체내 N 비율이 겨울에 내려가요(실측 방향). 수요 상한에는 곱하지 않아요.
+- (M5a 사전 작업, 2026-11-19 승인) **Mn 흡수 조절**: `capacity_Mn`에 `mn_uptake_regulation_curve(plant_Mn / requirement_Mn)`를 곱해요. 식과 이유는 [manganese](manganese.md) 4번.
 - N은 NH4+와 NO3- 유효량 비율대로 나눠 가져가요. NH4+ 흡수는 H+, NO3- 흡수는 OH-를 `pending_H`에 기록해요(다음 틱 pH 갱신).
-- 방향: 뿌리가 적거나 상하면, 마르거나 짜면 덜 먹어요. 유효량이 많으면 적정 농도의 1.3배까지 더 먹어요(질소 과잉의 원천, M4에서 화아분화 지연 등에 사용. (M4 점검) N은 전용 상한 1.2배).
+- 방향: 뿌리가 적거나 상하면, 마르거나 짜면 덜 먹어요. 유효량이 많으면 적정 농도의 1.3배까지 더 먹어요(질소 과잉의 원천, M4에서 화아분화 지연 등에 사용. (M5a 사전 작업) N은 부드러운 상한, 끝은 1.6배). 흙이 차가우면 모든 원소를 덜 먹어요.
 
 ### 4. 증산 (셀 단계 a에서 계산)
 
@@ -190,6 +204,9 @@ root       −= dead_root
 | minimum 대 product | product 생장량 ≤ minimum 생장량 |
 | 유효 P만 부족 | P 충족도 하락, stress_hours의 P 증가 |
 | 체내 양분이 목표의 1.3배 | 흡수 0 |
+| (M5a 사전 작업) 토양 5 °C 대 20 °C, 근권 온도 곡선 적용 | N·K·Ca·Mg·Mn 흡수가 모두 곡선 배율(0.2)만큼 (항등 곡선이면 온도 무관) |
+| (M5a 사전 작업) 체내 N 비율 1.2, 부드러운 N 곡선 | N 흡수 = 항등 곡선일 때 × 0.25 (1% 허용, 같은 틱 밤 호흡이 요구량을 조금 바꿈). 비율 0.8이면 그대로, 상한 1.6에서 0 |
+| (M5a 사전 작업) 체내 Mn 비율 1.5, Mn 조절 곡선 | Mn 흡수 = 항등 곡선일 때 × 0.2, K 흡수는 그대로 |
 | 뿌리 건강도 0.5 | 흡수 능력 절반 |
 | NH4 흡수 | pending_H 증가, NO3 흡수는 감소 |
 | 손상 요인 4가지 각각 | 뿌리 건강도 감소, 해당 요인이 사망 원인으로 기록 |

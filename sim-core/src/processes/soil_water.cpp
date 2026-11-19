@@ -16,8 +16,8 @@ void apply_irrigation(SoilCell& cell, double amount_mm, const AerationParams& ae
     cell.compaction_index = std::min(1.0, cell.compaction_index + amount_mm * aeration.compaction_per_mm_irrigation);
 }
 
-void update_soil_water(SoilCell& cell, const SoilWaterParams& params, double inside_solar_W_per_m2,
-                       double canopy_interception, double transpiration_demand_mm, Ledger& ledger) {
+double update_soil_water(SoilCell& cell, const SoilWaterParams& params, double inside_solar_W_per_m2,
+                         double canopy_interception, double transpiration_demand_mm, Ledger& ledger) {
     // 증발: 잠재 증발 × 수분 계수 × (1 − 수관 차광), 보유 수분을 넘지 않아요
     const double solar = std::max(0.0, inside_solar_W_per_m2);
     const double potential_mm =
@@ -52,6 +52,7 @@ void update_soil_water(SoilCell& cell, const SoilWaterParams& params, double ins
 
     cell.drained_mm_this_tick = drained_mm;
     ledger.water_drained_mm += drained_mm;
+    return evaporated_mm;
 }
 
 }  // namespace sim::process

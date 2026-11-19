@@ -47,8 +47,9 @@ establishment_growth_curve = [[0, 0.3], [1, 1]]  # x = 활착 정도, y = 생장
 induction_rate_per_hour = 0.002           # 최적 조건에서 화아분화 진행 속도 (약 21일에 화방 1개). 게임용 임의값
 induction_day_length_curve = [[8, 1], [11.5, 1], [12.5, 0.6], [13.5, 0.1], [14, 0]]  # x = 낮 길이 h. 봄 장일에서 분화 정지. 게임용 임의값
 induction_temp_curve = [[3, 0], [8, 0.5], [12, 1], [22, 1], [26, 0.3], [30, 0]]  # x = 하우스 기온 °C. 저온에서 촉진, 고온 억제. 게임용 임의값
-induction_nitrogen_curve = [[0, 1], [1.1, 1], [1.3, 0.6], [1.5, 0.25]]  # x = 체내 N 비율(체내 N / 요구량). 질소 과다 지연. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 [[0, 1], [1.0, 1], [1.15, 0.6], [1.3, 0.25]]]
+induction_nitrogen_curve = [[0, 1], [1.05, 1], [1.15, 0.7], [1.5, 0.5]]  # x = 체내 N 비율. 질소 과다 지연. 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장), 디렉터 선택 A) [이전 [[0, 1], [1.1, 1], [1.3, 0.6], [1.5, 0.25]]]
 truss_base_temp_degC = 5.0                # 화방 발달 적산온도 기준. 게임용 임의값
+induction_spread_index = 0.4  # 정식 때 셀마다 화아분화 진행도를 0~이 값만큼 늦춰요 (포기 간 생육 차이, biology 난수, 0이면 꺼짐). 80셀 화방이 한꺼번에 움직여 겨울 수확이 출렁이는 것을 막아요. 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 truss_degree_days_to_anthesis = 350.0  # 분화 -> 개화 적산온도 °C·일 (가을 약 35~40일). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 600.0]
 flowers_per_truss_curve = [[1, 6], [3, 12], [6, 18], [10, 22]]  # x = 포기당 관부 건물 g, y = 포기당 꽃 수. 게임용 임의값
 
@@ -105,6 +106,7 @@ drainage_compaction_curve = [[0, 1.0], [0.5, 0.6], [1.0, 0.1]]  # x = compaction
 [soil_temperature]  # docs/spec/soil-temperature.md
 relax_rate_per_hour = 0.04                # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
 heat_degC_per_g_C = 0.4                   # 호흡 탄소 1 g/m²당 토양 온도 상승. 게임용 임의값
+evap_cooling_degC_per_mm = 2.5  # 토양 증발 1 mm당 토양 온도 하강 °C. 7월 밀폐·무피복 지온 최고 38.6~39.7 °C(참고 35~40)에 맞춘 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 
 [organic_matter]  # docs/spec/organic-matter.md
 labile_decay_rate_per_hour = 0.004        # 이분해성 풀 최대 분해 속도. 게임용 임의값 (반감기 약 7일)
@@ -210,7 +212,7 @@ acid_curve = [[4.0, 0.006], [4.6, 0.0018], [5.0, 0.0006], [5.4, 0.0001], [5.6, 0
 specific_leaf_area_m2_per_g = 0.02        # 잎 1 g당 잎 면적 (200 cm²/g). 게임용 임의값
 light_interception_curve = [[0, 0], [0.5, 0.3], [1, 0.5], [2, 0.75], [3, 0.88], [4, 0.94]]  # x = LAI. 지수 감쇠(k 약 0.7) 모양
 par_fraction = 0.48                       # 일사 중 광합성 유효광 비율. 일반값
-light_use_efficiency_g_per_MJ = 2.25  # 받은 PAR 1 MJ당 건물 생산. 작물 일반 범위 (2026-11-18 프로토타입 점검으로 조정) [이전 2.5]
+light_use_efficiency_g_per_MJ = 2.1  # 받은 PAR 1 MJ당 건물 생산. 작물 일반 범위 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장), 디렉터 결정) [이전 2.25, 그전 2.5]
 temp_curve = [[3, 0], [8, 0.3], [15, 0.8], [20, 1.0], [25, 1.0], [30, 0.6], [35, 0.2], [40, 0]]  # x = 하우스 기온 °C. 딸기 생장 적온 대략 18~25 °C
 water_stress_curve = [[0.2, 0], [0.4, 0.3], [0.6, 0.9], [0.75, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값
 salt_stress_curve = [[0, 1], [2.0, 1.0], [3.5, 0.6], [5.5, 0.25], [8, 0.05]]  # x = 토양 용액 EC dS/m. 딸기는 염류에 약함. 게임용 임의값
@@ -224,16 +226,24 @@ luxury_uptake_ratio = 1.3                 # 적정 농도의 몇 배까지 더 �
 uptake_rate_per_g_root_per_hour = 0.002   # 뿌리 1 g당 유효량에서 시간당 가져갈 수 있는 비율 (P·K. N·Ca·Mg·Mn은 전용 속도). 게임용 임의값
 ca_uptake_rate_per_g_root_per_hour = 0.00019  # Ca 전용 흡수 비율 (s5_standard 낮 흡수 능력 여유 약 4배). 게임용 임의값, Ca는 뿌리 끝에서만 흡수돼 효율이 낮음, 2026-11-18 프로토타입 점검으로 신설
 mg_uptake_rate_per_g_root_per_hour = 0.00021  # Mg 전용 흡수 비율 (여유 약 4배). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설
-n_luxury_uptake_ratio = 1.2  # N 전용 사치 흡수 상한 (적정 대비). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설 (N 비율이 공급을 따라가게, 점검 중 1.5 -> 1.2)
+n_luxury_max_ratio = 1.6  # N 수요 상한 (적정 대비, 부드러운 상한의 끝). 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장)) [옛 n_luxury_uptake_ratio 1.2 하드 상한 대체]
+n_luxury_uptake_curve = [[0, 1], [0.9, 1], [1.1, 0.4], [1.3, 0.1], [1.5, 0]]  # x = 체내 N / 요구량, y = N 흡수 능력 배율 (부드러운 사치 상한). 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
+uptake_temp_curve = [[5, 0.2], [10, 0.45], [15, 0.75], [20, 1], [30, 1], [35, 0.7]]  # x = 토양 온도 °C, y = 모든 원소의 흡수 능력 배율 (근권 온도). 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
+mn_uptake_regulation_curve = [[0, 1], [1, 1], [1.5, 0.2], [2, 0.03], [100, 0.03]]  # x = 체내 Mn / 요구량, y = Mn 흡수 능력 배율 (체내 Mn이 넘치면 흡수를 줄임). 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 n_uptake_rate_per_g_root_per_hour = 0.00006  # N 전용 흡수 속도 (N은 일반 속도를 쓰지 않음). 게임용 임의값, 2026-11-18 프로토타입 점검으로 신설 (점검 중 0.0005 -> 0.00006)
+reserve_capacity_fraction = 0.2  # 저장 탄수화물 상한 = 이 값 × (관부 + 뿌리 건물). 0이면 기능 꺼짐. 설향 관부+뿌리 NSC 11~19% (이상우 등 2019, references/strawberry-respiration-reserves.md) (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
+reserve_fill_fraction = 0.5  # 광합성만으로 과실이 다 채워진 틱에 영양 생장 몫 중 저장으로 가는 비율. 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
+reserve_release_rate_per_hour = 0.0005  # 과실 공급 부족 시 틱당 저장에서 꺼낼 수 있는 비율. 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
+maintenance_activity_curve = [[-1, 0.4], [0.0043, 0.4], [0.01, 0.7], [0.02, 0.91], [0.03, 0.97], [0.05, 1]]  # x = 식물 RGR 이동 평균 /일, y = 유지 호흡 배율. 모양은 1 - e^(-c × RGR) (Vanthoor 2011, TOMSIM 토마토 c = 33일)이지만 디렉터 결정으로 근거보다 덜 줄여요(c 약 120일, 하한 0.4, 게임용 임의값) (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
+rgr_mean_relax_rate_per_hour = 0.014  # RGR 이동 평균의 시간당 완화 비율 (약 3일). 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015  # 하우스 안 일사 x 받는 빛 비율 1 W/m²당 증산. 게임용 임의값 (맑은 날 하루 약 1.5~2.5 mm)
 root_recovery_rate_per_hour = 0.002       # 손상이 없을 때 뿌리 건강도 회복 비율. 게임용 임의값
 death_root_health = 0.05                  # 이 아래로 내려가면 고사. 게임용 임의값
 root_dieback_per_damage = 1.0             # 손상 비율 1당 죽는 뿌리 건물 비율. 게임용 임의값 (과습 손상이 생장에 남도록)
 target_Mn_g_per_g = 0.0001                # 적정 체내 농도 (딸기 잎 분석 적정 범위 대략 50~200 mg/kg)
-mn_uptake_rate_per_g_root_per_hour = 0.00001  # 뿌리 1 g당 용액 Mn에서 시간당 가져가는 비율. 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정: M3 0.00002 -> 0.00004, M4 0.00004 -> 0.00001 작기 내내 쌓여 독성) [이전 0.00004]
+mn_uptake_rate_per_g_root_per_hour = 0.00002  # 뿌리 1 g당 용액 Mn에서 시간당 가져가는 비율. 게임용 임의값. 체내 Mn 과잉은 mn_uptake_regulation_curve가 막아요 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장)) [이전 0.00001 (2026-11-18 점검), 그전 0.00004]
 mn_max_uptake_ratio = 30.0                # 적정 농도의 몇 배까지 쌓일 수 있는지. 게임용 임의값 (망간은 수동적으로 쌓여 독성까지 감)
-mn_toxicity_curve = [[0, 1], [5, 1], [10, 0.7], [20, 0.3], [30, 0.1]]  # x = 체내 Mn / 적정량, y = 생장 계수. 게임용 임의값 (약 500 mg/kg부터 장해)
+mn_toxicity_curve = [[0, 1], [3, 1], [4.5, 0.9], [10, 0.7], [18, 0.5], [30, 0.2]]  # x = 체내 Mn / 적정량, y = 생장 계수. 4.5배 0.9는 국립원예특작과학원 2011(10% 생육 감소 426.6 mg/kg, references/strawberry-manganese.md), 나머지 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장)) [이전 [[0, 1], [5, 1], [10, 0.7], [20, 0.3], [30, 0.1]]]
 dry_matter_C_fraction = 0.45              # 건물 중 탄소 비율. 식물 건물 일반값
 
 # M4 추가 (docs/spec/strawberry-fruit.md, house-climate.md). 전부 게임용 임의값
@@ -241,9 +251,9 @@ vegetative_leaf_fraction = 0.6            # 과실 몫을 뺀 나머지 중 잎 
 vegetative_crown_fraction = 0.15          # 관부 비율. 게임용 임의값
 vegetative_root_fraction = 0.25           # 뿌리 비율 (세 값의 합 1). 게임용 임의값
 max_fruit_assimilate_fraction = 0.65      # 이번 틱 생장량 중 과실이 가져갈 수 있는 최대 비율. 게임용 임의값
-maintenance_rate_leaf_per_hour = 0.0008  # 25 °C에서 잎 건물 1 g당 유지 호흡 (하루 약 3%). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 0.00125]
+maintenance_rate_leaf_per_hour = 0.00125  # 25 °C에서 잎 건물 1 g당 유지 호흡 (하루 3%, SUCROS 0.03/일). 활성 보정과 함께 복귀 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장)) [이전 0.0008 (2026-11-18 점검), 그전 0.00125]
 maintenance_rate_crown_per_hour = 0.0004  # 관부 (하루 약 1%). 게임용 임의값
-maintenance_rate_root_per_hour = 0.0006   # 뿌리 (하루 약 1.5%). 게임용 임의값
+maintenance_rate_root_per_hour = 0.0004   # 뿌리 (하루 약 1%). TOMSIM 0.010/일, 딸기 뿌리 실측 0.3~0.8%/일 (references/strawberry-respiration-reserves.md) (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장)) [이전 0.0006]
 maintenance_rate_fruit_per_hour = 0.0004  # 과실 (하루 약 1%). 게임용 임의값
 maintenance_temp_curve = [[0, 0.18], [10, 0.35], [20, 0.71], [25, 1.0], [30, 1.41], [40, 2.83]]  # x = 하우스 기온 °C, y = 배율. Q10 = 2 (일반값), 25 °C에서 1
 leaf_senescence_rate_per_hour = 0.0003  # 잎이 늙어 떨어지는 시간당 비율 (잎 수명 약 80일). 게임용 임의값 (2026-11-18 프로토타입 점검으로 조정) [이전 0.0005]

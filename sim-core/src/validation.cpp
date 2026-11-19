@@ -83,6 +83,7 @@ std::expected<void, Error> validate_params(const Params& p) {
 
     SIM_CHECK(non_negative(p.soil_temperature.relax_rate_per_hour, "soil_temperature.relax_rate_per_hour"));
     SIM_CHECK(non_negative(p.soil_temperature.heat_degC_per_g_C, "soil_temperature.heat_degC_per_g_C"));
+    SIM_CHECK(non_negative(p.soil_temperature.evap_cooling_degC_per_mm, "soil_temperature.evap_cooling_degC_per_mm"));
 
     const OrganicMatterParams& om = p.organic_matter;
     SIM_CHECK(non_negative(om.labile_decay_rate_per_hour, "organic_matter.labile_decay_rate_per_hour"));
@@ -274,6 +275,9 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(factor_curve(ph.induction_nitrogen_curve, "phenology.induction_nitrogen_curve"));
     SIM_CHECK(finite(ph.truss_base_temp_degC, "phenology.truss_base_temp_degC"));
     SIM_CHECK(positive(ph.truss_degree_days_to_anthesis, "phenology.truss_degree_days_to_anthesis"));
+    SIM_CHECK(require(std::isfinite(ph.induction_spread_index) && ph.induction_spread_index >= 0.0 &&
+                          ph.induction_spread_index <= 1.0,
+                      "phenology.induction_spread_index must be in [0, 1]"));
     SIM_CHECK(validate_curve(ph.flowers_per_truss_curve, "phenology.flowers_per_truss_curve"));
 
     std::set<std::string, std::less<>> grade_ids;
@@ -386,9 +390,23 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(validate_curve(crop.co2_growth_curve, "crop.co2_growth_curve"));
     SIM_CHECK(factor_curve(crop.cold_leaf_damage_curve, "crop.cold_leaf_damage_curve"));
     SIM_CHECK(factor_curve(crop.cold_fruit_loss_curve, "crop.cold_fruit_loss_curve"));
-    SIM_CHECK(require(std::isfinite(crop.n_luxury_uptake_ratio) && crop.n_luxury_uptake_ratio >= 1.0,
-                      "crop.n_luxury_uptake_ratio must be finite and >= 1"));
+    SIM_CHECK(require(std::isfinite(crop.n_luxury_max_ratio) && crop.n_luxury_max_ratio >= 1.0,
+                      "crop.n_luxury_max_ratio must be finite and >= 1"));
+    SIM_CHECK(factor_curve(crop.n_luxury_uptake_curve, "crop.n_luxury_uptake_curve"));
+    SIM_CHECK(factor_curve(crop.mn_uptake_regulation_curve, "crop.mn_uptake_regulation_curve"));
+    SIM_CHECK(factor_curve(crop.uptake_temp_curve, "crop.uptake_temp_curve"));
+    SIM_CHECK(factor_curve(crop.maintenance_activity_curve, "crop.maintenance_activity_curve"));
+    SIM_CHECK(require(std::isfinite(crop.rgr_mean_relax_rate_per_hour) && crop.rgr_mean_relax_rate_per_hour >= 0.0 &&
+                          crop.rgr_mean_relax_rate_per_hour <= 1.0,
+                      "crop.rgr_mean_relax_rate_per_hour must be in [0, 1]"));
     SIM_CHECK(non_negative(crop.n_uptake_rate_per_g_root_per_hour, "crop.n_uptake_rate_per_g_root_per_hour"));
+    SIM_CHECK(non_negative(crop.reserve_capacity_fraction, "crop.reserve_capacity_fraction"));
+    SIM_CHECK(require(std::isfinite(crop.reserve_fill_fraction) && crop.reserve_fill_fraction >= 0.0 &&
+                          crop.reserve_fill_fraction <= 1.0,
+                      "crop.reserve_fill_fraction must be in [0, 1]"));
+    SIM_CHECK(require(std::isfinite(crop.reserve_release_rate_per_hour) && crop.reserve_release_rate_per_hour >= 0.0 &&
+                          crop.reserve_release_rate_per_hour <= 1.0,
+                      "crop.reserve_release_rate_per_hour must be in [0, 1]"));
 
     std::set<std::string, std::less<>> compost_ids;
     for (const CompostDef& c : p.composts) {

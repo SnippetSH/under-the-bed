@@ -12,7 +12,7 @@
 ## 현재 마일스톤
 
 **M5a 토양 미생물·소독** (M5는 M5a → M5b로 나눠요, [ADR-0012](docs/decisions/0012-m5-split-and-population-index.md)). M5 전체 완료 기준: 소독 후 양쪽 개체군 감소, 고습 시 병 발생 증가 재현, 태양열 소독은 토양 온도·지속 시간이 클수록 사멸량 증가 (계획서 7장). 하우스 습도와 공기 흐름(병해)도 M5 범위예요 (ADR-0011).
-M5a 명세(m5-overview, soil-microbes, disinfection)는 2026-11-19 승인. 지금은 **M5a 사전 작업**(m5-overview 13장: 작물 N 흡수 보정·토양 증발 냉각, 새 1작기 기준값 승인) 프로토타입 단계예요. M5b(house-humidity, foliar-disease)는 아직 초안이라 코드를 쓰지 않아요.
+M5a 명세(m5-overview, soil-microbes, disinfection)는 2026-11-19 승인. **M5a 사전 작업**(m5-overview 13장: 작물 흡수·호흡·저장 보정, 토양 증발 냉각, 새 1작기 기준값)은 2026-11-19 승인·구현 완료. 다음은 **M5a 본 프로토타입**(m5-overview 14장)이에요. M5b(house-humidity, foliar-disease)는 아직 초안이라 코드를 쓰지 않아요.
 (M0~M3는 2026-11-18, M4는 2026-11-19 승인. 단, GitHub Actions CI는 원격 저장소가 없어 실행 검증을 건너뜀)
 승인 전에 다음 마일스톤의 기능을 미리 만들지 않아요. (마일스톤이 바뀌면 이 줄을 갱신해요.)
 

@@ -1,6 +1,7 @@
 # 망간: 유효태(교환성·용액)·산화물 풀, 산화·환원, 결핍과 과잉
 
 - 상태: 승인 (2026-11-18, 2차 프로토타입 점검 후 개정본 재승인)
+- M5a 사전 작업 반영 (2026-11-19 승인, [m5-overview](m5-overview.md) 13.3): Mn 흡수 조절 곡선, 흡수 속도, 근거 기반 독성 곡선, 근권 온도 배율
 - 마일스톤: M3
 - 관련: [ADR-0007](../decisions/0007-acid-toxicity-and-manganese.md), [ADR-0010](../decisions/0010-manganese-oxide-pool.md), [cation-exchange](cation-exchange.md), [aeration](aeration.md), [strawberry-minimal](strawberry-minimal.md)
 
@@ -50,9 +51,10 @@ ADR-0007 결정 2번을 구현하고, ADR-0010으로 보완해요. 망간은 **p
 | `manganese.reduction_ph_curve` | x = pH, y = 환원 용해 배율 (산성일수록 큼) | `[[4.5,6.0],[5.0,3.0],[5.5,1.8],[6.5,1.0],[7.5,0.5],[8.5,0.3]]` | 게임용 임의값 |
 | `manganese.reduction_o2_curve` | x = aeration_index, y = 환원 배율 (과습일수록 큼) | `[[0,20.0],[0.2,10.0],[0.4,4.0],[0.6,1.5],[0.8,1.0],[1,1.0]]` | 게임용 임의값. 과습 손상 곡선과 같은 구간에서 커지게 |
 | `crop.target_Mn_g_per_g` | 적정 체내 농도 | 0.0001 | 딸기 잎 분석 적정 범위 대략 50~200 mg/kg |
-| `crop.mn_uptake_rate_per_g_root_per_hour` | 뿌리 1 g당 용액 Mn에서 시간당 가져가는 비율 | 0.00001 | 게임용 임의값. 중성 토양(s11_neutral) 21일 뒤 체내 비율 약 1.7, 기준 시나리오 망간 독성 0시간이 되게 (2026-11-18 프로토타입 점검으로 조정: 초안 0.0002 → 2차 0.00002 → 3차 0.00004) (2026-11-18 M4 프로토타입 점검 2차로 조정: 이전 0.00004. 작기 내내 체내에 쌓여 독성이 돼서 낮춤. [m4-overview](m4-overview.md) "기대값이 바뀌는 단위 테스트" 참고) |
+| `crop.mn_uptake_rate_per_g_root_per_hour` | 뿌리 1 g당 용액 Mn에서 시간당 가져가는 비율 | 0.00002 | (M5a 사전 작업) 0.00001 → 0.00002. 체내 과잉은 아래 조절 곡선이 막으니 속도를 낮춰 막을 필요가 없어요. 게임용 임의값. 중성 토양(s11_neutral) 21일 뒤 체내 비율 약 1.7, 기준 시나리오 망간 독성 0시간이 되게 (2026-11-18 프로토타입 점검으로 조정: 초안 0.0002 → 2차 0.00002 → 3차 0.00004) (2026-11-18 M4 프로토타입 점검 2차로 조정: 이전 0.00004. 작기 내내 체내에 쌓여 독성이 돼서 낮춤. [m4-overview](m4-overview.md) "기대값이 바뀌는 단위 테스트" 참고) |
+| `crop.mn_uptake_regulation_curve` (M5a 사전 작업, 신설) | x = 체내 Mn / 요구량, y = Mn 흡수 능력 배율 | `[[0,1],[1,1],[1.5,0.2],[2,0.03],[100,0.03]]` | 게임용 임의값. 체내가 적정의 1.5배를 넘으면 흡수를 크게 줄여요 |
 | `crop.mn_max_uptake_ratio` | 적정 농도의 몇 배까지 쌓일 수 있는지 | 30 | 게임용 임의값. 망간은 수동적으로 쌓여 독성까지 가요 |
-| `crop.mn_toxicity_curve` | x = 체내 Mn 비율, y = 생장 계수 | `[[0,1],[5,1],[10,0.7],[20,0.3],[30,0.1]]` | 게임용 임의값 (약 500 mg/kg부터 장해) |
+| `crop.mn_toxicity_curve` | x = 체내 Mn 비율, y = 생장 계수 | `[[0,1],[3,1],[4.5,0.9],[10,0.7],[18,0.5],[30,0.2]]` | (M5a 사전 작업) 4.5배(약 450 mg/kg) 0.9는 국립원예특작과학원 2011(10% 생육 감소 426.6 mg/kg, [references/strawberry-manganese.md](../../references/strawberry-manganese.md)), 나머지 게임용 임의값 [이전 `[[0,1],[5,1],[10,0.7],[20,0.3],[30,0.1]]`, 게임용 임의값] |
 | 비료 `manganese_sulfate` (신규, 황산망간) | Mn 320, S 190 g/kg | | 제품 일반 성분 (MnSO4·H2O) |
 | 비료·퇴비 `mn_g_per_kg` | 기존 비료 0, 퇴비 미숙 0.3·숙성 0.4·수피 0.2 | | 게임용 임의값 |
 | 시나리오 `[soil] mn_g_per_m2` | 초기 유효태 | 5.0 | 게임용 임의값 (교환성 Mn 약 20 mg/kg) |
@@ -95,8 +97,12 @@ w_Mn = retention_ph_curve(pH)
 ```
 demand_Mn   = max(0, target_Mn × mn_max_uptake_ratio × (leaf + root) − plant_Mn)
 capacity_Mn = available_Mn × min(1, mn_uptake_rate × root × root_health) × water × salt
+              × growth_factor_establish × uptake_temp_curve(soil_temp) × mn_uptake_regulation_curve(plant_Mn / requirement_Mn)
 uptake_Mn   = min(demand_Mn, capacity_Mn)
 ```
+
+- (M5a 사전 작업, 2026-11-19 승인) 둘째 줄의 세 배율이 더해졌어요. 활착 배율은 M4(요구량도 관부·과실 포함 `requirement_Mn`), 근권 온도 배율은 모든 원소 공통([strawberry-minimal](strawberry-minimal.md) 3번), **흡수 조절 곡선**은 Mn 전용이에요.
+- 조절 곡선을 넣은 이유: M4 1작기에서 체내 Mn 비율이 작기 내내 쌓여 5월에 독성 곡선 중간까지 갔어요(겉으로는 다른 스트레스에 가려 드러나지 않았어요). 실제 식물은 체내가 넘치면 흡수를 줄여요. 이제 표준 1작기 최고 약 1.9배, N 과다·웃거름 없음 약 2.0배이고 결핍은 없어요.
 
 - 다른 원소와 달리 **수요 상한이 높아서(30배) 공급이 많으면 계속 쌓여요**. 체내 농도는 "공급 속도 대 생장 희석"으로 정해져요. 그래서 흡수 속도 계수가 따로 있어요.
 - 길항 배율은 적용하지 않아요(단순화).
@@ -134,6 +140,7 @@ combined    = minimum: min(water, salt, nutrient_N … nutrient_Mn, root, mn_tox
 | 같은 Ca 당량, 석회(pH 상승) 대 질산칼슘(pH 변화 없음), 산성 토양 14일 | 석회 쪽 용액 Mn과 유효태가 작음 |
 | 산화·환원 속도 극단 (곡선 × 속도 ≥ 1) | 원천 풀이 0이 되고 음수가 아님 |
 | 체내 Mn이 적정의 30배 | 흡수 0 |
+| (M5a 사전 작업) 체내 Mn 비율 1.5, 조절 곡선 | Mn 흡수 = 항등 곡선일 때 × 0.2 (1% 허용), K 흡수는 그대로 |
 | 체내 Mn 비율 10 | 생장 계수 0.7, ToxicityMn이 가장 작으면 stress_hours에 기록 |
 | 황산망간 투입 | 유효태·용액·`Mn_in_g` 증가, S도 증가. 산화물은 그대로 |
 

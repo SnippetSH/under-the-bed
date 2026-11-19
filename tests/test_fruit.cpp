@@ -1219,3 +1219,87 @@ TEST_CASE("Nutrient requirement includes crown and fruit and K demand rises with
     CHECK(process::vegetative_biomass_g_per_m2(crop) == Approx(56.0));
     CHECK(process::total_biomass_g_per_m2(crop) == Approx(76.0));
 }
+
+// ---- 저장 탄수화물 (strawberry-fruit 4b) ----
+
+namespace {
+sim::Params reserve_params(sim::Params p) {
+    p.crop.reserve_capacity_fraction = 1.0;
+    p.crop.reserve_fill_fraction = 0.5;
+    p.crop.reserve_release_rate_per_hour = 0.1;
+    return p;
+}
+}  // namespace
+
+// 과실 수요 없음: 영양 생장 몫의 fill 비율이 저장으로, 상한 = capacity x (관부 + 뿌리), 건물 합은 순생장만큼
+TEST_CASE("Reserve fills from vegetative allocation when fruit demand is met", "[unit][m5a][reserve]") {
+    const sim::Params p = reserve_params(test::quiet_params());
+    sim::SoilCell cell = test::test_cell();
+    sim::Crop crop = process::plant_crop(test::test_crop_init(), p.crop);
+    const sim::Crop before = crop;
+    sim::Ledger ledger;
+    sim::Pcg32 rng = test::biology_rng(1);
+    (void)tick_crop(crop, cell, p, kDaySolar_W_per_m2, kAir_degC, rng, ledger);
+    const double net = crop.last_growth_g_per_m2;
+    REQUIRE(net > 0.0);
+    const double cap = before.crown_g_per_m2 + before.root_g_per_m2;
+    CHECK(crop.reserve_g_per_m2 == Approx(std::min(0.5 * net, cap)));
+    const double gained = process::vegetative_biomass_g_per_m2(crop) + crop.reserve_g_per_m2 -
+                          process::vegetative_biomass_g_per_m2(before);
+    CHECK(gained == Approx(net));
+    // 상한에 닿아 있으면 더 채우지 않아요
+    sim::Crop full = process::plant_crop(test::test_crop_init(), p.crop);
+    full.reserve_g_per_m2 = full.crown_g_per_m2 + full.root_g_per_m2;
+    const double full_reserve = full.reserve_g_per_m2;
+    sim::SoilCell cell2 = test::test_cell();
+    sim::Ledger ledger2;
+    sim::Pcg32 rng2 = test::biology_rng(1);
+    (void)tick_crop(full, cell2, p, kDaySolar_W_per_m2, kAir_degC, rng2, ledger2);
+    CHECK(full.reserve_g_per_m2 == full_reserve);
+}
+
+// 과실 공급 부족: 저장에서 min(모자란 몫, 저장 x 꺼내기 비율)을 더해 공급 비율을 올려요. 채우기는 없음
+TEST_CASE("Reserve tops up fruit supply when assimilates fall short", "[unit][m5a][reserve]") {
+    const sim::Params p = reserve_params(test::quiet_params());
+    sim::SoilCell cell = test::test_cell();
+    sim::Crop crop = crop_with_young_fruits(p, 80, 0.5, 0.0, 0, 4);
+    crop.reserve_g_per_m2 = 10.0;
+    sim::Crop no_reserve = crop;
+    no_reserve.reserve_g_per_m2 = 0.0;
+    sim::Ledger ledger;
+    sim::Pcg32 rng = test::biology_rng(1);
+    (void)tick_crop(crop, cell, p, kDaySolar_W_per_m2, kAir_degC, rng, ledger);
+    sim::SoilCell cell2 = test::test_cell();
+    sim::Ledger ledger2;
+    sim::Pcg32 rng2 = test::biology_rng(1);
+    (void)tick_crop(no_reserve, cell2, p, kDaySolar_W_per_m2, kAir_degC, rng2, ledger2);
+    REQUIRE(no_reserve.last_supply_ratio < 1.0);
+    const double released = 10.0 - crop.reserve_g_per_m2;
+    CHECK(released > 0.0);
+    CHECK(released <= 10.0 * 0.1 + 1e-12);
+    CHECK(crop.last_supply_ratio > no_reserve.last_supply_ratio);
+    CHECK(crop.fruit_g_per_m2() == Approx(no_reserve.fruit_g_per_m2() + released));
+    // 영양 기관 몫과 CO2 수지(순생장)는 같아요
+    CHECK(crop.leaf_g_per_m2 == Approx(no_reserve.leaf_g_per_m2));
+    CHECK(crop.last_growth_g_per_m2 == Approx(no_reserve.last_growth_g_per_m2));
+}
+
+// 순생장 < 0: 부족분을 저장에서 먼저, 저장이 충분하면 관부·뿌리는 그대로
+TEST_CASE("Reserve covers the respiration deficit before structure", "[unit][m5a][reserve]") {
+    sim::Params p = reserve_params(test::test_params());
+    p.crop.leaf_senescence_rate_per_hour = 0.0;
+    sim::SoilCell cell = test::test_cell();
+    sim::Crop crop = process::plant_crop(test::test_crop_init(), p.crop);
+    crop.reserve_g_per_m2 = 5.0;
+    const sim::Crop before = crop;
+    sim::Ledger ledger;
+    sim::Pcg32 rng = test::biology_rng(1);
+    (void)tick_crop(crop, cell, p, 0.0, kAir_degC, rng, ledger);
+    const double deficit = -crop.last_growth_g_per_m2;
+    REQUIRE(deficit > 0.0);
+    REQUIRE(deficit < 5.0);
+    CHECK(crop.reserve_g_per_m2 == Approx(5.0 - deficit));
+    CHECK(crop.leaf_g_per_m2 == before.leaf_g_per_m2);
+    CHECK(crop.crown_g_per_m2 == before.crown_g_per_m2);
+    CHECK(crop.root_g_per_m2 == before.root_g_per_m2);
+}

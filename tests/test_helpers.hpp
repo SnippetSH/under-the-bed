@@ -60,6 +60,7 @@ inline sim::Params test_params() {
         .induction_nitrogen_curve = {{{{0, 1}}, {{1.1, 1}}, {{1.3, 0.6}}, {{1.5, 0.25}}}},
         .truss_base_temp_degC = 5.0,
         .truss_degree_days_to_anthesis = 350.0,
+        .induction_spread_index = 0.0,
         .flowers_per_truss_curve = {{{{1, 6}}, {{3, 12}}, {{6, 18}}, {{10, 22}}}},
     };
     p.fruit = {
@@ -122,7 +123,7 @@ inline sim::Params test_params() {
         .drainage_compaction_curve = {{{{0, 1.0}}, {{0.5, 0.6}}, {{1.0, 0.1}}}},
     };
 
-    p.soil_temperature = {.relax_rate_per_hour = 0.04, .heat_degC_per_g_C = 0.4};
+    p.soil_temperature = {.relax_rate_per_hour = 0.04, .heat_degC_per_g_C = 0.4, .evap_cooling_degC_per_mm = 0.0};
 
     p.organic_matter = {
         .labile_decay_rate_per_hour = 0.004,
@@ -257,8 +258,19 @@ inline sim::Params test_params() {
         .co2_growth_curve = {{{{50, 0}}, {{100, 0.4}}, {{200, 0.75}}, {{400, 1.0}}, {{800, 1.2}}, {{1200, 1.25}}}},
         .cold_leaf_damage_curve = {{{{-6, 0.05}}, {{-3, 0.015}}, {{-1, 0.003}}, {{0, 0}}}},
         .cold_fruit_loss_curve = {{{{-4, 0.2}}, {{-2, 0.05}}, {{-0.5, 0}}, {{0, 0}}}},
-        .n_luxury_uptake_ratio = 1.2,
+        .n_luxury_max_ratio = 1.2,
+        // 플러그: 옛 하드 상한(1.2)과 같게 (곡선 항등, 온도 곡선 항등)
+        .n_luxury_uptake_curve = {{{{0, 1}}, {{10, 1}}}},
+        .mn_uptake_regulation_curve = {{{{0, 1}}, {{100, 1}}}},
+        .uptake_temp_curve = {{{{-50, 1}}, {{100, 1}}}},
         .n_uptake_rate_per_g_root_per_hour = 0.00006,
+        // 저장 탄수화물 끔 (옛 동작 재현)
+        .reserve_capacity_fraction = 0.0,
+        .reserve_fill_fraction = 0.0,
+        .reserve_release_rate_per_hour = 0.0,
+        // 유지 호흡 활성 보정 끔 (항등)
+        .maintenance_activity_curve = {{{{-1, 1}}, {{1, 1}}}},
+        .rgr_mean_relax_rate_per_hour = 0.0,
     };
 
     p.composts = {
@@ -297,6 +309,32 @@ inline sim::Params quiet_params() {
     p.crop.maintenance_rate_root_per_hour = 0.0;
     p.crop.maintenance_rate_fruit_per_hour = 0.0;
     p.crop.leaf_senescence_rate_per_hour = 0.0;
+    return p;
+}
+
+// 저장소 data/params.toml의 값 = test_params() + M5a 사전 작업(2026-11-19 승인, m5-overview 13장)으로 바뀐 값.
+// test_params()는 단위 테스트가 새 기능(근권 온도, 부드러운 N 상한, Mn 조절, 저장 탄수화물, 호흡 활성 보정,
+// 증발 냉각, 포기 간 차이)을 끈 상태로 계속 쓰고, 저장소 값은 여기서 고정해요.
+inline sim::Params repo_params() {
+    sim::Params p = test_params();
+    p.phenology.induction_nitrogen_curve = {{{{0, 1}}, {{1.05, 1}}, {{1.15, 0.7}}, {{1.5, 0.5}}}};
+    p.phenology.induction_spread_index = 0.4;
+    p.soil_temperature.evap_cooling_degC_per_mm = 2.5;
+    sim::CropParams& c = p.crop;
+    c.light_use_efficiency_g_per_MJ = 2.1;
+    c.mn_uptake_rate_per_g_root_per_hour = 0.00002;
+    c.mn_toxicity_curve = {{{{0, 1}}, {{3, 1}}, {{4.5, 0.9}}, {{10, 0.7}}, {{18, 0.5}}, {{30, 0.2}}}};
+    c.maintenance_rate_leaf_per_hour = 0.00125;
+    c.maintenance_rate_root_per_hour = 0.0004;
+    c.n_luxury_max_ratio = 1.6;
+    c.n_luxury_uptake_curve = {{{{0, 1}}, {{0.9, 1}}, {{1.1, 0.4}}, {{1.3, 0.1}}, {{1.5, 0}}}};
+    c.mn_uptake_regulation_curve = {{{{0, 1}}, {{1, 1}}, {{1.5, 0.2}}, {{2, 0.03}}, {{100, 0.03}}}};
+    c.uptake_temp_curve = {{{{5, 0.2}}, {{10, 0.45}}, {{15, 0.75}}, {{20, 1}}, {{30, 1}}, {{35, 0.7}}}};
+    c.reserve_capacity_fraction = 0.2;
+    c.reserve_fill_fraction = 0.5;
+    c.reserve_release_rate_per_hour = 0.0005;
+    c.maintenance_activity_curve = {{{{-1, 0.4}}, {{0.0043, 0.4}}, {{0.01, 0.7}}, {{0.02, 0.91}}, {{0.03, 0.97}}, {{0.05, 1}}}};
+    c.rgr_mean_relax_rate_per_hour = 0.014;
     return p;
 }
 

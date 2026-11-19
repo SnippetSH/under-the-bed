@@ -1,6 +1,7 @@
 # 딸기 생장 분배, 호흡·낙엽, 개별 과실, 수확, 품질
 
 - 상태: 승인 (2026-11-18, 프로토타입 점검 결과 반영본 최종 승인)
+- M5a 사전 작업 반영 (2026-11-19 승인, [m5-overview](m5-overview.md) 13장): 유지 호흡 활성 보정(3번), 저장 탄수화물(4b), 잎·뿌리 호흡 계수. `(M5a 사전 작업)` 표시
 - 마일스톤: M4
 - 관련: [m4-overview](m4-overview.md), [strawberry-phenology](strawberry-phenology.md), [strawberry-minimal](strawberry-minimal.md), [cation-exchange](cation-exchange.md), [house-climate](house-climate.md), 계획서 5장
 
@@ -28,6 +29,8 @@
 | `fruits` | 개별 과실 목록 (아래). 타일 1칸 = 1 m²라서 개수는 정수예요 | - |
 | `harvest` | 누적 수확 기록 (아래) | - |
 | `size_satisfaction_mean` (저장 상태, 2026-11-18 프로토타입 점검으로 신설) | 크기 충족도의 이동 평균 (0~1). 당도의 공급 입력과 낙과 확률이 읽어요. 시작값 1 | 0~1 |
+| `reserve_g_per_m2` (저장 상태, M5a 사전 작업) | 저장 탄수화물(건물 환산). 양분 없음, 관부·뿌리에 있다고 봐요. 유지 호흡을 받지 않아요(4b번). 시작값 0 | g/m² |
+| `rgr_mean_per_day` (저장 상태, M5a 사전 작업) | 식물 상대 생장률(순생장 ÷ 전체 건물)의 이동 평균. 유지 호흡 활성 보정이 읽어요(3번). 시작값 0 | /일 |
 | `last_gross_g_per_m2`, `last_respiration_g_per_m2`, `last_supply_ratio` (진단) | 이번 틱 총생산, 유지 호흡, 과실 공급 비율. 결과를 바꾸지 않는 기록 | g/m², g/m², - |
 
 체내 양분(M2·M3)은 포기 전체의 풀이에요. 과실도 같은 풀에서 양분을 써요.
@@ -69,8 +72,13 @@
 | --- | --- | --- | --- |
 | `vegetative_leaf_fraction`, `vegetative_crown_fraction`, `vegetative_root_fraction` | 과실 몫을 뺀 나머지의 기관 비율 (합 1) | 0.6, 0.15, 0.25 | M2 `leaf_allocation_fraction`(0.7)을 대체 |
 | `max_fruit_assimilate_fraction` | 이번 틱 생장량 중 과실이 가져갈 수 있는 최대 비율 | 0.65 | 과실이 가장 강한 수요처 |
-| `maintenance_rate_leaf_per_hour`, `…_crown_…`, `…_root_…`, `…_fruit_…` | 25 °C에서 건물 1 g당 유지 호흡 | 0.0008, 0.0004, 0.0006, 0.0004 | 대략 하루 3%, 1%, 1.5%, 1%. 잎만 2026-11-18 프로토타입 점검으로 조정 (이전 0.00125) |
+| `maintenance_rate_leaf_per_hour`, `…_crown_…`, `…_root_…`, `…_fruit_…` | 25 °C에서 건물 1 g당 유지 호흡 | 0.00125, 0.0004, 0.0004, 0.0004 | 하루 3%, 1%, 1%, 1%. (M5a 사전 작업) 잎은 SUCROS 0.03/일로 복귀(활성 보정과 함께), 뿌리는 TOMSIM 0.010/일·딸기 뿌리 실측 0.3~0.8%/일([references/strawberry-respiration-reserves.md](../../references/strawberry-respiration-reserves.md)) [이전 잎 0.0008 (2026-11-18 점검), 그전 0.00125 / 뿌리 0.0006] |
 | `maintenance_temp_curve` | x = 하우스 기온 °C, y = 배율 (Q10 = 2, 25 °C에서 1) | `[[0,0.18],[10,0.35],[20,0.71],[25,1.0],[30,1.41],[40,2.83]]` | |
+| `maintenance_activity_curve` (M5a 사전 작업, 신설) | x = `rgr_mean_per_day`, y = 유지 호흡 배율 | `[[-1,0.4],[0.0043,0.4],[0.01,0.7],[0.02,0.91],[0.03,0.97],[0.05,1]]` | 모양은 1 − e^(−c × RGR) (Vanthoor 2011, TOMSIM 토마토 c = 33일). 디렉터 결정으로 근거보다 덜 줄여요(c 약 120일, 하한 0.4, 게임용 임의값) |
+| `rgr_mean_relax_rate_per_hour` (M5a 사전 작업, 신설) | RGR 이동 평균의 시간당 완화 비율 | 0.014 | 약 3일. 게임용 임의값 |
+| `reserve_capacity_fraction` (M5a 사전 작업, 신설) | 저장 상한 = 이 값 × (관부 + 뿌리 건물). 0이면 기능 꺼짐 | 0.2 | 설향 관부+뿌리 NSC 11~19%(이상우 등 2019, references/strawberry-respiration-reserves.md) |
+| `reserve_fill_fraction` (M5a 사전 작업, 신설) | 광합성만으로 과실이 다 채워진 틱에 영양 생장 몫 중 저장으로 가는 비율 | 0.5 | 게임용 임의값 |
+| `reserve_release_rate_per_hour` (M5a 사전 작업, 신설) | 과실 공급 부족 시 틱당 저장에서 꺼낼 수 있는 비율 | 0.0005 | 게임용 임의값 |
 | `leaf_senescence_rate_per_hour` | 잎이 늙어 떨어지는 시간당 비율 | 0.0003 | 잎 수명 약 80일 (2026-11-18 프로토타입 점검으로 조정: 이전 0.0005) |
 | `fruit_target_N_g_per_g`, `…P`, `…K`, `…Ca`, `…Mg`, `…Mn` | 과실 적정 농도 | 0.015, 0.0035, 0.025, 0.0015, 0.0012, 0.00002 | 딸기 과실은 K가 많고 Ca가 적음 (일반 경향) |
 
@@ -158,11 +166,14 @@ potential_fresh_g = rank_potential_fresh_g[rank] × pollination_size_curve(p) ×
 
 ```
 gross = (M2 잠재 생장) × co2_growth_curve(house_co2_ppm) × combined_stress × growth_factor_establish
-resp  = Σ 기관 건물 × maintenance_rate_기관 × maintenance_temp_curve(house_air)
+resp  = Σ 기관 건물 × maintenance_rate_기관 × maintenance_temp_curve(house_air) × maintenance_activity_curve(rgr_mean_per_day)
 net   = gross − resp
+rgr_tick         = net / (잎 + 관부 + 뿌리 + 과실 + reserve) × 24                       (전체 건물 > 0일 때만)
+rgr_mean_per_day += (rgr_tick − rgr_mean_per_day) × min(1, rgr_mean_relax_rate)
 ```
 
-- `net < 0`(밤, 겨울): 부족분을 잎·관부·뿌리에서 건물 비율대로 줄여요(과실은 줄이지 않아요). 줄어든 건물의 탄소는 공기로 나가 장부 밖이에요(광합성 탄소처럼). 체내 양분은 그대로 남아요.
+- (M5a 사전 작업, 2026-11-19 승인) **유지 호흡 활성 보정**: 생장이 느린(겨울) 식물은 유지 호흡이 줄어요(TOMSIM의 RGR 보정). 저온 순화는 근거상 겨울 호흡을 오히려 늘리는 쪽이라 쓰지 않았어요([references/strawberry-respiration-reserves.md](../../references/strawberry-respiration-reserves.md)). 배율은 **이전 틱까지의** `rgr_mean_per_day`로 정하고, 이번 틱 `net`을 구한 직후 이동 평균을 갱신해요(다음 틱이 읽음). 저장 탄수화물(`reserve`)은 대사적으로 비활성이라 호흡 건물에 넣지 않지만 RGR 분모에는 넣어요. 결과: 표준 작기 겨울 유지 호흡이 총생산의 약 0.33~0.36(이전 0.34~0.41), 끄면(배율 1) 누적 수확 6,058 → 5,397 g/m².
+- `net < 0`(밤, 겨울): (M5a 사전 작업) 부족분을 먼저 저장 탄수화물에서 꺼내고(4b번), 모자란 몫을 잎·관부·뿌리에서 건물 비율대로 줄여요(과실은 줄이지 않아요). 줄어든 건물의 탄소는 공기로 나가 장부 밖이에요(광합성 탄소처럼). 체내 양분은 그대로 남아요.
 - 그래서 M2의 "생장은 0 이상"이 아니라 **순생장이 음수일 수 있어요**(호흡, CO2, 활착이 겹치는 밤·겨울·정식 직후). 이 틱의 `gross`, `resp`, 과실 공급 비율은 진단 기록(`last_gross_g_per_m2`, `last_respiration_g_per_m2`, `last_supply_ratio`)으로 남겨요.
 - `gross`에 들어가는 `combined_stress`와 `growth_factor_establish`는 [strawberry-phenology](strawberry-phenology.md) 1번과 [strawberry-minimal](strawberry-minimal.md) 1번이에요. 활착이 덜 된 정식 직후에는 `growth_factor_establish`가 0.3까지 내려가요.
 
@@ -181,6 +192,27 @@ supply_ratio  = fruit_supply / fruit_demand          (수요 0이면 1)
 
 - (2026-11-18 프로토타입 점검으로 변경) **수요는 "이번 틱 진행도 증가분 몫"이 아니라 "새 진행도에서의 목표 건물 − 지금 건물"(따라잡기)이에요.** 초안(진행도 증가분 × 최대 크기)은 겨울·밤에 못 채운 몫이 영영 사라져 과실이 작게 끝났어요. 따라잡기식은 모자란 몫을 다음 틱 이후에 다시 요구해서, 광합성이 좋은 낮에 만회해요. 크게 못 채우면 진행도가 1이 돼도 목표보다 작은 채 수확돼요.
 - 방향: 과실이 많이 달려 수요가 크면 과실 하나하나가 작아지고, 잎·관부 생장도 줄어 다음 화방 꽃 수가 줄어요.
+- (M5a 사전 작업) 위 `fruit_supply`는 광합성 몫(`assimilate_supply`)이고, 모자라면 저장에서 더해요(4b번). 영양 기관 나머지는 `net − assimilate_supply`(저장 꺼낸 몫은 빼지 않음)이고 그중 일부가 저장으로 가요.
+
+### 4b. 저장 탄수화물 (M5a 사전 작업, 2026-11-19 승인)
+
+12~2월은 광합성 공급이 과실 수요에 크게 못 미쳐 어린 과실이 많이 떨어지고, 밤 호흡이 잎·관부·뿌리 구조를 바로 깎았어요. 실제 딸기는 관부·뿌리에 저장한 탄수화물(NSC)로 겨울을 버텨요(설향 관부+뿌리 NSC는 건물의 11~19%, 1~2월에 절반쯤 줄고 3~4월에 회복, [references/strawberry-respiration-reserves.md](../../references/strawberry-respiration-reserves.md)).
+
+```
+채우기 (net > 0, 광합성만으로 과실 수요를 다 채운 틱 또는 과실 수요 0):
+    capacity = reserve_capacity_fraction × (crown + root)
+    fill     = min(rest × reserve_fill_fraction, max(0, capacity − reserve))      (rest = net − assimilate_supply)
+    reserve += fill,  rest −= fill  → 나머지를 vegetative_*_fraction대로
+쓰기 1 (net < 0):  from_reserve = min(reserve, −net), 남은 부족분만 잎·관부·뿌리에서 건물 비율대로
+쓰기 2 (net > 0, assimilate_supply < fruit_demand):
+    release = min(fruit_demand − assimilate_supply, reserve × min(1, reserve_release_rate), reserve)
+    fruit_supply = assimilate_supply + release     (저장 → 과실 내부 이동, CO2 수지는 그대로)
+잃기:  뿌리 고사 때 reserve × min(1, 죽은 뿌리 / (관부 + 뿌리))를, 포기 사망 때 전부를
+       토양 이분해성 C로 (C = 건물 × dry_matter_C_fraction, 장부 C_root_litter)
+```
+
+- 저장에는 양분이 없어요(양분 반환 share에 넣지 않아요). 유지 호흡도 받지 않아요(SUCROS: 저장 탄수화물은 비활성).
+- 결과(표준 작기): 저장은 가을에 차고, 11월 밤 부족분을 덮고, 12~4월은 거의 0이에요(밤 부족분은 구조에서 — 실측 2월 뿌리 건물 감소와 같은 방향).
 
 ### 5. 과실 진행과 품질 적산 (착과된 과실마다)
 
@@ -267,12 +299,13 @@ requirement_X = target_X × (leaf + crown + root) + fruit_target_X × fruit
 
 ## 틱 처리 순서 내 위치
 
-셀 단계 h 안에서: 저온 피해 → 생물계절([strawberry-phenology](strawberry-phenology.md), 꽃 만들기 포함) → 개화 판정 → 스트레스 → 총생산·호흡 → 분배(따라잡기 수요, 순생장이 음수면 수축) → 크기 충족도 이동 평균 → 과실 진행·품질 적산 → 수확 → 낙과 → 흡수 → 뿌리 건강도·고사 → 낙엽 → 사망 판정.
+셀 단계 h 안에서: 저온 피해 → 생물계절([strawberry-phenology](strawberry-phenology.md), 꽃 만들기 포함) → 개화 판정 → 스트레스 → 총생산·호흡(활성 보정) → RGR 이동 평균 → 분배(따라잡기 수요, 저장 꺼내기·채우기, 순생장이 음수면 저장 먼저 → 수축) → 크기 충족도 이동 평균 → 과실 진행·품질 적산 → 수확 → 낙과 → 흡수 → 뿌리 건강도·고사 → 낙엽 → 사망 판정.
 
 ## 보존·불변 조건
 
 - 원소별: `토양 + 체내 = 초기 + in − leached − gas − harvested`. 낙엽·언 과실은 계 안의 이동이에요.
-- 토양 C: `유기 C = 초기 + C_in + C_root_litter + C_leaf_litter − C_respired` (언 과실의 C도 `C_leaf_litter`에 넣어요).
+- 토양 C: `유기 C = 초기 + C_in + C_root_litter + C_leaf_litter − C_respired` (언 과실의 C도 `C_leaf_litter`에 넣어요). (M5a 사전 작업) 뿌리 고사·포기 사망으로 잃은 저장 탄수화물의 C도 `C_root_litter`에 넣어요.
+- (M5a 사전 작업) 저장 탄수화물은 작물 건물의 일부예요. 저장 ↔ 영양 기관·과실 사이의 이동은 내부 이동이라 CO2 수지(총생산 − 유지 호흡)는 그대로예요. `reserve ≥ 0`, `capacity` 이하로만 채워요.
 - 모든 건물·개수·진행도 ≥ 0, 공급 비율 0~1, 수정률·경도 0~1, 수확 기록은 줄지 않음.
 - 같은 시드·같은 명령이면 과실 목록과 수확 기록이 비트 단위로 같아요.
 
@@ -287,7 +320,7 @@ requirement_X = target_X × (leaf + crown + root) + fruit_target_X × fruit
 | 한 틱 공급을 못 채움(공급 비율 0.5) 뒤 다음 틱 공급 충분 | 다음 틱 수요에 못 채운 몫이 더해져(따라잡기) 과실 건물이 목표 쪽으로 따라잡음 |
 | 순생장 > 0인 틱 대 순생장 ≤ 0인 틱 | `size_satisfaction_mean`은 앞쪽에서만 갱신, 뒤쪽에서는 그대로 |
 | 같은 충족도 부족, 진행 속도 2배 차이 | 어린 과실이 떨어지는 비율은 두 경우 거의 같음 (확률이 진행도 증가분 기준) |
-| 체내 N 비율이 1.2에 도달 | N 흡수 0 (`n_luxury_uptake_ratio`, 활착 배율이 능력에 곱해짐) |
+| 체내 N 비율이 수요 상한에 도달 | N 흡수 0 (`n_luxury_max_ratio`, 활착 배율이 능력에 곱해짐. M5a 사전 작업: 하드 상한 1.2 → 부드러운 상한, [strawberry-minimal](strawberry-minimal.md) 3번) |
 | 꽃 수 7.4, 같은 시드 두 번 | 같은 개수(7 또는 8), 과위 배분 합 = 꽃 수 |
 | 이동 평균 5 °C 대 18 °C, 꽃 많음 | 5 °C 쪽 낙화·기형과 비율 큼, 평균 크기 작음 |
 | 같은 조건의 과실들 | 최대 생체중이 ±변이 폭 안에서 서로 다름 |
@@ -304,6 +337,13 @@ requirement_X = target_X × (leaf + crown + root) + fruit_target_X × fruit
 | 낮 23 °C 대 30 °C, 밤 같음 | 23 °C 쪽 당도 높음 |
 | 밤 8.5 °C 대 15 °C, 낮 같음 | 8.5 °C 쪽 당도 높음 |
 | 밤 2 °C | 밤 점수 낮음(전류 저하) |
+| (M5a 사전 작업) 과실 수요 없음, 저장 켬 | 영양 생장 몫 × fill 비율이 저장으로(상한 capacity × (관부 + 뿌리)), 영양 기관 + 저장 증가 = 순생장. 상한이면 더 안 채움 |
+| (M5a 사전 작업) 과실 공급 부족, 저장 10 g | 꺼낸 양 ≤ 저장 × 꺼내기 비율, 공급 비율 상승, 과실 증가 = 꺼낸 양, 영양 기관·순생장은 저장 없을 때와 같음 |
+| (M5a 사전 작업) 밤, 저장 5 g > 부족분 | 저장이 부족분만큼 줄고 잎·관부·뿌리는 그대로 |
+| (M5a 사전 작업) 활성 곡선 `[[-1,0.4],[0.05,1]]`, RGR 평균 −1 대 0.1 | 유지 호흡 0.4배 |
+| (M5a 사전 작업) 완화 비율 0.5, 낮 한 틱 | `rgr_mean_per_day` = 0.5 × 순생장 ÷ (영양 기관 + 저장) × 24. 비율 0이면 그대로 |
+
+시나리오(M5a 사전 작업, `tests/test_m4_scenarios.cpp`): "Respiration activity scaling raises the season harvest" — 활성 보정을 끄면 season_standard 누적 수확이 줄어요(6,058 대 5,397 g/m²).
 
 ## 단순화와 비목표
 

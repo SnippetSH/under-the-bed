@@ -6,7 +6,7 @@
 //               tiles(토양 셀 + 작물 + 화방·과실·수확 기록), ledger
 //
 // state_hash()는 동적 상태 부분만 해시해요. 이벤트는 저장하지 않아요.
-// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5, M4 = 6).
+// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5, M4 = 6, M5a = 7).
 
 #include <array>
 #include <format>
@@ -22,7 +22,7 @@ namespace sim {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> kMagic = {'F', 'G', 'S', 'V'};
-constexpr std::uint32_t kSaveFormatVersion = 6;
+constexpr std::uint32_t kSaveFormatVersion = 7;
 
 constexpr std::size_t kWeatherHourBytes = 24;       // f64 × 3
 constexpr std::size_t kCurvePointBytes = 16;        // f64 × 2
@@ -211,6 +211,8 @@ void write_crop(detail::ByteWriter& w, const Crop& c) {
     w.f64(c.last_respiration_g_per_m2);
     w.f64(c.last_supply_ratio);
     w.f64(c.size_satisfaction_mean);
+    w.f64(c.reserve_g_per_m2);
+    w.f64(c.rgr_mean_per_day);
     w.u64(c.trusses.size());
     for (const Truss& t : c.trusses) {
         w.u64(t.initiated_tick);
@@ -296,6 +298,8 @@ void read_crop(detail::ByteReader& r, Crop& c) {
     c.last_respiration_g_per_m2 = r.f64();
     c.last_supply_ratio = r.f64();
     c.size_satisfaction_mean = r.f64();
+    c.reserve_g_per_m2 = r.f64();
+    c.rgr_mean_per_day = r.f64();
 
     const std::uint64_t truss_count = r.u64();
     if (!r.ok() || truss_count > r.remaining() / kTrussBytes) {
@@ -420,6 +424,7 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     write_curve(w, p.soil_water.drainage_compaction_curve);
     w.f64(p.soil_temperature.relax_rate_per_hour);
     w.f64(p.soil_temperature.heat_degC_per_g_C);
+    w.f64(p.soil_temperature.evap_cooling_degC_per_mm);
     w.f64(p.organic_matter.labile_decay_rate_per_hour);
     w.f64(p.organic_matter.stable_decay_rate_per_hour);
     w.f64(p.organic_matter.humification_fraction);
@@ -600,6 +605,7 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     write_curve(w, ph.induction_nitrogen_curve);
     w.f64(ph.truss_base_temp_degC);
     w.f64(ph.truss_degree_days_to_anthesis);
+    w.f64(ph.induction_spread_index);
     write_curve(w, ph.flowers_per_truss_curve);
 
     const FruitParams& fr = p.fruit;
@@ -666,8 +672,16 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     write_curve(w, c4.co2_growth_curve);
     write_curve(w, c4.cold_leaf_damage_curve);
     write_curve(w, c4.cold_fruit_loss_curve);
-    w.f64(c4.n_luxury_uptake_ratio);
+    w.f64(c4.n_luxury_max_ratio);
+    write_curve(w, c4.n_luxury_uptake_curve);
+    write_curve(w, c4.mn_uptake_regulation_curve);
+    write_curve(w, c4.uptake_temp_curve);
     w.f64(c4.n_uptake_rate_per_g_root_per_hour);
+    w.f64(c4.reserve_capacity_fraction);
+    w.f64(c4.reserve_fill_fraction);
+    w.f64(c4.reserve_release_rate_per_hour);
+    write_curve(w, c4.maintenance_activity_curve);
+    w.f64(c4.rgr_mean_relax_rate_per_hour);
 
     w.u64(p.seedling_grades.size());
     for (const SeedlingGradeDef& g : p.seedling_grades) {
@@ -688,6 +702,7 @@ void read_params(detail::ByteReader& r, Params& p) {
     read_curve(r, p.soil_water.drainage_compaction_curve);
     p.soil_temperature.relax_rate_per_hour = r.f64();
     p.soil_temperature.heat_degC_per_g_C = r.f64();
+    p.soil_temperature.evap_cooling_degC_per_mm = r.f64();
     p.organic_matter.labile_decay_rate_per_hour = r.f64();
     p.organic_matter.stable_decay_rate_per_hour = r.f64();
     p.organic_matter.humification_fraction = r.f64();
@@ -883,6 +898,7 @@ void read_params(detail::ByteReader& r, Params& p) {
     read_curve(r, ph.induction_nitrogen_curve);
     ph.truss_base_temp_degC = r.f64();
     ph.truss_degree_days_to_anthesis = r.f64();
+    ph.induction_spread_index = r.f64();
     read_curve(r, ph.flowers_per_truss_curve);
 
     FruitParams& fr = p.fruit;
@@ -949,8 +965,16 @@ void read_params(detail::ByteReader& r, Params& p) {
     read_curve(r, c4.co2_growth_curve);
     read_curve(r, c4.cold_leaf_damage_curve);
     read_curve(r, c4.cold_fruit_loss_curve);
-    c4.n_luxury_uptake_ratio = r.f64();
+    c4.n_luxury_max_ratio = r.f64();
+    read_curve(r, c4.n_luxury_uptake_curve);
+    read_curve(r, c4.mn_uptake_regulation_curve);
+    read_curve(r, c4.uptake_temp_curve);
     c4.n_uptake_rate_per_g_root_per_hour = r.f64();
+    c4.reserve_capacity_fraction = r.f64();
+    c4.reserve_fill_fraction = r.f64();
+    c4.reserve_release_rate_per_hour = r.f64();
+    read_curve(r, c4.maintenance_activity_curve);
+    c4.rgr_mean_relax_rate_per_hour = r.f64();
 
     const std::uint64_t grade_count = r.u64();
     if (!r.ok() || grade_count > r.remaining() / (kMinStringBytes + 4 * kF64Bytes)) {

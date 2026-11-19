@@ -62,6 +62,12 @@ World::World(Params params, Scenario scenario)
             planted.establishment_index = scenario_.crop->initial_establishment_index;
             for (Tile& tile : tiles_) {
                 tile.crop = planted;
+                // 포기 간 차이 (strawberry-phenology 2번): 0이면 난수를 뽑지 않아 기존 난수 순서 그대로
+                if (params_.phenology.induction_spread_index > 0.0) {
+                    tile.crop.induction_index = std::max(
+                        0.0, planted.induction_index -
+                                 params_.phenology.induction_spread_index * biology_rng_.next_unit_double());
+                }
             }
         }
     }
@@ -323,10 +329,10 @@ void World::tick_once() {
             transpiration_demand = process::transpiration_demand_mm(crop, params_.crop, inside_solar,
                                                                     process::water_salt_factors(cell, params_.crop));
         }
-        process::update_soil_water(cell, params_.soil_water, inside_solar, interception, transpiration_demand,
-                                   ledger_);
+        const double evaporated_mm = process::update_soil_water(cell, params_.soil_water, inside_solar, interception,
+                                                                transpiration_demand, ledger_);
         // b. 온도
-        process::relax_soil_temperature(cell, params_.soil_temperature, house_air_temp_degC);
+        process::relax_soil_temperature(cell, params_.soil_temperature, house_air_temp_degC, evaporated_mm);
         // c. 통기
         cell.aeration_index = process::aeration_index(cell, params_.aeration);
         // d. 미생물: M5

@@ -2,6 +2,7 @@
 
 - 상태: 승인 (2026-11-18)
 - M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
+- M5a 사전 작업 반영 (2026-11-19 승인, [m5-overview](m5-overview.md) 13.2): 토양 증발 냉각
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), 분해 발열은 [organic-matter](organic-matter.md)
 
@@ -23,6 +24,7 @@
 | ~~`house.base_offset_degC`~~, ~~`house.solar_gain_degC_per_W_per_m2`~~, ~~`house.solar_transmittance_factor`~~ | **(M4, 2026-11-18 삭제)** M1 하우스 기온 식의 계수 3개. 현재 값이 아니에요. 대신 [house-climate](house-climate.md)의 `[house]` 파라미터(피복 겹수별 투과율·단열, 창, 난방 등)를 써요 | - | - | - |
 | `soil_temperature.relax_rate_per_hour` | 토양 온도가 하우스 기온을 따라가는 시간당 비율 | 1/h | 0.04 | 게임용 임의값 (시간 상수 약 1일) |
 | `soil_temperature.heat_degC_per_g_C` | 호흡으로 날아간 탄소 1 g/m²당 토양 온도 상승 | °C per g C/m² | 0.4 | 게임용 임의값 |
+| `soil_temperature.evap_cooling_degC_per_mm` (M5a 사전 작업, 신설) | 토양 증발 1 mm당 토양 온도 하강 | °C per mm | 2.5 | 게임용 임의값. 7월 밀폐·무피복 지온 최고 38.6~39.7 °C가 참고 범위 35~40 °C(m5-overview A3b)에 들도록 맞춤. 없으면 밀폐 하우스 흙이 하우스 기온을 그대로 따라가 너무 뜨거웠어요 |
 
 ## 프로세스
 
@@ -43,6 +45,16 @@ soil_temp_degC += (house_air_temp_degC − soil_temp_degC) × min(1, relax_rate_
 
 - 방향: 하우스 기온을 일정 지연을 두고 따라가요. 일교차가 기온보다 작게 나타나요.
 
+### 증발 냉각 (셀 단계 b, 완화 직후. M5a 사전 작업, 2026-11-19 승인)
+
+```
+soil_temp_degC −= max(0, evaporated_mm) × evap_cooling_degC_per_mm
+```
+
+- `evaporated_mm`은 같은 틱 셀 단계 a([soil-water](soil-water.md))의 토양 증발량이에요(`update_soil_water`가 돌려줘요. 장부 `water_evaporated_mm`의 이번 틱 증가분과 같아요). 증산은 넣지 않아요.
+- 방향: 젖은 흙이 햇빛을 받아 증발하는 낮에 흙이 덜 데워져요. 필름 멀칭(M5a [disinfection](disinfection.md))은 증발을 줄여 이 냉각도 줄여요.
+- 계수 0이면 M1~M4 식과 같아요.
+
 ### 분해 발열 (셀 단계 e, 유기물 분해 직후)
 
 ```
@@ -56,7 +68,7 @@ soil_temp_degC += respired_C_g_per_m2 × heat_degC_per_g_C
 ## 보존·불변 조건
 
 - 온도는 에너지 보존 대상이 아니에요(게임용 단순화). 대신 NaN·무한대가 없어야 해요.
-- 무처리 1년 실행에서 토양 온도는 하우스 기온의 최저~최고 범위 안에 머물러요.
+- 무처리 1년 실행에서 토양 온도는 하우스 기온의 최저~최고 범위 안에 머물러요. (M5a 사전 작업) 증발 냉각으로 낮 토양 온도가 그 시각 하우스 기온보다 낮을 수는 있어요.
 
 ## 테스트 (단위)
 
@@ -65,6 +77,8 @@ soil_temp_degC += respired_C_g_per_m2 × heat_degC_per_g_C
 | 하우스 기온 고정, 토양 온도가 더 낮게 시작 | 단조 증가하며 하우스 기온에 수렴, 넘어서지 않음 |
 | 낮 일사 > 0 | 하우스 기온 > 외기 (M4, 2026-11-18: 이전 기대의 `base_offset`은 삭제된 계수. 하우스 기온 테스트는 [house-climate](house-climate.md) "테스트"가 맡아요) |
 | 호흡 탄소 x g | 토양 온도가 정확히 `x × heat` 만큼 추가 상승 |
+| (M5a 사전 작업) 증발 1.2 mm, 계수 2.5 | 완화만 했을 때보다 정확히 3.0 °C 낮음. 계수 0이거나 증발이 음수면 완화만 한 값과 같음 |
+| (M5a 사전 작업) `update_soil_water` 반환값 | 장부 `water_evaporated_mm`의 이번 틱 증가분과 같음 (밤에도) |
 
 ## 단순화와 비목표
 

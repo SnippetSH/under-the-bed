@@ -248,6 +248,10 @@ struct Crop {
     // 크기 충족도(Σ 과실 건물 ÷ Σ 목표 건물)의 이동 평균 (strawberry-fruit 5번). 순생장 > 0인 틱에만 갱신.
     // 당도의 공급 입력과 낙과 확률이 읽어요. 시작값 1, 저장 상태
     double size_satisfaction_mean = 1.0;
+    // 저장 탄수화물 (건물 환산 g/m², 양분 없음, 관부·뿌리에 있다고 봐요). strawberry-fruit 4b
+    double reserve_g_per_m2 = 0.0;
+    // 식물 상대 생장률(순생장 ÷ 전체 건물, /일)의 이동 평균. 유지 호흡 활성 보정이 읽어요. 저장 상태
+    double rgr_mean_per_day = 0.0;
 
     // 달려 있는 과실 건물 합 g/m² (꽃은 0)
     [[nodiscard]] double fruit_g_per_m2() const {

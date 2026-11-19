@@ -62,6 +62,7 @@ struct PhenologyParams {
     PiecewiseLinear induction_nitrogen_curve;    // x = 체내 N / N 요구량
     double truss_base_temp_degC = 0.0;
     double truss_degree_days_to_anthesis = 0.0;
+    double induction_spread_index = 0.0;  // 정식 때 셀마다 화아분화 진행도를 0~이 값만큼 늦춤 (포기 간 차이, biology 난수, 0~1)
     PiecewiseLinear flowers_per_truss_curve;  // x = 포기당 관부 g, y = 포기당 꽃 수
 
     bool operator==(const PhenologyParams&) const = default;
@@ -146,6 +147,7 @@ struct SoilWaterParams {
 struct SoilTemperatureParams {
     double relax_rate_per_hour = 0.0;
     double heat_degC_per_g_C = 0.0;
+    double evap_cooling_degC_per_mm = 0.0;  // 증발 1 mm당 토양 온도 하강 (soil-temperature)
 
     bool operator==(const SoilTemperatureParams&) const = default;
 };
@@ -344,8 +346,18 @@ struct CropParams {
     PiecewiseLinear cold_leaf_damage_curve;  // x = 하우스 기온 °C, y = 시간당 잎 손실 비율
     PiecewiseLinear cold_fruit_loss_curve;   // x = 하우스 기온 °C, y = 시간당 과실·꽃 손실 비율
     // N 전용 사치 흡수 상한·흡수 속도 (strawberry-minimal 3번, M3 Ca·Mg 전용 속도와 같은 방식)
-    double n_luxury_uptake_ratio = 0.0;
+    double n_luxury_max_ratio = 0.0;           // N 수요 상한 (적정 대비, 부드러운 상한의 끝)
+    PiecewiseLinear n_luxury_uptake_curve;     // x = 체내 N / 요구량, y = N 흡수 능력 배율
+    PiecewiseLinear mn_uptake_regulation_curve; // x = 체내 Mn / 요구량, y = Mn 흡수 능력 배율 (manganese)
+    PiecewiseLinear uptake_temp_curve;         // x = 토양 온도 °C, y = 흡수 능력 배율 (모든 원소)
     double n_uptake_rate_per_g_root_per_hour = 0.0;
+    // 저장 탄수화물 풀 (strawberry-fruit 4b). capacity 0이면 기능 꺼짐
+    double reserve_capacity_fraction = 0.0;       // 저장 상한 = 이 값 × (관부 + 뿌리 건물)
+    double reserve_fill_fraction = 0.0;           // 과실이 다 채워진 틱에 영양 생장 몫 중 저장으로 가는 비율
+    double reserve_release_rate_per_hour = 0.0;   // 과실 공급 부족 시 틱당 저장에서 꺼낼 수 있는 비율
+    // 유지 호흡 활성 보정 (strawberry-fruit 4번, TOMSIM, references/strawberry-respiration-reserves.md)
+    PiecewiseLinear maintenance_activity_curve;   // x = 식물 RGR 이동 평균 /일, y = 유지 호흡 배율
+    double rgr_mean_relax_rate_per_hour = 0.0;    // RGR 이동 평균의 시간당 완화 비율
 
     bool operator==(const CropParams&) const = default;
 };

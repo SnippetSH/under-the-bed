@@ -288,9 +288,17 @@ Row build_row(const sim::World& world, bool include_hash) {
     CROP_COL(induction_index);
     CROP_COL(last_supply_ratio);
     CROP_COL(size_satisfaction_mean);
+    CROP_COL(reserve_g_per_m2);
+    CROP_COL(rgr_mean_per_day);
     crop_col("last_gross_g_per_m2", [](const sim::Crop& c) { return c.last_gross_g_per_m2; });
     crop_col("last_respiration_g_per_m2", [](const sim::Crop& c) { return c.last_respiration_g_per_m2; });
     STATUS_COL("excess_index_N", excess_N);
+    // 체내 N / 요구량 (하우스 평균) — 충족도(<=1) + 과잉 지수
+    crop_col("plant_N_ratio", [&](const sim::Crop& c) {
+        const sim::process::NutrientStatus st = sim::process::nutrient_status(c, cp);
+        return st.sufficiency_N + st.excess_N;
+    });
+    row.add("uptake_temp_factor", mean_of(s.soil, [&](const sim::SoilCell& c) { return cp.uptake_temp_curve(c.soil_temp_degC); }));
     // 수확 누적 (작물이 있는 타일 평균)
     crop_col("harvest_fresh_g_per_m2", [](const sim::Crop& c) { return c.harvest.harvested_fresh_g; });
     crop_col("harvest_count", [](const sim::Crop& c) { return static_cast<double>(c.harvest.harvested_fruits); });

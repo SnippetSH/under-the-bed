@@ -39,7 +39,8 @@ namespace sim::process {
 
 // ---- temperature.cpp (docs/spec/soil-temperature.md) ----
 
-void relax_soil_temperature(SoilCell& cell, const SoilTemperatureParams& params, double house_air_temp_degC);
+void relax_soil_temperature(SoilCell& cell, const SoilTemperatureParams& params, double house_air_temp_degC,
+                            double evaporated_mm = 0.0);
 
 // ---- house_climate.cpp (docs/spec/house-climate.md, M4) ----
 
@@ -80,9 +81,9 @@ void apply_irrigation(SoilCell& cell, double amount_mm, const AerationParams& ae
 
 // 셀 단계 a: 증발(× (1 − canopy_interception)) → 증산(min(water, transpiration_demand_mm)) →
 //   포화 초과분 즉시 배수 → 포장용수량 초과분 배수(× drainage_compaction_curve(compaction)).
-// drained_mm_this_tick 설정, 장부 water_evaporated_mm / water_transpired_mm / water_drained_mm 기록.
-void update_soil_water(SoilCell& cell, const SoilWaterParams& params, double inside_solar_W_per_m2,
-                       double canopy_interception, double transpiration_demand_mm, Ledger& ledger);
+// drained_mm_this_tick 설정, 이번 틱 증발량(mm)을 돌려줘요. 장부 water_evaporated_mm / water_transpired_mm / water_drained_mm 기록.
+double update_soil_water(SoilCell& cell, const SoilWaterParams& params, double inside_solar_W_per_m2,
+                         double canopy_interception, double transpiration_demand_mm, Ledger& ledger);
 
 // ---- aeration.cpp (docs/spec/aeration.md) ----
 

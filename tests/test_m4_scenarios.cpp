@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <limits>
 #include <map>
 #include <string>
@@ -120,9 +121,13 @@ CropMeans crop_means(const sim::Snapshot& snap, const sim::CropParams& crop_para
     return m;
 }
 
-Run run_scenario_uncached(const std::string& name, std::uint64_t ticks) {
+Run run_scenario_uncached(const std::string& name, std::uint64_t ticks,
+                          const std::function<void(sim::Params&)>& modify = {}) {
     auto params = simdata::load_params(test::repo_path("data/params.toml"));
     REQUIRE(params.has_value());
+    if (modify) {
+        modify(*params);
+    }
     const sim::CropParams crop_params = params->crop;
     auto bundle = simdata::load_scenario_bundle(test::repo_path("data/scenarios/m4/" + name + ".toml"));
     REQUIRE(bundle.has_value());
@@ -217,6 +222,26 @@ const Run& run_scenario(const std::string& name, std::uint64_t ticks) {
 }
 
 const Run& season(const std::string& name) { return run_scenario(name, kSeasonTicks); }
+
+// 저장소 파라미터 일부를 바꾼 1작기 (label로 캐시)
+const Run& season_variant(const std::string& name, const std::string& label,
+                          const std::function<void(sim::Params&)>& modify) {
+    static std::map<std::pair<std::string, std::string>, Run> cache;
+    const auto key = std::make_pair(name, label);
+    auto it = cache.find(key);
+    if (it == cache.end()) {
+        it = cache.emplace(key, run_scenario_uncached(name, kSeasonTicks, modify)).first;
+    }
+    return it->second;
+}
+
+// 12·1·2월 수확의 (최대 − 최소) / 평균
+double winter_spread(const Run& run) {
+    const std::array<double, 3> winter = {run.monthly_fresh_g_per_m2[11], run.monthly_fresh_g_per_m2[0],
+                                          run.monthly_fresh_g_per_m2[1]};
+    const double mean = (winter[0] + winter[1] + winter[2]) / 3.0;
+    return (*std::max_element(winter.begin(), winter.end()) - *std::min_element(winter.begin(), winter.end())) / mean;
+}
 
 double day_of(std::uint64_t tick) {
     return tick == kNever ? -1.0 : static_cast<double>(tick) / static_cast<double>(kTicksPerDay);
@@ -451,4 +476,43 @@ TEST_CASE("S18 closed house drops daytime CO2 and gross production", "[scenario]
                      vented.heating_energy_MJ_per_m2));
     CHECK(min_closed < min_vented);
     CHECK(closed.gross_sum_g_per_m2 < vented.gross_sum_g_per_m2);
+}
+
+// ---- M5a 사전 작업 (m5-overview 13장, 2026-11-19 승인) ----
+
+// 1작기 수확 모양: 12·1·2월이 평균 대비 ±10% 안에서 고르고, 3 < 4 < 5월로 늘어요 (디렉터 목표)
+TEST_CASE("M5a prework standard season has an even winter and rising spring harvest",
+          "[scenario][m5a][season][harvest_shape]") {
+    const Run& run = season("season_standard");
+    const auto& m = run.monthly_fresh_g_per_m2;
+    WARN(std::format("harvest Dec {:.0f} Jan {:.0f} Feb {:.0f} Mar {:.0f} Apr {:.0f} May {:.0f}; winter spread {:.3f}",
+                     m[11], m[0], m[1], m[2], m[3], m[4], winter_spread(run)));
+    const double winter_mean = (m[11] + m[0] + m[1]) / 3.0;
+    for (const std::size_t month : {std::size_t{11}, std::size_t{0}, std::size_t{1}}) {
+        CHECK(m[month] >= 0.9 * winter_mean);
+        CHECK(m[month] <= 1.1 * winter_mean);
+    }
+    CHECK(m[2] < m[3]);
+    CHECK(m[3] < m[4]);
+}
+
+// 포기 간 차이(strawberry-phenology 2번): 끄면 80셀 화방이 한꺼번에 움직여 겨울 월별 수확 차이가 커져요
+TEST_CASE("Induction spread evens out the winter harvest", "[scenario][m5a][season][induction_spread]") {
+    const Run& spread = season("season_standard");
+    const Run& together = season_variant("season_standard", "spread0",
+                                         [](sim::Params& p) { p.phenology.induction_spread_index = 0.0; });
+    WARN(std::format("winter spread with induction spread {:.3f}, without {:.3f}", winter_spread(spread),
+                     winter_spread(together)));
+    CHECK(winter_spread(spread) < winter_spread(together));
+}
+
+// 유지 호흡 활성 보정(strawberry-fruit 4번): 끄면(배율 1) 겨울 호흡이 커져 작기 총생산 대비 수확이 줄어요
+TEST_CASE("Respiration activity scaling raises the season harvest", "[scenario][m5a][season][respiration]") {
+    const Run& scaled = season("season_standard");
+    const Run& full = season_variant("season_standard", "activity1", [](sim::Params& p) {
+        p.crop.maintenance_activity_curve = sim::PiecewiseLinear{{{{-1, 1}}, {{1, 1}}}};
+    });
+    WARN(std::format("harvest with activity scaling {:.0f}, without {:.0f} g/m2", scaled.fresh_g_per_m2,
+                     full.fresh_g_per_m2));
+    CHECK(scaled.fresh_g_per_m2 > full.fresh_g_per_m2);
 }

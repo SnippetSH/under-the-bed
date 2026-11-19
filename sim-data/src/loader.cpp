@@ -546,6 +546,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         ph.induction_nitrogen_curve = r.curve("induction_nitrogen_curve");
         ph.truss_base_temp_degC = r.number("truss_base_temp_degC");
         ph.truss_degree_days_to_anthesis = r.number("truss_degree_days_to_anthesis");
+        ph.induction_spread_index = r.number("induction_spread_index");
         ph.flowers_per_truss_curve = r.curve("flowers_per_truss_curve");
     });
     run("fruit", [&](TableReader& r) {
@@ -603,6 +604,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
     run("soil_temperature", [&](TableReader& r) {
         p.soil_temperature.relax_rate_per_hour = r.number("relax_rate_per_hour");
         p.soil_temperature.heat_degC_per_g_C = r.number("heat_degC_per_g_C");
+        p.soil_temperature.evap_cooling_degC_per_mm = r.number("evap_cooling_degC_per_mm");
     });
     run("organic_matter", [&](TableReader& r) {
         auto& om = p.organic_matter;
@@ -760,8 +762,16 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.co2_growth_curve = r.curve("co2_growth_curve");
         c.cold_leaf_damage_curve = r.curve("cold_leaf_damage_curve");
         c.cold_fruit_loss_curve = r.curve("cold_fruit_loss_curve");
-        c.n_luxury_uptake_ratio = r.number("n_luxury_uptake_ratio");
+        c.n_luxury_max_ratio = r.number("n_luxury_max_ratio");
+        c.n_luxury_uptake_curve = r.curve("n_luxury_uptake_curve");
+        c.mn_uptake_regulation_curve = r.curve("mn_uptake_regulation_curve");
+        c.uptake_temp_curve = r.curve("uptake_temp_curve");
         c.n_uptake_rate_per_g_root_per_hour = r.number("n_uptake_rate_per_g_root_per_hour");
+        c.reserve_capacity_fraction = r.number("reserve_capacity_fraction");
+        c.reserve_fill_fraction = r.number("reserve_fill_fraction");
+        c.reserve_release_rate_per_hour = r.number("reserve_release_rate_per_hour");
+        c.maintenance_activity_curve = r.curve("maintenance_activity_curve");
+        c.rgr_mean_relax_rate_per_hour = r.number("rgr_mean_relax_rate_per_hour");
     });
     if (!status) {
         return std::unexpected(std::move(status.error()));
