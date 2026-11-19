@@ -437,7 +437,8 @@ TEST_CASE("M5a S21 planting right after solarization traps ammonium", "[scenario
     CHECK(mean_range(day0.antagonism_Ca, a0, b0) < mean_range(day42.antagonism_Ca, a42, b42) - 0.05);
     CHECK(min_range(day0.sufficiency_Ca, a0, b0) < min_range(day42.sufficiency_Ca, a42, b42) - 0.05);
 
-    // 아질산: 하우스 평균 NO2 원값은 알칼리 변형에서만 임계치를 넘어요
+    // 아질산 (m5-overview 결정 22): NO2 양(하우스 평균 원값)은 알칼리 변형에서만 임계치를 넘어요.
+    // 독성 경보(NO2 × pH 독성 배율)는 당일 정식이면 중성 흙에서도 울리고, 6주 뒤 정식에서는 울리지 않아요.
     const double threshold = p.nitrification.nitrite_toxicity_threshold_g_N_per_m2;
     WARN(std::format("S21 NO2 max: day0 {:.3f}, day42 {:.3f}, alkaline {:.3f} (threshold {:.1f}); nitrite events {} / {} / {}",
                      max_all(day0.no2_N), max_all(day42.no2_N), max_all(alkaline.no2_N), threshold, day0.nitrite_events,
@@ -446,6 +447,7 @@ TEST_CASE("M5a S21 planting right after solarization traps ammonium", "[scenario
     CHECK(max_all(day0.no2_N) < threshold);
     CHECK(max_all(day42.no2_N) < threshold);
     CHECK(alkaline.nitrite_events > 0);
+    CHECK(day0.nitrite_events > 0);
     CHECK(day42.nitrite_events == 0);
 }
 
