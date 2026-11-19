@@ -12,7 +12,7 @@
 ## 현재 마일스톤
 
 **M5b 하우스 습도·지상부 병해충** (M5는 M5a → M5b로 나눠요, [ADR-0012](docs/decisions/0012-m5-split-and-population-index.md)). M5 전체 완료 기준: 소독 후 양쪽 개체군 감소, 고습 시 병 발생 증가 재현, 태양열 소독은 토양 온도·지속 시간이 클수록 사멸량 증가 (계획서 7장). 하우스 습도와 공기 흐름(병해)도 M5 범위예요 (ADR-0011).
-M5a 명세(m5-overview, soil-microbes, disinfection)는 2026-11-19 승인, 사전 작업(m5-overview 13장)과 본 프로토타입(14장) 뒤 최종 명세도 2026-11-19 승인([ADR-0013](docs/decisions/0013-m5a-deep-soil-and-cell-variation.md)). **M5a는 2026-11-19 승인**(정식 구현, `ctest --preset ci` 472개 통과). M5b 명세(house-humidity, foliar-disease, m5-overview M5b 부분, [ADR-0014](docs/decisions/0014-m5b-transpiration-humidity-feedback.md))는 2026-11-19 승인. 다음은 **M5b 프로토타입 0차**(house-humidity 8장: 틈새 환기·밤 증산·증산 습도 되먹임 스윕과 1작기 회귀)예요. 틈새 환기 0.3 → 0.1(M4 승인 키)은 별도 파라미터 변경으로 해요.
+M5a 명세(m5-overview, soil-microbes, disinfection)는 2026-11-19 승인, 사전 작업(m5-overview 13장)과 본 프로토타입(14장) 뒤 최종 명세도 2026-11-19 승인([ADR-0013](docs/decisions/0013-m5a-deep-soil-and-cell-variation.md)). **M5a는 2026-11-19 승인**(정식 구현, `ctest --preset ci` 472개 통과). M5b 명세(house-humidity, foliar-disease, m5-overview M5b 부분, [ADR-0014](docs/decisions/0014-m5b-transpiration-humidity-feedback.md))는 2026-11-19 승인. 프로토타입 0~7차(버리는 브랜치 `proto/m5b-check`) 뒤 **M5b 최종 명세는 2026-11-20 승인**(m5-overview 15장, ADR-0014는 0차에서 되돌림). 다음은 **M5b 본구현**(m5-overview 15.4: 틈새 환기 0.3 → 0.1 별도 파라미터 변경 → `feature/m5b`로 옮기기 → 새 1작기 기준값 → 테스트 보강). 최종 명세 문서는 아직 `proto/m5b-check`에 있고 본구현 때 함께 옮겨요.
 (M0~M3는 2026-11-18, M4·M5a는 2026-11-19 승인. 단, GitHub Actions CI는 원격 저장소가 없어 실행 검증을 건너뜀)
 승인 전에 다음 마일스톤의 기능을 미리 만들지 않아요. (마일스톤이 바뀌면 이 줄을 갱신해요.)
 
