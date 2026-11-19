@@ -3,6 +3,7 @@
 - 상태: 승인 (2026-11-18)
 - M4 반영: 2026-11-18 ([m4-overview](m4-overview.md))
 - M5a 사전 작업 반영 (2026-11-19 승인, [m5-overview](m5-overview.md) 13.2): 토양 증발 냉각
+- M5a 최종안 승인 (2026-11-19, 프로토타입 1~4차 반영): 깊은 흙 온도 항, 완화 비율 0.04 → 0.08, 멀칭 지온 이득([disinfection](disinfection.md)). [ADR-0013](../decisions/0013-m5a-deep-soil-and-cell-variation.md)
 - 마일스톤: M1
 - 관련: [m1-overview](m1-overview.md), 분해 발열은 [organic-matter](organic-matter.md)
 
@@ -16,13 +17,16 @@
 | --- | --- | --- |
 | `house_air_temp_degC` (월드) | 하우스 기온. (M4, 2026-11-18) 열 관성이 있는 **상태**로 승격하고 [house-climate](house-climate.md)가 계산해요. 스냅샷에 노출해요 | °C |
 | `soil_temp_degC` (셀) | 근권 토양 온도 | °C |
+| `deep_soil_temp_degC` (셀, M5a 신설) | 깊은 흙 온도. 근권 토양 온도를 며칠에 걸쳐 따라가는 느린 기억 (2층 토양이 아님, M8에서 다시) | °C |
 
 ## 파라미터
 
 | 키 | 의미 | 단위 | 초기값 | 출처 |
 | --- | --- | --- | --- | --- |
 | ~~`house.base_offset_degC`~~, ~~`house.solar_gain_degC_per_W_per_m2`~~, ~~`house.solar_transmittance_factor`~~ | **(M4, 2026-11-18 삭제)** M1 하우스 기온 식의 계수 3개. 현재 값이 아니에요. 대신 [house-climate](house-climate.md)의 `[house]` 파라미터(피복 겹수별 투과율·단열, 창, 난방 등)를 써요 | - | - | - |
-| `soil_temperature.relax_rate_per_hour` | 토양 온도가 하우스 기온을 따라가는 시간당 비율 | 1/h | 0.04 | 게임용 임의값 (시간 상수 약 1일) |
+| `soil_temperature.relax_rate_per_hour` | 토양 온도가 완화 목표를 따라가는 시간당 비율 | 1/h | **0.08** (2026-11-19 M5a 프로토타입 3차 점검으로 조정: 이전 0.04) | 게임용 임의값 (시간 상수 약 12시간). 깊은 흙 항과 함께 일교차를 키워 소독 지온의 일최고·일평균을 함께 맞춤 |
+| `soil_temperature.deep_coupling_fraction` (M5a 신설) | 완화 목표 중 깊은 흙 온도의 비율. 0이면 M1~M4 식 | - | 0.65 | 게임용 임의값. 2026-11-19 디렉터 결정 "깊은 흙 온도 항 추가" |
+| `soil_temperature.deep_relax_rate_per_hour` (M5a 신설) | 깊은 흙 온도가 근권 온도를 따라가는 시간당 비율 | 1/h | 0.01 | 게임용 임의값 (시간 상수 약 4일) |
 | `soil_temperature.heat_degC_per_g_C` | 호흡으로 날아간 탄소 1 g/m²당 토양 온도 상승 | °C per g C/m² | 0.4 | 게임용 임의값 |
 | `soil_temperature.evap_cooling_degC_per_mm` (M5a 사전 작업, 신설) | 토양 증발 1 mm당 토양 온도 하강 | °C per mm | 2.5 | 게임용 임의값. 7월 밀폐·무피복 지온 최고 38.6~39.7 °C가 참고 범위 35~40 °C(m5-overview A3b)에 들도록 맞춤. 없으면 밀폐 하우스 흙이 하우스 기온을 그대로 따라가 너무 뜨거웠어요 |
 
@@ -44,6 +48,20 @@ soil_temp_degC += (house_air_temp_degC − soil_temp_degC) × min(1, relax_rate_
 ```
 
 - 방향: 하우스 기온을 일정 지연을 두고 따라가요. 일교차가 기온보다 작게 나타나요.
+- (M5a 최종안) 완화 목표가 하우스 기온 하나에서 아래 가중합으로 바뀌어요.
+
+```
+air_target  = house_air_temp_degC + 멀칭 지온 이득 (disinfection 1번, 덮지 않으면 0)
+target      = (1 − deep_coupling_fraction) × air_target + deep_coupling_fraction × deep_soil_temp_degC
+soil_temp_degC += (target − soil_temp_degC) × min(1, relax_rate_per_hour)
+(증발 냉각, 아래)
+deep_soil_temp_degC += (soil_temp_degC − deep_soil_temp_degC) × min(1, deep_relax_rate_per_hour)
+```
+
+- 깊은 흙 온도는 월드 생성 때 시나리오 `soil_temp_degC`로 시작해요. 근권 갱신(완화 + 증발 냉각) **뒤에** 갱신하고, 분해 발열(셀 단계 e)은 그 뒤라 다음 틱에 반영돼요.
+- 왜: 한 층 토양은 소독 지온의 하루 최고(45~52 °C)를 맞추면 일평균도 하우스 기온을 따라 너무 높아졌어요(프로토타입 2차: 일최고 47.8 °C일 때 일평균 43.7, 목표 38~41). 그러면 병원균이 2주 만에 전멸해 소독 기간의 효과(A6, 완료 기준)가 보이지 않았어요. 깊은 흙 항은 며칠 평균 쪽으로 끌어당겨 밤에 더 식고, 완화 비율을 0.08로 올려 낮에는 더 빨리 데워져요.
+- 프로토타입 4차 결과: 7월 태양열 소독(투명 필름 + 밀폐) 최고 45.2 °C·일평균 39.1 °C(하루 최고의 평균은 41.9 °C), 필름 없는 밀폐 최고 37.4·일평균 32.5 °C, 필름 효과 일최고 +7.8·일평균 +6.5 °C([m5-overview](m5-overview.md) 5장).
+- M1~M4 영향: 모든 시나리오의 토양 온도가 바뀌어요. 기존 M1~M4 테스트는 그대로 통과하고, 1작기 회귀는 N 과다 4월 +9.0%, K 과다 5월 −6.5%로 경계를 넘어요. 2026-11-19 디렉터 결정: **지온 우선, 최종 승인 때 새 1작기 기준값**.
 
 ### 증발 냉각 (셀 단계 b, 완화 직후. M5a 사전 작업, 2026-11-19 승인)
 
@@ -54,6 +72,7 @@ soil_temp_degC −= max(0, evaporated_mm) × evap_cooling_degC_per_mm
 - `evaporated_mm`은 같은 틱 셀 단계 a([soil-water](soil-water.md))의 토양 증발량이에요(`update_soil_water`가 돌려줘요. 장부 `water_evaporated_mm`의 이번 틱 증가분과 같아요). 증산은 넣지 않아요.
 - 방향: 젖은 흙이 햇빛을 받아 증발하는 낮에 흙이 덜 데워져요. 필름 멀칭(M5a [disinfection](disinfection.md))은 증발을 줄여 이 냉각도 줄여요.
 - 계수 0이면 M1~M4 식과 같아요.
+- (M5a) 증발 냉각은 실제 증발량에 곱해서, 필름(증발 배율 0.1~0.2)은 이 냉각을 거의 없애요. 백색 필름은 반사 이득(−0.02)으로 이를 상쇄해 맨땅과 비슷하거나 조금 시원해요.
 
 ### 분해 발열 (셀 단계 e, 유기물 분해 직후)
 
@@ -78,6 +97,8 @@ soil_temp_degC += respired_C_g_per_m2 × heat_degC_per_g_C
 | 낮 일사 > 0 | 하우스 기온 > 외기 (M4, 2026-11-18: 이전 기대의 `base_offset`은 삭제된 계수. 하우스 기온 테스트는 [house-climate](house-climate.md) "테스트"가 맡아요) |
 | 호흡 탄소 x g | 토양 온도가 정확히 `x × heat` 만큼 추가 상승 |
 | (M5a 사전 작업) 증발 1.2 mm, 계수 2.5 | 완화만 했을 때보다 정확히 3.0 °C 낮음. 계수 0이거나 증발이 음수면 완화만 한 값과 같음 |
+| (M5a) 깊은 흙 결합 0 | 이전 식과 비트 단위로 같음 |
+| (M5a) 결합 > 0 | 완화 목표가 가중합과 정확히 같고, 깊은 흙 온도가 정해진 비율로 근권 온도를 따라감(늦게). 월드 생성 때 시나리오 온도로 시작 (`tests/test_m5a_variation.cpp`) |
 | (M5a 사전 작업) `update_soil_water` 반환값 | 장부 `water_evaporated_mm`의 이번 틱 증가분과 같음 (밤에도) |
 
 ## 단순화와 비목표
