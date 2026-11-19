@@ -1,0 +1,76 @@
+# S23 과습·고온: 9/1 시작, 매일 25 mm 과관수, 난방 없음, 지온 시작 28 도 (밀폐 하우스 일사로 첫 2주 약 30~33 도, 28일째 약 26 도). 28일. 창은 닫아 둠.
+# 기대: 역병 적온(20~25 도)보다 더워서 과습·온화보다 감염이 작아요 (그래도 적정 관수보다는 커요).
+# 길이는 sim-cli의 --ticks로 정해요: 28일 = 672틱. 시작: day 244, 틱 0 = 그날 0시.
+# 값은 전부 게임용 임의값이에요. 이 파일은 tools/gen_m5a_scenarios.py가 만들어요(고치려면 스크립트를 고쳐요).
+
+schema_version = 6
+
+[scenario]
+name = "m5a/s23_waterlogged_hot"
+seed = 20261119
+start_day_of_year = 244
+weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+cover_layers = 3
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 50.0
+soil_temp_degC = 28.0
+ph = 6.5
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 10.0
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 5.0
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 360.0
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.8
+base_buffer_eq_per_m2_per_pH = 1.25
+# M3 항목: 전부 게임용 임의값 (기준 토양 = M3 s5_standard, 다짐 0.8 (S8 과습), docs/spec/m3-overview.md)
+cec_mineral_eq_per_m2 = 25.0
+mn_g_per_m2 = 5.0
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[crop]
+seedling_grade = "B"
+plants_per_m2 = 8.0
+initial_establishment_index = 0.0
+
+[microbes]  # M5a 필수: 모든 셀의 무리별 시작 지수 (기본값은 m5-overview 11장). 역병균 0.5 (오염 토양), 시들음병균 0
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 1.0
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.0
+phytophthora = 0.5
+
+[difficulty]
+stress_combination = "minimum"
+
+# 질산칼슘 15 g N/m2 (96.8 g/m2, S13과 같음)
+[[schedule]]
+tick = 0
+action = "add_fertilizer"
+fertilizer = "calcium_nitrate"
+g_per_m2 = 96.8
+
+# 과관수: 매일 08시 25 mm (M2 S8 과습 설정)
+[[schedule]]
+tick = 8
+action = "irrigate"
+amount_mm = 25.0
+repeat_every_ticks = 24
+repeat_count = 28

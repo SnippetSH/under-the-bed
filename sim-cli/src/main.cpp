@@ -14,6 +14,10 @@
 // 하우스 전체 가중 평균 당도·경도·온도 점수, 낙과·적과 수, 크기 구간별 개수, 첫 수확 틱), 장부 M4 항목.
 // 수확 열은 작물이 있는 타일 평균(개수는 타일당 평균)이에요. 진단 열은 m4-overview "진단·리포트용 기록"이에요.
 // 명령 일정표([[schedule]])는 해당 틱을 처리하기 직전에 enqueue해요.
+// M5a 파생 열: 무리별 하우스 평균 지수 <id>_index 7개, 약제별 평균 잔류 fumigant_residue_<id>_index, 멀칭 덮인 셀 비율
+// mulched_fraction과 멀칭 id(mulch_id, 섞여 있으면 mixed), 작물 평균 감염 지수 infection_<병>_index, 이번 틱 소독 사멸
+// disinfection_kill_<id>_index와 지금까지의 누적 disinfection_kill_cum_<id>_index(셀 평균), 장부 ledger_N_flush_g,
+// ledger_Mn_flush_g, ledger_inoculant_applied_g, ledger_disinfectant_applied_<id>_g. 전부 플레이어 비공개 진짜 값이에요.
 // --no-hash를 주면 state_hash 열을 비워 둬요 (긴 실행을 빠르게). 최종 해시는 그래도 찍어요.
 // 표준 출력에는 이벤트 종류별 횟수, 수확 합계, 최종 상태 해시를 찍어요.
 
@@ -113,6 +117,10 @@ struct Row {
     }
 };
 
+// 고사 원인 이름 (RootDamageCause 순서)
+constexpr std::array<std::string_view, 7> kDeathCauseNames = {"waterlog", "heat", "nitrite", "acid",
+                                                              "fusarium", "phytophthora", "fumigant"};
+
 template <typename Fn>
 double mean_of(const std::vector<sim::SoilCell>& cells, Fn&& fn) {
     if (cells.empty()) {
@@ -125,7 +133,8 @@ double mean_of(const std::vector<sim::SoilCell>& cells, Fn&& fn) {
     return sum / static_cast<double>(cells.size());
 }
 
-Row build_row(const sim::World& world, bool include_hash) {
+// cum_kill: 이 행까지 누적한 셀 평균 소독 사멸 (무리 순서). 행 값은 틱 시점 상태라 호출자가 이어서 쌓아요.
+Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndices& cum_kill) {
     const sim::Snapshot s = world.snapshot();
     const sim::CropParams& cp = world.params().crop;
     Row row;
@@ -197,6 +206,42 @@ Row build_row(const sim::World& world, bool include_hash) {
             mean_of(s.soil, [](const sim::SoilCell& c) { return c.mg_g_per_m2 - c.mg_solution_g_per_m2; }));
     row.add("mn_exchangeable_g_per_m2",
             mean_of(s.soil, [](const sim::SoilCell& c) { return c.mn_g_per_m2 - c.mn_solution_g_per_m2; }));
+
+    // M5a 토양 미생물·소독 (하우스 평균)
+    for (std::size_t g = 0; g < sim::kMicrobeGroupCount; ++g) {
+        row.add(std::format("{}_index", sim::kMicrobeGroupIds[g]),
+                mean_of(s.soil, [g](const sim::SoilCell& c) { return c.microbe_index[g]; }));
+    }
+    const auto& disinfectants = world.params().disinfectants;
+    for (std::size_t d = 0; d < disinfectants.size(); ++d) {
+        row.add(std::format("fumigant_residue_{}_index", disinfectants[d].id),
+                mean_of(s.soil, [d](const sim::SoilCell& c) {
+                    return d < c.fumigant_residue_index.size() ? c.fumigant_residue_index[d] : 0.0;
+                }));
+    }
+    row.add("mulched_fraction",
+            mean_of(s.soil, [](const sim::SoilCell& c) { return c.mulch_def_index != sim::kNoMulch ? 1.0 : 0.0; }));
+    {
+        // 모든 셀이 같은 멀칭이면 그 id, 섞여 있으면 mixed
+        std::int32_t first = s.soil.empty() ? sim::kNoMulch : s.soil.front().mulch_def_index;
+        bool uniform = true;
+        for (const sim::SoilCell& c : s.soil) {
+            uniform = uniform && c.mulch_def_index == first;
+        }
+        const auto& mulches = world.params().mulches;
+        std::string id = "mixed";
+        if (uniform) {
+            id = (first >= 0 && static_cast<std::size_t>(first) < mulches.size()) ? mulches[first].id : "none";
+        }
+        row.add_text("mulch_id", std::move(id));
+    }
+    for (std::size_t g = 0; g < sim::kMicrobeGroupCount; ++g) {
+        row.add(std::format("disinfection_kill_{}_index", sim::kMicrobeGroupIds[g]),
+                mean_of(s.soil, [g](const sim::SoilCell& c) { return c.disinfection_kill_index[g]; }));
+    }
+    for (std::size_t g = 0; g < sim::kMicrobeGroupCount; ++g) {
+        row.add(std::format("disinfection_kill_cum_{}_index", sim::kMicrobeGroupIds[g]), cum_kill[g]);
+    }
 
     // 작물 (작물이 있는 타일 평균; 없으면 빈 칸)
     std::vector<const sim::Crop*> present;
@@ -290,6 +335,11 @@ Row build_row(const sim::World& world, bool include_hash) {
     CROP_COL(size_satisfaction_mean);
     CROP_COL(reserve_g_per_m2);
     CROP_COL(rgr_mean_per_day);
+    // M5a 토양 병해 감염 지수 (SoilDisease 순서)
+    for (std::size_t d = 0; d < sim::kSoilDiseaseCount; ++d) {
+        crop_col(std::format("infection_{}_index", sim::kSoilDiseaseIds[d]),
+                 [d](const sim::Crop& c) { return c.infection_index[d]; });
+    }
     crop_col("last_gross_g_per_m2", [](const sim::Crop& c) { return c.last_gross_g_per_m2; });
     crop_col("last_respiration_g_per_m2", [](const sim::Crop& c) { return c.last_respiration_g_per_m2; });
     STATUS_COL("excess_index_N", excess_N);
@@ -408,7 +458,15 @@ Row build_row(const sim::World& world, bool include_hash) {
     LEDGER_COL(Mg_harvested_g);
     LEDGER_COL(Mn_harvested_g);
     LEDGER_COL(C_leaf_litter_g);
+    // M5a
+    LEDGER_COL(N_flush_g);
+    LEDGER_COL(Mn_flush_g);
+    LEDGER_COL(inoculant_applied_g);
 #undef LEDGER_COL
+    for (std::size_t d = 0; d < disinfectants.size(); ++d) {
+        row.add(std::format("ledger_disinfectant_applied_{}_g", disinfectants[d].id),
+                d < l.disinfectant_applied_g.size() ? l.disinfectant_applied_g[d] : 0.0);
+    }
     if (include_hash) {
         row.add_text("state_hash", std::format("0x{:016x}", world.state_hash()));
     } else {
@@ -428,12 +486,20 @@ std::string join(const std::vector<std::string>& parts) {
     return out;
 }
 
-void write_header(std::ofstream& csv, const sim::World& world) {
-    std::println(csv, "{}", join(build_row(world, true).names));
+// 이번 틱(마지막으로 처리한 틱)의 셀 평균 소독 사멸을 누적에 더해요. 틱 0 행은 처리한 틱이 없어서 0이에요.
+void accumulate_kill(const sim::World& world, sim::MicrobeIndices& cum_kill) {
+    const sim::Snapshot s = world.snapshot();
+    for (std::size_t g = 0; g < sim::kMicrobeGroupCount; ++g) {
+        cum_kill[g] += mean_of(s.soil, [g](const sim::SoilCell& c) { return c.disinfection_kill_index[g]; });
+    }
 }
 
-void write_row(std::ofstream& csv, const sim::World& world, bool include_hash) {
-    std::println(csv, "{}", join(build_row(world, include_hash).values));
+void write_header(std::ofstream& csv, const sim::World& world) {
+    std::println(csv, "{}", join(build_row(world, true, sim::MicrobeIndices{}).names));
+}
+
+void write_row(std::ofstream& csv, const sim::World& world, bool include_hash, const sim::MicrobeIndices& cum_kill) {
+    std::println(csv, "{}", join(build_row(world, include_hash, cum_kill).values));
 }
 
 }  // namespace
@@ -481,14 +547,18 @@ int main(int argc, char** argv) {
     }
 
     const auto started = std::chrono::steady_clock::now();
+    sim::MicrobeIndices cum_kill{};
     if (csv.is_open()) {
-        write_row(csv, *world, !opt->no_hash);
+        write_row(csv, *world, !opt->no_hash, cum_kill);
     }
     std::size_t next_command = 0;
     std::uint64_t command_applied_events = 0;
     std::uint64_t nitrite_events = 0;
     std::uint64_t plant_died_events = 0;
     std::uint64_t fruit_harvested_events = 0;
+    std::uint64_t disease_onset_events = 0;
+    std::array<std::uint64_t, kDeathCauseNames.size()> died_by_cause{};
+    std::array<std::uint64_t, sim::kSoilDiseaseCount> onset_by_disease{};
     for (std::uint32_t t = 0; t < opt->ticks; ++t) {
         // 일정표는 tick 오름차순이라 현재 틱의 명령만 앞에서부터 꺼내면 돼요.
         while (next_command < schedule.size() && schedule[next_command].tick == t) {
@@ -505,14 +575,22 @@ int main(int argc, char** argv) {
                 ++command_applied_events;
             } else if (std::holds_alternative<sim::NitriteThresholdExceededEvent>(event.payload)) {
                 ++nitrite_events;
-            } else if (std::holds_alternative<sim::PlantDiedEvent>(event.payload)) {
+            } else if (const auto* died = std::get_if<sim::PlantDiedEvent>(&event.payload)) {
                 ++plant_died_events;
+                const auto cause = static_cast<std::size_t>(died->cause);
+                if (cause < died_by_cause.size()) {
+                    ++died_by_cause[cause];
+                }
+            } else if (const auto* onset = std::get_if<sim::DiseaseOnsetEvent>(&event.payload)) {
+                ++disease_onset_events;
+                ++onset_by_disease[static_cast<std::size_t>(onset->disease)];
             } else if (std::holds_alternative<sim::FruitHarvestedEvent>(event.payload)) {
                 ++fruit_harvested_events;
             }
         }
         if (csv.is_open()) {
-            write_row(csv, *world, !opt->no_hash);
+            accumulate_kill(*world, cum_kill);
+            write_row(csv, *world, !opt->no_hash, cum_kill);
         }
     }
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -528,8 +606,21 @@ int main(int argc, char** argv) {
     }
 
     std::println("scenario={} ticks={} elapsed_ms={}", world->scenario().name, opt->ticks, elapsed_ms);
-    std::println("events command_applied={} nitrite_threshold_exceeded={} plant_died={} fruit_harvested={}",
-                 command_applied_events, nitrite_events, plant_died_events, fruit_harvested_events);
+    std::println(
+        "events command_applied={} nitrite_threshold_exceeded={} plant_died={} fruit_harvested={} disease_onset={}",
+        command_applied_events, nitrite_events, plant_died_events, fruit_harvested_events, disease_onset_events);
+    {
+        std::string causes;
+        for (std::size_t i = 0; i < died_by_cause.size(); ++i) {
+            causes += std::format("{}{}={}", i == 0 ? "" : " ", kDeathCauseNames[i], died_by_cause[i]);
+        }
+        std::println("plant_died_by_cause {}", causes);
+        std::string onsets;
+        for (std::size_t i = 0; i < sim::kSoilDiseaseCount; ++i) {
+            onsets += std::format("{}{}={}", i == 0 ? "" : " ", sim::kSoilDiseaseIds[i], onset_by_disease[i]);
+        }
+        std::println("disease_onset_by_disease {}", onsets);
+    }
 
     // 하우스 전체 수확 합계 (모든 타일)
     double harvest_fresh_g = 0.0;
@@ -544,6 +635,16 @@ int main(int argc, char** argv) {
     }
     std::println("harvest_total fresh_g={} count={} deformed_fresh_g={} deformed_count={}", harvest_fresh_g,
                  harvest_count, harvest_deformed_fresh_g, harvest_deformed_count);
+    {
+        // 최종 하우스 평균 미생물 지수 (빠른 확인용)
+        const sim::Snapshot fin = world->snapshot();
+        std::string line;
+        for (std::size_t g = 0; g < sim::kMicrobeGroupCount; ++g) {
+            const double m = mean_of(fin.soil, [g](const sim::SoilCell& c) { return c.microbe_index[g]; });
+            line += std::format("{}{}={:.4f}", g == 0 ? "" : " ", sim::kMicrobeGroupIds[g], m);
+        }
+        std::println("final_microbe_index {}", line);
+    }
     std::println("final_state_hash=0x{:016x}", world->state_hash());
     return kExitOk;
 }

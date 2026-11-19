@@ -15,7 +15,10 @@
 namespace simdata {
 
 // 시나리오 TOML 파일의 스키마 버전
-inline constexpr std::int64_t kScenarioFileSchemaVersion = 5;
+inline constexpr std::int64_t kScenarioFileSchemaVersion = 6;
+
+// params TOML 파일의 스키마 버전 (M5a: 6). 코어의 sim::kParamsSchemaVersion과 같아야 해요.
+inline constexpr std::int64_t kParamsFileSchemaVersion = 6;
 
 // 기상 CSV 머리글 (순서 고정)
 inline constexpr std::string_view kWeatherCsvHeader =

@@ -197,6 +197,47 @@ public:
         return result;
     }
 
+    // 무리·약제 id를 키로 하는 인라인 테이블 { id = 숫자, ... }. 모르는 id는 오류예요.
+    // require_all이 true면 ids 전부 필수, false면 빠진 id는 0이에요 (명세가 "생략 = 0"이라고 한 키만).
+    template <std::size_t N>
+    std::array<double, N> id_numbers(std::string_view key, const std::array<std::string_view, N>& ids,
+                                     bool require_all) {
+        std::array<double, N> result{};
+        const toml::node* node = lookup(key);
+        if (node == nullptr) {
+            return result;
+        }
+        const toml::table* table = node->as_table();
+        if (table == nullptr) {
+            wrong_type(key, "table of id = number");
+            return result;
+        }
+        std::array<bool, N> seen{};
+        for (auto&& [k, v] : *table) {
+            std::size_t index = N;
+            for (std::size_t i = 0; i < N; ++i) {
+                if (ids[i] == k.str()) {
+                    index = i;
+                }
+            }
+            if (index == N) {
+                set_error(std::format("{}: '{}' has unknown id '{}'", source_name_, qualified(key), k.str()));
+                return {};
+            }
+            result[index] = number_from(v, std::format("{}.{}", qualified(key), k.str()));
+            seen[index] = true;
+        }
+        if (require_all) {
+            for (std::size_t i = 0; i < N; ++i) {
+                if (!seen[i]) {
+                    set_error(std::format("{}: '{}' is missing id '{}'", source_name_, qualified(key), ids[i]));
+                    return {};
+                }
+            }
+        }
+        return result;
+    }
+
     // 필수 하위 테이블
     TableReader child(std::string_view key) {
         const toml::node* node = lookup(key);
@@ -441,9 +482,28 @@ void read_schedule_entry(TableReader& r, int bed_rows, int bed_cols, std::vector
     } else if (action == "thin_flowers") {
         const sim::TileArea area = read_area();
         command = sim::ThinFlowersCommand{.area = area, .per_plant = r.number("per_plant")};
+    } else if (action == "set_mulch") {
+        const sim::TileArea area = read_area();
+        command = sim::SetMulchCommand{.area = area, .mulch_id = r.string("mulch")};
+    } else if (action == "apply_disinfectant") {
+        const sim::TileArea area = read_area();
+        std::string id = r.string("disinfectant");
+        const double g_per_m2 = r.number("g_per_m2");
+        command = sim::ApplyDisinfectantCommand{.area = area, .disinfectant_id = std::move(id), .g_per_m2 = g_per_m2};
+    } else if (action == "add_inoculant") {
+        const sim::TileArea area = read_area();
+        std::string id = r.string("inoculant");
+        const double g_per_m2 = r.number("g_per_m2");
+        command = sim::AddInoculantCommand{.area = area, .inoculant_id = std::move(id), .g_per_m2 = g_per_m2};
+    } else if (action == "plant") {
+        // 하우스 전체 명령이라 area 키는 받지 않아요 (있으면 모르는 키 오류).
+        std::string grade = r.string("seedling_grade");
+        const double plants_per_m2 = r.number("plants_per_m2");
+        command = sim::PlantCommand{.seedling_grade = std::move(grade), .plants_per_m2 = plants_per_m2};
     } else {
         r.set_error(std::format("'{}': unknown action '{}' (expected irrigate, add_compost, add_fertilizer, "
-                                "add_lime, till, set_window, set_heater, set_cover_layers or thin_flowers)",
+                                "add_lime, till, set_window, set_heater, set_cover_layers, thin_flowers, "
+                                "set_mulch, apply_disinfectant, add_inoculant or plant)",
                                 r.qualified("action"), action));
         return;
     }
@@ -492,12 +552,12 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         return std::unexpected(std::move(root_table.error()));
     }
     TableReader root(&*root_table, source_name, "");
-    if (auto v = check_schema(root, sim::kParamsSchemaVersion, "params", source_name); !v) {
+    if (auto v = check_schema(root, kParamsFileSchemaVersion, "params", source_name); !v) {
         return std::unexpected(std::move(v.error()));
     }
 
     sim::Params p;
-    p.schema_version = sim::kParamsSchemaVersion;
+    p.schema_version = kParamsFileSchemaVersion;
 
     // 하위 테이블마다 읽고 finish()로 오류와 모르는 키를 잡아요. 순서는 params.hpp와 같아요.
     std::expected<void, Error> status;
@@ -713,6 +773,74 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         d.heat_curve = r.curve("heat_curve");
         d.nitrite_curve = r.curve("nitrite_curve");
         d.acid_curve = r.curve("acid_curve");
+        // M5a: 감염 지수 -> 시간당 손상, 약제 잔류 x 활성 -> 시간당 손상
+        d.fusarium_curve = r.curve("fusarium_curve");
+        d.phytophthora_curve = r.curve("phytophthora_curve");
+        d.fumigant_curve = r.curve("fumigant_curve");
+    });
+    // M5a 토양 미생물 (docs/spec/soil-microbes.md). 공통 키 + [microbes.<id>] 7개
+    run("microbes", [&](TableReader& r) {
+        auto& m = p.microbes;
+        m.capacity_floor_index = r.number("capacity_floor_index");
+        m.decomposer_activity_curve = r.curve("decomposer_activity_curve");
+        m.aob_activity_curve = r.curve("aob_activity_curve");
+        m.nob_activity_curve = r.curve("nob_activity_curve");
+        m.antagonist_protection_factor = r.number("antagonist_protection_factor");
+        m.mycorrhiza_p_release_factor = r.number("mycorrhiza_p_release_factor");
+        m.mycorrhiza_water_relief_factor = r.number("mycorrhiza_water_relief_factor");
+        m.mycorrhiza_salt_relief_factor = r.number("mycorrhiza_salt_relief_factor");
+        m.moist_heat_curve = r.curve("moist_heat_curve");
+        m.decomposer_food_curve = r.curve("decomposer_food_curve");
+        m.antagonist_food_curve = r.curve("antagonist_food_curve");
+        m.mycorrhiza_host_curve = r.curve("mycorrhiza_host_curve");
+        m.mycorrhiza_p_curve = r.curve("mycorrhiza_p_curve");
+        for (std::size_t i = 0; i < sim::kMicrobeGroupCount; ++i) {
+            TableReader g = r.child(sim::kMicrobeGroupIds[i]);
+            auto& gp = m.groups[i];
+            gp.growth_rate_per_hour = g.number("growth_rate_per_hour");
+            gp.temp_curve = g.curve("temp_curve");
+            gp.moisture_curve = g.curve("moisture_curve");
+            gp.ph_curve = g.curve("ph_curve");
+            gp.o2_curve = g.curve("o2_curve");
+            gp.base_death_rate_per_hour = g.number("base_death_rate_per_hour");
+            gp.heat_kill_curve = g.curve("heat_kill_curve");
+            gp.immigration_rate_per_hour = g.number("immigration_rate_per_hour");
+            // 경쟁 계수: 생략한 무리 = 0, 자기 자신은 쓸 수 없어요.
+            gp.competition = g.id_numbers("competition", sim::kMicrobeGroupIds, false);
+            if (gp.competition[i] != 0.0) {
+                g.set_error(std::format("'{}' must not list the group itself", g.qualified("competition")));
+            }
+            // 수용력 키는 병원균(fusarium, phytophthora)만 가져요. 다른 무리가 쓰면 모르는 키 오류예요.
+            if (i >= sim::microbe(sim::MicrobeGroup::Fusarium)) {
+                gp.saprophytic_capacity_index = g.number("saprophytic_capacity_index");
+                gp.host_capacity_index = g.number("host_capacity_index");
+            }
+            if (auto done = g.finish(); !done) {
+                r.set_error(done.error().message);
+            }
+        }
+    });
+    // M5a 작물 감염 (soil-microbes 3번)
+    run("soil_disease", [&](TableReader& r) {
+        for (std::size_t i = 0; i < sim::kSoilDiseaseCount; ++i) {
+            TableReader d = r.child(sim::kSoilDiseaseIds[i]);
+            auto& dp = p.soil_disease[i];
+            dp.infection_rate_per_hour = d.number("infection_rate_per_hour");
+            dp.infection_env_curve_temp = d.curve("infection_env_curve_temp");
+            dp.infection_env_curve_o2 = d.curve("infection_env_curve_o2");
+            dp.infection_env_curve_ph = d.curve("infection_env_curve_ph");
+            dp.onset_infection_index = d.number("onset_infection_index");
+            if (auto done = d.finish(); !done) {
+                r.set_error(done.error().message);
+            }
+        }
+    });
+    run("disinfection", [&](TableReader& r) {
+        auto& d = p.disinfection;
+        d.flush_N_g_per_m2_per_index = r.number("flush_N_g_per_m2_per_index");
+        d.flush_C_to_N_ratio = r.number("flush_C_to_N_ratio");
+        d.mn_reduction_per_index = r.number("mn_reduction_per_index");
+        d.till_residue_release_fraction = r.number("till_residue_release_fraction");
     });
     run("crop", [&](TableReader& r) {
         auto& c = p.crop;
@@ -840,6 +968,48 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         p.limes.push_back(std::move(l));
     }
 
+    // M5a: 멀칭 필름, 소독 약제, 유익균 제품
+    for (TableReader& r : root.table_array("mulch", true)) {
+        sim::MulchDef m;
+        m.id = r.string("id");
+        m.name = r.string("name");
+        m.soil_solar_gain_degC_per_W_per_m2 = r.number("soil_solar_gain_degC_per_W_per_m2");
+        m.evaporation_factor = r.number("evaporation_factor");
+        m.fumigant_retention_factor = r.number("fumigant_retention_factor");
+        m.canopy_reflect_factor = r.number("canopy_reflect_factor");
+        if (auto done = r.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+        p.mulches.push_back(std::move(m));
+    }
+    for (TableReader& r : root.table_array("disinfectant", true)) {
+        sim::DisinfectantDef d;
+        d.id = r.string("id");
+        d.name = r.string("name");
+        d.residue_index_per_g_per_m2 = r.number("residue_index_per_g_per_m2");
+        d.kill_rate_per_hour = r.id_numbers("kill_rate_per_hour", sim::kMicrobeGroupIds, true);
+        d.decay_rate_per_hour = r.number("decay_rate_per_hour");
+        d.decay_temp_curve = r.curve("decay_temp_curve");
+        d.activation_moisture_curve = r.curve("activation_moisture_curve");
+        if (auto done = r.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+        p.disinfectants.push_back(std::move(d));
+    }
+    for (TableReader& r : root.table_array("inoculant", true)) {
+        sim::InoculantDef inoc;
+        inoc.id = r.string("id");
+        inoc.name = r.string("name");
+        // 무리별 지수 증가는 일부만 적어도 돼요 (생략한 무리 = 0)
+        inoc.index_gain_per_g_per_m2 = r.id_numbers("index_gain_per_g_per_m2", sim::kMicrobeGroupIds, false);
+        inoc.C_g_per_kg = r.number("C_g_per_kg");
+        inoc.N_g_per_kg = r.number("N_g_per_kg");
+        if (auto done = r.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+        p.inoculants.push_back(std::move(inoc));
+    }
+
     if (auto done = root.finish(); !done) {
         return std::unexpected(std::move(done.error()));
     }
@@ -908,6 +1078,15 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
     s.mn_oxide_g_per_m2 = soil.number("mn_oxide_g_per_m2");
     s.p_fixed_g_per_m2 = soil.number("p_fixed_g_per_m2");
     if (auto done = soil.finish(); !done) {
+        return std::unexpected(std::move(done.error()));
+    }
+
+    // [microbes]는 필수예요 (M5a): 모든 셀의 무리별 시작 지수 7개 전부 (m5-overview 11장)
+    TableReader microbes = root.child("microbes");
+    for (std::size_t i = 0; i < sim::kMicrobeGroupCount; ++i) {
+        s.microbe_index[i] = microbes.number(sim::kMicrobeGroupIds[i]);
+    }
+    if (auto done = microbes.finish(); !done) {
         return std::unexpected(std::move(done.error()));
     }
 

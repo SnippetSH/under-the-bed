@@ -1,0 +1,117 @@
+# S33 소독 단계 필름 비교 (백색): s19_solar_4w와 같은 조건(관수 30 mm, 창 닫음, 28일)에서 필름 종류만 바꿈.
+# 기대: 지온·병원균 사멸 투명 > 흑색 > 없음 > 백색. 모든 필름에서 증발이 줄어요 (없음은 제외).
+# 길이는 sim-cli의 --ticks로 정해요: 28일 = 672틱. 시작: day 191, 틱 0 = 그날 0시.
+# 값은 전부 게임용 임의값이에요. 이 파일은 tools/gen_m5a_scenarios.py가 만들어요(고치려면 스크립트를 고쳐요).
+
+schema_version = 6
+
+[scenario]
+name = "m5a/s33_disinfect_white"
+seed = 20261119
+start_day_of_year = 191
+weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+cover_layers = 3
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 30.0
+soil_temp_degC = 25.0
+ph = 6.2
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 10.0
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 5.0
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 360.0
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.3
+base_buffer_eq_per_m2_per_pH = 1.25
+# M3 항목: 전부 게임용 임의값 (기준 토양 = M3 s5_standard, docs/spec/m3-overview.md)
+cec_mineral_eq_per_m2 = 25.0
+mn_g_per_m2 = 5.0
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[microbes]  # M5a 필수: 모든 셀의 무리별 시작 지수 (기본값은 m5-overview 11장). 시들음병균 0.5, 역병균 0.5 (오염 토양)
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 1.0
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.5
+phytophthora = 0.5
+
+[difficulty]
+stress_combination = "minimum"
+
+# 관수 30 mm (포장용수량 근처까지)
+[[schedule]]
+tick = 0
+action = "irrigate"
+amount_mm = 30.0
+
+# white_film 덮기
+[[schedule]]
+tick = 1
+action = "set_mulch"
+mulch = "white_film"
+
+# 필름 걷기 (소독 끝)
+[[schedule]]
+tick = 672
+action = "set_mulch"
+mulch = "none"
+
+# 창 전부 열기 (소독 끝)
+[[schedule]]
+tick = 672
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 1.0
+
+[[schedule]]
+tick = 672
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 1.0
+
+[[schedule]]
+tick = 672
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 1.0
+
+[[schedule]]
+tick = 672
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 1.0
+
+[[schedule]]
+tick = 672
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 1.0
+
+[[schedule]]
+tick = 672
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 1.0
