@@ -11,8 +11,8 @@
 
 ## 현재 마일스톤
 
-**M5 미생물·병해** — 완료 기준: 소독 후 양쪽 개체군 감소, 고습 시 병 발생 증가 재현, 태양열 소독은 토양 온도·지속 시간이 클수록 사멸량 증가 (계획서 7장). 하우스 습도와 공기 흐름(병해)도 M5 범위예요 (ADR-0011).
-지금은 명세 작성 단계예요. `docs/spec/`의 M5 명세가 승인되기 전에는 M5 코드를 쓰지 않아요.
+**M5a 토양 미생물·소독** (M5는 M5a → M5b로 나눠요, [ADR-0012](docs/decisions/0012-m5-split-and-population-index.md)). M5 전체 완료 기준: 소독 후 양쪽 개체군 감소, 고습 시 병 발생 증가 재현, 태양열 소독은 토양 온도·지속 시간이 클수록 사멸량 증가 (계획서 7장). 하우스 습도와 공기 흐름(병해)도 M5 범위예요 (ADR-0011).
+M5a 명세(m5-overview, soil-microbes, disinfection)는 2026-11-19 승인. 지금은 **M5a 사전 작업**(m5-overview 13장: 작물 N 흡수 보정·토양 증발 냉각, 새 1작기 기준값 승인) 프로토타입 단계예요. M5b(house-humidity, foliar-disease)는 아직 초안이라 코드를 쓰지 않아요.
 (M0~M3는 2026-11-18, M4는 2026-11-19 승인. 단, GitHub Actions CI는 원격 저장소가 없어 실행 검증을 건너뜀)
 승인 전에 다음 마일스톤의 기능을 미리 만들지 않아요. (마일스톤이 바뀌면 이 줄을 갱신해요.)
 
@@ -88,6 +88,8 @@ build\vs2022\sim-cli\Debug\sim-cli.exe --params data/params.toml --scenario data
 .venv\Scripts\python.exe tools/plot_csv.py runs/empty.csv --out runs/empty.png
 ```
 
+- **1작기 회귀**(M5부터 프로토타입 차수·구현 단계마다): `.venv\Scripts\python.exe tools/season_regression.py [--params <파일>]` — M4 `season_*` 7개를 돌려 `tests/baselines/m4_season_summary.json`과 비교해요(누적 ±3%, 월별 ±5%, 당도·경도 ±3%, 첫 수확 ±3일). 기준값 갱신(`--write-baseline`)은 디렉터 승인 후에만.
+- 파라미터 스윕: `.venv\Scripts\python.exe tools/param_sweep.py --name <이름> --set "section.key=v1;v2"` (결과는 `runs/sweep/`).
 - CI와 같은 조건(Release, 경고를 오류로)으로 확인하려면 `ci` 프리셋을 써요: `cmake --preset ci`, `cmake --build --preset ci`, `ctest --preset ci`.
 - Python 도구 환경: `python -m venv .venv` 후 `.venv\Scripts\python.exe -m pip install -r tools/requirements.txt`.
 - 합성 기상 데이터를 다시 만들 때: `python tools/gen_weather.py data/weather/synthetic_year.csv`.

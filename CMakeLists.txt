@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(FarmingSim
+project(UnderTheBed
   VERSION 0.0.1
   DESCRIPTION "Hardcore 2D strawberry greenhouse simulation"
   LANGUAGES CXX)
