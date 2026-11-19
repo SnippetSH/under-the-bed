@@ -104,10 +104,10 @@ drainage_rate_per_hour = 0.3              # 포장용수량 초과분 중 시간
 drainage_compaction_curve = [[0, 1.0], [0.5, 0.6], [1.0, 0.1]]  # x = compaction_index, y = 배수 속도 배율. 게임용 임의값 (aeration.md)
 
 [soil_temperature]  # docs/spec/soil-temperature.md
-relax_rate_per_hour = 0.04  # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
+relax_rate_per_hour = 0.08  # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
 heat_degC_per_g_C = 0.4                   # 호흡 탄소 1 g/m²당 토양 온도 상승. 게임용 임의값
-deep_coupling_fraction = 0.4  # 근권 완화 목표 중 깊은 흙 온도의 비율 (0이면 하우스 기온만 따라감). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정: 깊은 흙 온도 항
-deep_relax_rate_per_hour = 0.004  # 깊은 흙 온도가 근권 온도를 따라가는 시간당 비율 (시간 상수 약 10일). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정: 깊은 흙 온도 항
+deep_coupling_fraction = 0.65  # 근권 완화 목표 중 깊은 흙 온도의 비율 (0이면 하우스 기온만 따라감). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정: 깊은 흙 온도 항
+deep_relax_rate_per_hour = 0.01  # 깊은 흙 온도가 근권 온도를 따라가는 시간당 비율 (시간 상수 약 10일). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정: 깊은 흙 온도 항
 evap_cooling_degC_per_mm = 2.5  # 토양 증발 1 mm당 토양 온도 하강 °C. 7월 밀폐·무피복 지온 최고 38.6~39.7 °C(참고 35~40)에 맞춘 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 
 [organic_matter]  # docs/spec/organic-matter.md
@@ -305,7 +305,7 @@ moisture_curve = [[0.1, 0.2], [0.5, 1], [1.2, 1], [1.8, 0.6]]
 ph_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
 o2_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
 base_death_rate_per_hour = 0.00003
-heat_kill_curve = [[40, 0], [45, 0.005], [50, 0.03], [55, 0.1]]  # 다조멧 뒤 바이오매스 54~75% 감소, 5~8주 회복 [S13]에 맞춰 덜 죽음
+heat_kill_curve = [[38, 0], [42, 0.004], [45, 0.01], [50, 0.03], [55, 0.1]]  # 다조멧 뒤 바이오매스 54~75% 감소, 5~8주 회복 [S13]에 맞춰 덜 죽음
 immigration_rate_per_hour = 0.0002
 competition = {}                                               # 경쟁 상대 없음 (전부 0)
 
@@ -333,12 +333,12 @@ competition = {}
 
 [microbes.antagonist]  # 근권 길항균 (Bacillus, Trichoderma)
 growth_rate_per_hour = 0.0015
-temp_curve = [[5, 0.2], [20, 1], [35, 1], [42, 0.4], [47, 0]]
+temp_curve = [[5, 0.2], [20, 1], [35, 1], [40, 0.3], [44, 0]]
 moisture_curve = [[0.2, 0.3], [0.5, 1], [1.3, 0.8]]
 ph_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
 o2_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
 base_death_rate_per_hour = 0.00003
-heat_kill_curve = [[45, 0], [50, 0.005], [55, 0.03]]           # 포자 형성균은 잘 버팀
+heat_kill_curve = [[40, 0], [43, 0.004], [45, 0.008], [50, 0.02], [55, 0.05]]  # 포자 형성균은 잘 버팀
 immigration_rate_per_hour = 0.0001
 competition = { fusarium = 0.3, phytophthora = 0.3 }           # 병원균이 길항균 자리를 적게 차지 (비대칭)
 
@@ -597,7 +597,7 @@ canopy_reflect_factor = 0.0
 [[mulch]]
 id = "white_film"
 name = "백색 필름"
-soil_solar_gain_degC_per_W_per_m2 = -0.012                     # 반사로 식음
+soil_solar_gain_degC_per_W_per_m2 = -0.02                     # 반사로 식음
 evaporation_factor = 0.2
 fumigant_retention_factor = 0.3
 canopy_reflect_factor = 0.25                                   # 반사광이 잎에 다시 닿는 비율 (작물 광합성 광량에만)
@@ -607,7 +607,7 @@ canopy_reflect_factor = 0.25                                   # 반사광이 �
 id = "dazomet"
 name = "다조멧"
 residue_index_per_g_per_m2 = 0.03333333333333333               # 1/30 (double 1.0/30.0과 같게 17자리): 표준 30 g/m2 = 잔류 1 (일본 공식 딸기 20~30, 국내 시험 권장 40 [S9, S12])
-kill_rate_per_hour = { decomposer = 0.015, nitrifier_aob = 0.002, nitrifier_nob = 0.001, antagonist = 0.015, mycorrhiza = 0.02, fusarium = 0.025, phytophthora = 0.025 }
+kill_rate_per_hour = { decomposer = 0.015, nitrifier_aob = 0.002, nitrifier_nob = 0.001, antagonist = 0.015, mycorrhiza = 0.02, fusarium = 0.02, phytophthora = 0.02 }
 decay_rate_per_hour = 0.02                                     # 필름 없음, 25 도. 필름 아래 반감기 약 5일
 decay_temp_curve = [[5, 0.3], [15, 0.6], [25, 1], [35, 1.5]]
 activation_moisture_curve = [[0.2, 0.1], [0.5, 0.7], [0.7, 1]] # 입제는 젖어야 가스가 나옴
@@ -616,7 +616,7 @@ activation_moisture_curve = [[0.2, 0.1], [0.5, 0.7], [0.7, 1]] # 입제는 젖�
 id = "chloropicrin"
 name = "클로로피크린"
 residue_index_per_g_per_m2 = 0.25                              # 1/4: 표준 약 4 g/m2 = 잔류 1 (라벨 확인 중)
-kill_rate_per_hour = { decomposer = 0.01, nitrifier_aob = 0.03, nitrifier_nob = 0.03, antagonist = 0.01, mycorrhiza = 0.02, fusarium = 0.015, phytophthora = 0.02 }
+kill_rate_per_hour = { decomposer = 0.01, nitrifier_aob = 0.03, nitrifier_nob = 0.03, antagonist = 0.01, mycorrhiza = 0.02, fusarium = 0.035, phytophthora = 0.03 }
 decay_rate_per_hour = 0.012
 decay_temp_curve = [[5, 0.4], [15, 0.7], [25, 1], [35, 1.4]]
 activation_moisture_curve = [[0.2, 0.6], [0.5, 0.9], [0.7, 1]] # 액제 주입, 수분 의존 작음
