@@ -1,115 +1,478 @@
 # 지상부 병해충: 탄저병, 잿빛곰팡이병, 흰가루병, 점박이응애·칠레이리응애, 질소 과다 감수성, 병든 포기 제거
 
-- 상태: 초안 (2026-11-19, M5b — M5a 승인 뒤 다듬어 다시 승인받아요. 곡선 값은 아직 자리표시). 2026-11-19 디렉터 결정: 흰가루병 추가, 점적은 설치 장비, 질소 감수성 지표는 조사 후 확정
+- 상태: 초안 (2026-11-19, 디렉터 승인 대기). 3차 근거 조사 반영본. M5b는 승인 전이라 코드를 쓰지 않아요
 - 마일스톤: M5b ([m5-overview](m5-overview.md))
-- 관련: [house-humidity](house-humidity.md), [soil-microbes](soil-microbes.md)(토양 병원균 틀, 길항균), [strawberry-fruit](strawberry-fruit.md)(과실·낙과 난수), [strawberry-phenology](strawberry-phenology.md)(모종 등급)
-- 참고 자료: [references/m5-foliar-humidity.md](../../references/m5-foliar-humidity.md)(2차, 원문 확인), [references/m5-microbes-disease.md](../../references/m5-microbes-disease.md)(1차)
+- 관련: [house-humidity](house-humidity.md)(잎 젖음·연속 젖음 시간·잎 사이 습도·공기 흐름), [soil-microbes](soil-microbes.md)(토양 병원균 틀, 길항균, 포기 감수성), [disinfection](disinfection.md)(멀칭, 소독 사멸), [strawberry-fruit](strawberry-fruit.md)(과실, RGR 이동 평균), [strawberry-minimal](strawberry-minimal.md)(뿌리 건강도), [ADR-0012](../decisions/0012-m5-split-and-population-index.md), [ADR-0013](../decisions/0013-m5a-deep-soil-and-cell-variation.md)
+- 참고 자료: [references/m5b-research.md](../../references/m5b-research.md)(3차, **[S번호]**), [references/m5b-research-supplement.md](../../references/m5b-research-supplement.md)(3차 보충, **[R번호]**), [references/m5-foliar-humidity.md](../../references/m5-foliar-humidity.md)(2차, [H1]·[A1]·[G1]·[P1]·[M1]·[N1]~)
+- 2026-11-19 디렉터 결정(이전): 흰가루병 추가, 점적은 설치 장비, 질소 감수성 지표는 근권 토양 무기 N 2주 이동 평균, 진짜 값은 플레이어 비공개
+- **이번에 바뀐 점**: 자리표시였던 곡선·값을 근거와 함께 채움. 감염 입력을 **연속 젖음 시간**으로. 탄저병 물 튐을 두 경로로(필름이 물 튐을 줄인다는 초안 가정은 문헌과 반대). 잿빛곰팡이 포자 형성 곡선 분리, 감염 압력 감쇠. 흰가루병 어린 잎 감수성. 응애 습도 곡선은 약하게(근거가 엇갈림), 피해는 2주 이동 평균. 난수는 별도 스트림 `RngStream::Foliar`. 기존 시나리오용 `[foliar]` 섹션(8장)
 
-## 목적
+## 1. 목적
 
 지상부 병해충은 **하우스 공기(습도·젖음·온도)와 질소 관리**로 판단이 갈려요.
 
 | 대상 | 좋아하는 조건 | 피해 | 플레이어 대응 |
 | --- | --- | --- | --- |
-| 탄저병 | 25~30 °C, 젖음, 두상 관수 물 튐, 질소 과다. 감염 모종에 잠복 | 관부 썩음 → 시듦·고사, 과실 반점 | 모종 등급, 점적 설치, 필름 멀칭(물 튐 감소), 발병 포기 제거, 길항균 |
-| 잿빛곰팡이병 | 15~25 °C(최적 20~21), 여러 밤에 걸친 누적 잎 젖음, 질소 과다 | 꽃·과실 썩음(수확 손실) | 아침·한낮 환기, 난방, 유동팬, 질소 절제, 병든 과실·포기 제거 |
-| 점박이응애 | 25~32 °C(따뜻할수록 빠름). 습도 자체 효과는 약함, 건조하면 천적이 실패 | 잎 광합성 감소 | 습도 유지, 칠레이리응애 방사 |
-| 칠레이리응애 (천적) | 17~28 °C, 습도 55% 이상(밑이면 알 부화 실패), 35 °C 이상 성충 못 됨 | - | 방사 시기·양 |
-| 흰가루병 | 15~25 °C, 습도 60~98%, **잎의 물방울엔 억제**, 약광·밀식, 질소 과다 | 잎 광합성 저하, 과실 흰가루(품질·판매 불가 과실) | 피복 겹수(빛), 공기 흐름, 질소 절제. 잎을 적시면 줄지만 잿빛곰팡이·탄저가 늘어요 |
+| 탄저병 (관부탄저) | 25~30 °C, 긴 젖음, 두상 관수 물 튐, 질소 과다. 감염 모종에 잠복 | 관부 썩음 → 시듦·고사 | 모종 등급, 점적 설치, 발병 포기 제거, 길항균, 태양열 소독 |
+| 잿빛곰팡이병 | 15~25 °C(최적 20~21), **여러 시간 이어지는 잎 젖음**, 질소 과다 | 꽃·과실 썩음(수확 손실) | 아침·한낮 환기, 난방, 유동팬, 질소 절제, 병든 포기 제거 |
+| 흰가루병 | 15~25 °C, 습한 공기(60~95%), 어린 잎, **잎의 물방울엔 억제**, 약광(게임용 가정), 질소 과다 | 잎 광합성 저하, 과실 흰가루(상품 불가) | 환기(습도), 피복 겹수(빛), 질소 절제. 잎을 적시면 줄지만 잿빛곰팡이·탄저가 늘어요 |
+| 점박이응애 | 20~30 °C(12 °C 아래는 멈춤). 건조한 쪽이 조금 유리(근거 엇갈림) | 잎 광합성 감소(쌓인 만큼) | 천적 방사를 **일찍**, 습도 유지(천적을 위해) |
+| 칠레이리응애 (천적) | 17~28 °C, 며칠 평균 습도 70% 이상(60% 아래로 이어지면 알 대부분 실패), 30 °C부터 응애를 못 따라잡음 | - | 방사 시기·양, 낮 환기 과다 피하기 |
 
-## 상태 변수
+세 병은 조건이 서로 달라서 "무조건 말리면 된다"가 안 통해요. 젖으면 잿빛곰팡이·탄저, 젖지 않고 습하면 흰가루병, 너무 마르면 천적이 실패해요.
 
-| 이름 | 위치 | 의미 | 범위 |
+품종은 설향을 가정해요. 설향은 잿빛곰팡이에 약한 편이고 흰가루병에는 강한 편이에요([R416] 중간).
+
+## 2. 상태 변수
+
+| 이름 | 위치 | 의미 | 단위·범위 |
 | --- | --- | --- | --- |
 | `anthracnose_index` | 셀 (soil-microbes 7번 무리) | 흙·잔재의 탄저병 접종원 | 0~1 |
-| `infection_anthracnose_index` | 작물 | 관부 감염 | 0~1 (줄지 않음) |
-| `botrytis_spore_index` | 하우스 | 공기 중 포자 압력 | 0~1 |
-| `infection_botrytis_index` | 작물 | 꽃·과실 감염 압력(포기 단위) | 0~1 |
-| `powdery_mildew_spore_index` | 하우스 | 공기 중 포자 압력 | 0~1 |
-| `infection_powdery_mildew_index` | 작물 | 잎·과실 감염 정도 | 0~1 (잎이 새로 나면 희석돼 줄 수 있음) |
-| `spider_mite_index`, `predator_mite_index` | 작물 | 잎당 밀도(최대 = 1) | 0~1 |
+| `infection_anthracnose_index` | 작물 | 관부 감염. 줄지 않아요 | 0~1 |
+| `botrytis_spore_index` | 하우스 | 공기 중 잿빛곰팡이 포자 압력 | 0~1 |
+| `infection_botrytis_index` | 작물 | 꽃·어린 과실의 감염 압력(포기 단위). 꽃·과실이 바뀌며 서서히 줄어요 | 0~1 |
+| `powdery_mildew_spore_index` | 하우스 | 공기 중 흰가루병 포자 압력 | 0~1 |
+| `infection_powdery_mildew_index` | 작물 | 병든 잎 면적 비율 | 0~1 |
+| `spider_mite_index` | 작물 | 점박이응애 밀도. 1 = 소엽당 약 100마리([R513] 75마리 넘으면 심한 쇠약, [R511] 방치 최고 잎당 137~278) | 0~1 |
+| `spider_mite_mean_index` | 작물 | 응애 밀도의 2주 이동 평균. 광합성 피해가 읽어요 | 0~1 |
+| `predator_mite_index` | 작물 | 칠레이리응애 밀도(응애와 같은 눈금) | 0~1 |
+| `soil_mineral_N_mean_g_per_m2` | 작물 | 근권 토양 무기 N(NH4 + NO3)의 2주 이동 평균. 질소 과다 감수성이 읽어요 | g N/m², 0 이상 |
+| `foliar_onset_reported` | 작물 | 병별(탄저·잿빛곰팡이·흰가루·응애) `DiseaseOnset` 이벤트를 이미 냈는지 | bool × 4 |
 
-모든 지수는 **플레이어 비공개 진짜 값**이에요(2026-11-19 디렉터 결정). 플레이어는 증상(M7 표현)·검정·작기 리포트로 알아요.
+- 포기 감수성은 M5a의 `disease_susceptibility_factor`(정식 때 정해짐, 1 ± 0.5)를 **그대로 써요.** 새 상태를 만들지 않아요.
+- 모든 지수는 **플레이어 비공개 진짜 값**이에요(2026-11-19 디렉터 결정). 플레이어는 증상(`DiseaseOnset`, 표현은 M7)·검정·작기 리포트로 알아요.
 
-장부 추가: `*_removed_g`(병든 포기 제거로 계 밖으로 나간 원소·건물), `fruit_rot_fresh_g`(썩어 버린 과실), `predators_released`.
+파생값(스냅샷·CSV): 하우스의 이번 틱 탄저병 포자 원천 `anthracnose_sporulation_index`, 병별 이번 틱 감염 증가분, 응애 포식량.
 
-## 파라미터 (자리표시, M5a 승인 뒤 참고 범위 B1~B9로 확정)
+장부 추가: `*_removed_g`(병든 포기 제거로 계 밖으로 나간 원소·건물), `fruit_rot_count`·`fruit_rot_fresh_g`(썩어 버린 과실), `harvested_mildew`·`harvested_mildew_fresh_g`(흰가루 과실, 상품 아님), `predators_released_per_m2`(누적 방사 수).
 
-- `[foliar_disease] n_susceptibility_curve`: x = 질소 지표, y = 감염 배율(1~2, 크기는 출처 없음 → 게임용). **지표: 근권 토양 무기 N(NH4+NO3)의 2주 이동 평균**(2026-11-19 디렉터 결정. 문헌이 공급 쪽 지표를 씀). 작물 상태에 `soil_mineral_N_mean_g_per_m2`(이동 평균, 저장 상태) 추가. 곡선 모양은 과다 쪽만 올리고(1 → 2), N 부족 쪽 U자(토마토 근거)는 넣지 않아요([m5-overview](m5-overview.md) 12장 "질소 과다 분석"): 지금 모델의 체내 N 비율은 겨울에 표준·과다 처방 모두 1.2 상한에 붙어 구분이 안 돼요. 후보 (a) 사치 흡수 상한을 부드럽게 바꾼 체내 N 비율, (b) 토양 무기 N(NH4+NO3) 또는 EC, (c) 최근 2주 N 흡수량 이동 평균.
-- 흰가루병: `spore_source`, `spore_decay_rate_per_hour`, `infection_rate_per_hour`, `temp_curve`(15~25 °C), `rh_curve`(60~98%), `free_water_inhibition_factor`, `light_curve`(약광일수록 큼), `density_curve`(LAI), `photosynthesis_damage_curve`, `fruit_curve`.
-- 탄저병: `infection_rate_per_hour`, `temp_curve`(기온, 25~30 °C 최대), `wetness_curve`, `splash_transfer_index`(두상 관수 1회가 흙 접종원에서 옮기는 감염), `latent_activation_temp_degC`, `root_damage curve`, `fruit_rot_rate_per_hour`, `mulch_splash_factor`(흑색 필름이 물 튐을 줄임).
-- `[[seedling_grade]]`에 `initial_anthracnose_latent_index`(A 0, B 0.02, C 0.08 같은 식), `initial_spider_mite_index`.
-- 잿빛곰팡이: `spore_source_per_infection`, `spore_decay_rate_per_hour`, 환기로 빠지는 비율(ach), `infection_rate_per_hour`, `temp_curve`(15~22 °C 최대), `wetness_curve`, `fruit_rot_prob_per_hour`(과실별, biology 난수), 꽃 손실.
-- 응애: `growth_rate_per_hour`(하루 r 0.15~0.3 → 시간당 약 0.006~0.012), `temp_curve`, `rh_curve`(50~80% 적온, 약한 효과), `photosynthesis_damage_curve`, 하우스 평균 쪽 이동 `spread_rate_per_hour`.
-- 칠레이리응애: r 약 0.19/일(25 °C), `attack_rate`, `handling_time`, `conversion_factor`, `death_rate_per_hour`, `rh_survival_curve`, `temp_survival_curve`, `[[predator]] index_per_individual_per_m2`.
+## 3. 파라미터
 
-## 프로세스 (방향과 식의 틀)
+"근거" 칸에 출처가 없으면 게임용 임의값이에요. 속도 값은 모두 프로토타입에서 7장 목표값에 맞춰 조정해요. 곡선의 x가 연속 젖음 시간이면 [house-humidity](house-humidity.md)의 `wet_run_hours`예요.
 
-### 1. 질소 과다 감수성
+### 3.1 공통 `[foliar_disease]`
 
-`s_N = n_susceptibility_curve(지표)`. 탄저병·잿빛곰팡이(·흰가루병) 감염 속도에 곱해요. 토양 병해(시들음병·역병)에는 곱하지 않아요.
+| 키 | 의미 | 초기값 | 근거 |
+| --- | --- | --- | --- |
+| `n_susceptibility_curve` | x = `soil_mineral_N_mean_g_per_m2`, y = 감염 배율 | `[[0,1],[6,1],[12,1.4],[20,1.8],[30,2]]` | 게임용 임의값. 방향만 근거 있음(양액 N이 높을수록 탄저병 심함 [A9], 연약 생육 [G3]). 배율 크기는 출처 없음. 표준 처방의 겨울 토양 NO3 약 1~5, 과다 처방 13~23 g/m²([m5-overview](m5-overview.md) 12장)에 맞춘 x 범위 |
+| `n_mean_relax_rate_per_hour` | 토양 무기 N 이동 평균의 완화 비율 | 0.003 | 약 2주(2026-11-19 디렉터 결정) |
+| `mite_mean_relax_rate_per_hour` | 응애 밀도 이동 평균의 완화 비율 | 0.003 | 게임용 임의값(약 2주) |
 
-### 2. 탄저병
+N 부족 쪽 감수성 증가(토마토의 U자 [N9])는 넣지 않아요(m5-overview 12장).
+
+### 3.2 탄저병 `[foliar_disease.anthracnose]`
+
+| 키 | 의미 | 초기값 | 근거 |
+| --- | --- | --- | --- |
+| `temp_curve` | x = 하우스 기온 °C, y = 0~1 | `[[9,0],[15,0.16],[20,0.58],[25,0.95],[27,1],[30,0.91],[35,0.34],[38,0]]` | 최저 9, 최적 26.7, 최고 38 °C [R308] 중간(C. gloeosporioides 클레이드 종합. 딸기 관부 전용 곡선은 없음) |
+| `wetness_curve` | x = 연속 젖음 시간 h, y = 0~1 | `[[0,0],[6,0.05],[13,0.8],[36,1]]` | 최적 온도에서 젖음 13 h에 과실 감염 80% 초과 [R301] 중간(초록, C. acutatum) |
+| `contact_rate_per_hour` | 흙 접종원 1·온도 1·젖음 1일 때 흙에서 올라오는 감염 | 0.0005 | 게임용 임의값 |
+| `progress_rate_per_hour` | 온도 1일 때 감염된 관부 안에서의 진행(감염 × (1 − 감염)에 곱함) | 0.004 | 게임용 임의값. 관부탄저의 고사까지 일수는 출처 없음. 잠복 묘의 수확 끝 고사 20~32% [R309]에 맞춤 |
+| `splash_transfer_index` | 두상 관수 1회가 압력 1에서 옮기는 감염 | 0.01 | 게임용 임의값 |
+| `sporulation_curve` | x = 감염 지수, y = 그 포기가 내는 포자(물 튐 원천) | `[[0,0],[0.15,0],[0.3,0.5],[0.6,1]]` | 게임용 임의값(증상이 보인 뒤부터 포자) |
+| `onset_infection_index` | `DiseaseOnset` 기준 | 0.15 | M5a 시들음병과 같은 값 |
+| `[root_damage] anthracnose_curve` | x = 감염 지수, y = 시간당 뿌리 건강도 손상 | `[[0,0],[0.15,0.0003],[0.4,0.003],[0.8,0.012]]` | 게임용 임의값(M5a 시들음병·역병 곡선 사이) |
+
+`[[mulch]]`에 추가(세 필름 공통 값, 맨흙 = 1):
+
+| 키 | 의미 | 필름 3종 | 근거 |
+| --- | --- | --- | --- |
+| `soil_splash_factor` | 흙·잔재의 접종원이 포기에 닿는 비율 | 0.1 | 게임용 임의값. 필름이 흙을 덮어요(직접 측정 없음) |
+| `plant_splash_factor` | 병든 포기의 포자가 물방울로 다른 포기에 튀는 비율 | 2.5 | 플라스틱 위 발병이 맨흙의 2.3~2.7배 [S301]~[S303][R302][R303] 중간(초록. 평평한 플라스틱 + 인공 강우. 구멍 뚫린 이랑 필름의 직접 측정은 없음) |
+
+토양 접종원 `[microbes.anthracnose]`(soil-microbes 틀 그대로, 무리 순서 7):
+
+| 키 | 초기값 | 근거 |
+| --- | --- | --- |
+| `growth_rate_per_hour` | 0.003 | 게임용 임의값 |
+| `temp_curve` | `[[9,0],[20,0.6],[27,1],[32,1],[38,0]]` | 위 감염 온도 곡선과 같은 범위 |
+| `moisture_curve`, `ph_curve`, `o2_curve` | 전부 1(명시) | 근거 없음 |
+| `base_death_rate_per_hour` | 0.002 | 95% 감소에 약 60일. 젖은 흙 4~10일, 마른 흙 73~125일 [R311], 묻은 관부 56~98일 [R312]의 사이(수분 의존은 넣지 않음) |
+| `heat_kill_curve` | 시들음병균과 같은 곡선 | 태양열 소독 4주면 묻은 감염 과실에서 박멸 [R311]. 온도·시간 곡선은 출처 없음 |
+| `immigration_rate_per_hour` | 0 | 병원균 공통 규칙 |
+| `saprophytic_capacity_index` | 0.05 | 숙주 없이는 거의 못 버팀 [R311][R312] |
+| `host_capacity_index` | 0.8 (× 그 셀 작물의 감염 지수) | 게임용 임의값(병든 관부·잔재가 접종원) |
+| `competition` | `{ antagonist = 0.4 }` | M5a 병원균과 같은 값 |
+
+- `[[disinfectant]] kill_rate_per_hour`에 `anthracnose`가 필수 키로 늘어요(다조멧 0.02, 클로로피크린 0.035 = 시들음병균 값, 게임용). 길항균의 `competition`에 `anthracnose = 0.3`.
+- `pathogen_spread_index`(월드 생성 때 칸별 편차)는 탄저병 접종원에도 같은 규칙으로 적용해요(M5a `RngStream::Disease`, 시들음병균·역병균 다음 순서. 시작 지수가 0이면 뽑지 않아요).
+
+### 3.3 잿빛곰팡이병 `[foliar_disease.botrytis]`
+
+| 키 | 의미 | 초기값 | 근거 |
+| --- | --- | --- | --- |
+| `infection_temp_curve` | x = 하우스 기온, y = 0~1 | `[[5,0.02],[10,0.08],[15,0.55],[20,1],[25,0.79],[30,0.11],[33,0]]` | Bulger 1987 과실 감염 식(젖음 32 h 값을 20 °C로 나눔) 높음. 10 °C는 식의 외삽 |
+| `wetness_curve` | x = 연속 젖음 시간 h, y = 0~1 | `[[0,0],[6,0.05],[12,0.15],[16,0.25],[24,0.58],[32,1]]` | 같은 식의 20 °C 과실 감염에서 기준선을 뺀 값 높음. 경보 시스템 등급(14 h 초과 중간, 18 h 초과 높음 [R402][R415]), 일본 오이타현 기준(15~25 °C·RH 94% 이상 시간이 10일 누적 20 h면 발병 시작, 40 h면 급증 [S110] 낮음)과 같은 방향 |
+| `infection_rate_per_hour` | 포자 1·온도 1·젖음 1일 때 감염 압력 증가 | 0.03 | 게임용 임의값 |
+| `infection_decay_rate_per_hour` | 감염 압력 감쇠(감염된 꽃·과실이 지나감) | 0.002 | 게임용 임의값. 꽃 감염에서 과실 증상까지 2~4주 [R414][R404] 낮음 |
+| `sporulation_temp_curve` | x = 하우스 기온, y = 포자 형성 0~1 | `[[5,0.1],[10,0.4],[15,0.8],[17.5,1],[22,0.8],[25,0.1],[30,0]]` | 17~18 °C 최대, 25 °C 거의 없음, 30 °C 없음 [R401] 중간(초록). 사이 점은 임의값 |
+| `spore_source_per_infection_per_hour` | 감염 압력 1인 포기가 온도 1·젖은 상태에서 내는 포자 | 0.02 | 게임용 임의값 |
+| `spore_source_per_rotten_fruit_per_hour` | 이번 틱 썩은 과실 1개/m²가 더하는 포자 | 0.01 | 게임용 임의값(썩은 과실이 2차 전염원) |
+| `spore_decay_rate_per_hour` | 포자 압력 자연 감쇠 | 0.02 | 게임용 임의값. 실측 없음 |
+| `spore_vent_fraction` | 환기 횟수 1당 빠지는 비율(`min(1, 값 × ach)`) | 0.05 | 게임용 임의값. 실측 없음 |
+| `fruit_rot_prob_per_hour` | 감염 압력 1·단계 배율 1일 때 과실 1개가 그 틱에 썩을 확률 | 0.002 | 게임용 임의값. B4에 맞춤 |
+| `fruit_stage_curve` | x = 과실 발달 0~1(0 = 개화), y = 썩음 배율 | `[[0,1],[0.15,0.6],[0.4,0.2],[0.8,0.6],[1,1]]` | 꽃과 익은 과실이 풋과실보다 잘 걸림 [G1][R406] |
+| `onset_infection_index` | `DiseaseOnset` 기준 | 0.2 | 게임용 임의값 |
+
+### 3.4 흰가루병 `[foliar_disease.powdery_mildew]`
+
+| 키 | 의미 | 초기값 | 근거 |
+| --- | --- | --- | --- |
+| `temp_curve` | x = 하우스 기온, y = 0~1 | `[[5,0.05],[10,0.3],[15,0.7],[20,1],[25,1],[30,0.4],[32,0]]` | 발아 최적 약 20 °C, 병반 확대 최대 25 °C [R418], 15~25 °C가 좋고 10·30 °C에서 감소 [R419] 중간(초록) |
+| `rh_curve` | x = `canopy_rh_index`, y = 0~1 | `[[0.6,0],[0.75,1],[0.95,1],[1,0.7]]` | 60% 초과에서 발아 [P1], 75~98% 최적, 95% 이상은 포자 생산 감소 [R419] |
+| `free_water_inhibition_factor` | 잎 젖음 1일 때 감염 감소 비율 | 0.7 | 방향은 높음(미스트가 억제 [P3], 물방울에 포자 씻김). 크기는 출처 없음 |
+| `light_curve` | x = 하우스 안 일사의 하루 이동 평균 W/m², y = 배율 | `[[0,1.3],[60,1.15],[120,1]]` | **게임용 가정.** 약광의 정량 근거 없음. 간접 근거만(자외선 차단 필름에서 병이 많음 [R423], 강한 빛이 발아를 줄임 [R419]) |
+| `density_curve` | x = LAI, y = 배율 | `[[0,0.8],[2,1],[4,1.2]]` | 게임용 가정. 정량 근거 없음(빽빽한 잎 → 습해짐은 `canopy_rh`가 이미 반영) |
+| `young_leaf_curve` | x = `rgr_mean_per_day`, y = 어린 잎 감수성 배율 | `[[0,0.3],[0.01,0.6],[0.03,1]]` | 전개 후 10~15일 잎이 가장 잘 걸리고 50~60일 넘은 잎은 병반 없음 [R424][R420] 중간. RGR로 대신하는 것은 게임용 근사 |
+| `infection_rate_per_hour` | 모든 배율 1일 때 병든 잎 면적 증가 | 0.004 | 게임용 임의값. 잠복 4~7일 [R419][R424] |
+| `spore_source_per_infection_per_hour` | 병든 잎 면적 1인 포기가 내는 포자 | 0.02 | 게임용 임의값 |
+| `spore_decay_rate_per_hour` | 포자 압력 자연 감쇠 | 0.005 | 게임용 임의값. 병든 잎의 포자는 오래 감(5개월 이상 일부 생존 [R419]) |
+| `spore_vent_fraction` | 환기 횟수 1당 빠지는 비율 | 0.05 | 게임용 임의값 |
+| `photosynthesis_damage_curve` | x = 병든 잎 면적, y = 총생산 감소 비율 | `[[0,0],[0.17,0.05],[0.5,0.2],[1,0.5]]` | 잎 병반 17%에서 수량 손실 5% [P2][R422] 중간. 그 위는 임의값 |
+| `fruit_prob_curve` | x = 병든 잎 면적, y = 수확 과실이 흰가루 과실일 확률 | `[[0,0],[0.1,0.02],[0.3,0.08],[0.6,0.17]]` | 터널 감수성 품종 과실 6~17%, 저항성 0.4~2.3% [R207] 높음. 설향은 낮은 쪽 |
+| `onset_infection_index` | `DiseaseOnset` 기준 | 0.05 | 경보 문턱 잎 병반 5% [R422] |
+
+### 3.5 점박이응애·칠레이리응애 `[foliar_disease.mites]`, `[[predator]]`
+
+| 키 | 의미 | 초기값 | 근거 |
+| --- | --- | --- | --- |
+| `mite_growth_curve_per_hour` | x = 하우스 기온, y = 시간당 내적 증가율 | `[[12,0],[15,0.0013],[20,0.0044],[25,0.0063],[30,0.0079],[35,0.005],[40,0]]` | 발육 영점 12~14 °C. 콩 20/25/30 °C 하루 0.127/0.181/0.229 [R503] 중간(콩 잎). 딸기 25 °C 약 0.15(0.11~0.27 [M2])에 맞춰 줄임 — 줄인 비율은 게임용 |
+| `mite_rh_curve` | x = `house_rh_mean_index`, y = 증가율 배율 | `[[0.2,0.8],[0.4,1.15],[0.55,1.15],[0.7,1],[0.85,0.9],[1,0.8]]` | **근거가 엇갈려요.** 저습 온실에서 밀도 최대 3배 [S407], 저습 잎에서 산란 증가 [S408], 20% RH에서 부화 감소 [S409] 대 RH 45~90%에서 발육·산란 차이 없음 [R502]. 방향만 따르고 크기(최대/최소 약 1.4배)는 게임용 임의값 (질문 6) |
+| `mite_spread_rate_per_hour` | 하우스 평균 쪽으로 옮겨 가는 비율 | 0.0005 | 게임용 임의값. 확산 속도 실측 없음 |
+| `photosynthesis_damage_curve` | x = `spider_mite_mean_index`, y = 총생산 감소 비율 | `[[0,0],[0.05,0.1],[0.3,0.4],[1,0.6]]` | 누적 응애-일 15·50 /cm²에서 약 −40%·−60% [S410][R519] 낮음(요약만). 소엽당 한 달 30 응애-일이 수량 손실 0 기준 [S412]. 지수 환산은 소엽 30 cm² 가정(게임용) |
+| `predator_temp_curve` | x = 하우스 기온, y = 포식·번식 0~1 | `[[10,0],[17,0.7],[20,0.9],[25,1],[28,1],[30,0.7],[35,0]]` | 적온 17~28 °C, 28 °C 넘으면 성능 감소 [R505], 35 °C 이상 성충 못 됨 [M7] 중간 |
+| `predator_hatch_curve` | x = `house_rh_mean_index`(약 3일 평균), y = 알 부화율 | `[[0.4,0],[0.5,0.15],[0.6,0.45],[0.7,0.75],[0.8,0.95],[1,1]]` | 부화 50% 습도 약 70% [S415], 75~80%에서 사망 16% [R507][S416], 상시 60%면 3~6%만 부화하지만 하루 7시간 이상 고습이면 절반 넘게 부화 [S417]. "55% 미만 부화 실패"(2차 조사)는 1차 출처가 없어요. 낮만 건조하고 밤이 습한 하우스는 평균이 높아 부화해요 |
+| `attack_rate_per_hour` | 포식 공격률(Holling II) | 5.0 | 게임용 임의값. 반포화 밀도를 소엽당 약 15마리(지수 0.15)로 가정 |
+| `handling_time_hours` | 처리 시간. `1 ÷ 값` = 천적 1당 시간당 최대 포식 | 1.25 | 성충 암컷 하루 12~25마리 [R503][R504], 알 0.49~0.96 h/개 [S420][S421] → 섞인 단계 평균 1~1.5 h |
+| `conversion_factor` | 포식량이 천적 증가로 바뀌는 비율 | 0.01 | 게임용 임의값. 먹이가 충분할 때 천적 증가율이 하루 약 0.2(20/25/30 °C 0.179/0.204/0.230 [R503])가 되게 |
+| `predator_death_rate_per_hour` | 천적 기본 사망 | 0.0022 | 먹이가 있을 때 평균 수명 19일 [S416][M6] 중간 |
+| `predator_starvation_death_per_hour` | 먹이가 전혀 없을 때 더해지는 사망 | 0.012 | 물만 있으면 6일(0.007 /h), 먹이·물이 없으면 2~4일(0.010~0.021 /h) [S416][R507] 중간 |
+| `mite_onset_index` | `DiseaseOnset`(응애) 기준 | 0.05 | 가을 정식 경제적 방제 기준 소엽당 5마리 [M5] |
+
+`[[predator]]`(천적 제품): `id = "persimilis"`, `name = "칠레이리응애"`, `index_per_individual_per_m2 = 0.00003`(게임용 임의값. 소엽 약 300장/m², 지수 1 = 소엽당 100마리 가정. 국내 방사 기준 약 15마리/m² [M8] = 지수 0.00045).
+
+### 3.6 모종 등급 `[[seedling_grade]]` 추가
+
+| 키 | 의미 | A | B | C | 근거 |
+| --- | --- | --- | --- | --- | --- |
+| `latent_anthracnose_fraction` | 잠복 감염 포기 비율 | 0 | 0.05 | 0.25 | 무병묘 0%, 농가 관행묘 5~60% [A4], 대만 모주 평균 20% [R316] |
+| `latent_anthracnose_index` | 잠복 감염 포기의 시작 감염 지수 | 0.05 | 0.05 | 0.05 | 게임용 임의값(발병 기준 0.15 아래) |
+| `spider_mite_fraction` | 응애를 달고 온 포기 비율 | 0 | 0.05 | 0.15 | 게임용 임의값. 모종 유입 비율 실측 없음 |
+| `spider_mite_start_index` | 그 포기의 시작 응애 지수 | 0.01 | 0.01 | 0.01 | 게임용 임의값(소엽당 1마리) |
+| `powdery_mildew_start_index` | 모든 포기의 시작 병든 잎 면적 | 0 | 0.005 | 0.02 | 게임용 임의값. 감염 모종이 주 접종원 [R424] |
+
+이 값들에는 시나리오의 `[foliar] seedling_disease_factor`(8장)를 곱해요. 기존 시나리오는 0이라 모종이 깨끗해요.
+
+## 4. 프로세스
+
+모두 작물 단계 h에서, 잎 젖음 갱신 뒤에 돌아요. 병해충은 **틱 시작 때의** 하우스 값(습도, 포자 압력, 하우스 평균 응애)을 쓰고, 하우스 값은 셀 계산이 끝난 뒤 한 번에 갱신해요(CO2·수증기와 같은 방식). 그래서 결과가 셀 순서에 의존하지 않아요. 아래 `susc`는 M5a의 `disease_susceptibility_factor`예요.
+
+### 4.1 질소 과다 감수성
 
 ```
-latent 활성: 기온 ≥ latent_activation_temp이고 젖음이면 감염이 스스로 진행
-infection += rate × temp_curve(house_air) × wetness_curve(w) × s_N
-             × (흙 접종원 + infection) × (1 − antagonist_protection × antagonist_index) × (1 − infection)
-두상 관수 틱(점적 미설치 하우스의 관수): infection += splash_transfer × anthracnose_index × mulch_splash_factor × (1 − infection)
-  (mulch_splash_factor: 필름 없음 1, 세 필름 공통 값 < 1)
-흙 접종원: soil-microbes 틀(부생 수용력 + 숙주 = 감염), 열 사멸 있음(태양열 소독으로 줄어듦)
-피해: 뿌리 손상 합에 anthracnose_curve(infection)(관부 썩음 → 시듦), 과실 썩음(2번과 같은 난수 방식)
+mineral_N = 셀의 NH4 + NO3 (g N/m²)
+soil_mineral_N_mean += (mineral_N − soil_mineral_N_mean) × min(1, n_mean_relax_rate)
+s_N = n_susceptibility_curve(soil_mineral_N_mean)
 ```
 
-### 3. 잿빛곰팡이병
+- 탄저병·잿빛곰팡이병·흰가루병 감염 속도에 곱해요. 토양 병해(시들음병·역병)와 응애에는 곱하지 않아요.
+- 정식 때 이동 평균은 그 셀의 그때 무기 N으로 시작해요.
+
+### 4.2 탄저병
 
 ```
-spore += Σ셀 (spore_source × infection_botrytis + 썩은 과실 수) / 셀 수 − spore × decay − spore × ach × 비율
-infection_botrytis += rate × spore × temp_curve(house_air) × wetness_curve(w) × s_N × (1 − infection)
-피해: 개화~수확 전 과실마다 이번 틱 썩을 확률 p = fruit_rot_prob × infection × wetness_curve(w)
-      → biology 난수(M4 낙과와 같은 스트림·순서 규칙 뒤에). 썩은 과실은 fruit_rot_fresh_g, 원소는 낙엽 규칙으로 토양에
+T = temp_curve(house_air),  W = wetness_curve(wet_run_hours)
+soil_path  = anthracnose_index(셀) × soil_splash_factor(멀칭) × (1 − [microbes] antagonist_protection_factor × antagonist_index)
+plant_path = anthracnose_sporulation_index(하우스, 틱 시작) × plant_splash_factor(멀칭)
+
+(1) 관부 안 진행:   Δ1 = progress_rate × T × s_N × susc × inf × (1 − inf)
+(2) 흙에서 올라옴:  Δ2 = contact_rate × T × W × s_N × susc × soil_path × (1 − inf)
+(3) 두상 관수 틱:   Δ3 = splash_transfer × T × s_N × susc × (soil_path + plant_path) × (1 − inf)     (overhead_irrigated_this_tick일 때만)
+inf += Δ1 + Δ2 + Δ3                                   (1을 넘지 않게, 줄지 않음)
+if inf ≥ onset 처음 → DiseaseOnset{tile, anthracnose}
+
+셀 계산 뒤: anthracnose_sporulation_index = Σ셀 sporulation_curve(inf) / 셀 수      (살아 있는 작물만)
 ```
 
-- 방향: 밤새 젖는 날이 이어지면 감염이 쌓이고, 썩은 과실이 포자를 늘려 번져요. 환기·팬·난방이 젖음을 끊어요(S26, S27).
+- 뿌리 건강도 손상 합에 `anthracnose_curve(inf)`를 더해요(관부 썩음 → 시듦·고사). 고사 원인 `cause`에 `anthracnose` 추가.
+- 흙 접종원은 soil-microbes 틀(무리 7)로 늘고 줄어요. 병든 포기가 있으면 그 칸의 수용력이 올라가 접종원이 쌓이고, 숙주가 없으면 약 두 달에 95% 줄어요. 태양열·약제 소독으로 줄어요.
+- **필름의 두 얼굴**: 필름은 흙의 접종원을 가려요(`soil_path` × 0.1). 하지만 병든 포기가 생긴 뒤 두상 관수를 하면 필름 위에서 물방울이 더 멀리 튀어요(`plant_path` × 2.5). 그래서 "필름 + 점적"이 가장 안전하고 "필름 + 두상 관수 + 감염 모종"이 가장 위험해요.
+- 두상 관수는 물 튐(3)과 잎 젖음(2의 W)을 함께 올려요. 점적 하우스는 (3)이 없어요.
+- 겨울(하우스 5~15 °C)에는 T가 0~0.16이라 거의 멈추고, 가을 정식기와 봄에 진행해요(국내 진단 의뢰 10월 최고 [A2]와 같은 방향. 겨울 정지의 직접 근거는 없음).
+- 과실 탄저(다른 종 C. acutatum)는 다루지 않아요(10장).
 
-### 4. 점박이응애와 칠레이리응애 (작물 단계 h7)
+### 4.3 잿빛곰팡이병
 
 ```
-M' = M + r_m × temp_m × rh_m × M × (1 − M) − predation + spread × (하우스 평균 M − M)
-predation = attack × M × D / (1 + attack × handling × M)
-D' = D + conversion × predation − D × death × (2 − rh_survival − temp_survival)
-총생산 × (1 − photosynthesis_damage_curve(M))
+T = infection_temp_curve(house_air),  W = wetness_curve(wet_run_hours)
+inf_b += infection_rate × botrytis_spore_index(틱 시작) × T × W × s_N × susc × (1 − inf_b)
+inf_b −= inf_b × min(1, infection_decay_rate)
+if inf_b ≥ onset 처음 → DiseaseOnset{tile, botrytis}
+
+과실 썩음 (수확·낙과 판정 뒤, 같은 틱): 달려 있는 꽃·과실마다
+    p = fruit_rot_prob × inf_b × fruit_stage_curve(development)
+    p > 0이면 Foliar 난수 u < p → 썩음: fruit_rot_count, fruit_rot_fresh_g에 더하고 건물·양분은 낙엽 규칙으로 토양에
+
+셀 계산 뒤 (하우스):
+source = Σ셀 (spore_source_per_infection × inf_b × sporulation_temp_curve(house_air) × (w ≥ wet_threshold ? 1 : 0)
+              + spore_source_per_rotten_fruit × 이번 틱 썩은 과실 수/m²) / 셀 수
+         + [foliar] botrytis_background_index × spore_decay_rate                   (바깥에서 늘 들어오는 포자. 원천이 없을 때 평형 = 배경값)
+spore += source × (1 − spore) − spore × min(1, spore_decay_rate + spore_vent_fraction × ach)
 ```
 
-- `ReleasePredators{area, predator_id, per_m2}`: `D += per_m2 × index_per_individual`, 장부 `predators_released`.
+- 방향: 밤새 젖는 날이 이어지면 연속 젖음 시간이 길어져 감염이 빠르게 쌓이고, 썩은 과실이 포자를 늘려 번져요. 환기·팬·난방이 젖음을 끊어요(S26, S27). 환기는 포자도 조금 빼요.
+- 감염 압력은 서서히 줄어서(반감기 약 2주), 관리를 고치면 몇 주 뒤 손실이 줄어요.
+- 썩음에는 그 순간의 젖음이 필요 없어요. 꽃 때 감염되고 2~4주 뒤 익을 때 썩는 시차를 감염 압력의 느린 감쇠와 단계 배율로 표현해요.
+
+### 4.4 흰가루병
+
+```
+env = temp_curve(house_air) × rh_curve(canopy_rh) × (1 − free_water_inhibition × leaf_wetness_index)
+      × light_curve(inside_solar 하루 이동 평균) × density_curve(LAI) × young_leaf_curve(rgr_mean_per_day)
+inf_p += infection_rate × (powdery_mildew_spore_index(틱 시작) + inf_p) × env × s_N × susc × (1 − inf_p)
+희석: 이번 틱 잎 건물이 늘었으면 inf_p × (이전 잎 건물 / 새 잎 건물)                  (새 잎은 깨끗하게 나옴)
+낙엽: 잎이 줄 때는 비율 그대로(병든 잎과 성한 잎이 같이 떨어짐)
+if inf_p ≥ onset 처음 → DiseaseOnset{tile, powdery_mildew}
+
+피해: 총생산 × (1 − photosynthesis_damage_curve(inf_p))
+수확 과실마다: p = fruit_prob_curve(inf_p),  p > 0이면 Foliar 난수 u < p → 흰가루 과실(harvested_mildew, 정상과·기형과 집계에서 빠짐)
+
+셀 계산 뒤 (하우스):
+source = Σ셀 spore_source_per_infection × inf_p / 셀 수 + [foliar] powdery_mildew_background_index × spore_decay_rate
+spore += source × (1 − spore) − spore × min(1, spore_decay_rate + spore_vent_fraction × ach)
+```
+
+- 방향: 습한 공기를 좋아하지만 **잎이 젖어 있으면 억제**돼요. 그래서 밤새 결로로 젖는 하우스는 잿빛곰팡이가, 젖지 않고 습한 하우스는 흰가루병이 늘어요. 두상 관수는 흰가루병을 줄여요(S32).
+- **어린 잎**: 새 잎은 깨끗하게 나와서 병든 면적 비율을 낮추지만(희석), 가장 잘 걸리는 잎이기도 해요. 생장이 빠른 가을·봄에 배율이 커지고 한겨울에는 작아져요 → 국내 "봄·가을 발생, 한겨울 적음"[P4][P5]과 같은 방향. (설향 토경에서 1월 중순 과실 발병 1건[S315][R417]도 있어 시기는 목표값으로 묶지 않아요.)
+- 포자 압력이 0이어도 이미 걸린 포기는 스스로 번져요(`+ inf_p`). 모종의 시작 병반이 주 접종원이에요.
+- 과실은 개화 후 10~15일이면 거의 걸리지 않는다는 근거[R420]가 있지만, 과실별 감염 시점을 따로 두지 않고 수확 때 한 번 판정해요(단순화).
+- `inside_solar` 하루 이동 평균은 새 상태가 아니라 M4의 기온 이동 평균과 같은 완화식(`temp_mean_relax_rate_per_hour` 0.042)으로 하우스에 하나 둬요: `inside_solar_mean_W_per_m2`(하우스 상태 1개 추가).
+
+### 4.5 점박이응애와 칠레이리응애
+
+```
+r_m   = mite_growth_curve_per_hour(house_air) × mite_rh_curve(house_rh_mean_index)
+T_d   = predator_temp_curve(house_air),  H = predator_hatch_curve(house_rh_mean_index)
+pred  = min(M, attack_rate × M × D × T_d / (1 + attack_rate × handling_time × M))        (이번 틱 먹힌 양)
+sat   = attack_rate × handling_time × M / (1 + attack_rate × handling_time × M)           (천적의 배부름 0~1)
+
+M' = clamp(M + r_m × M × (1 − M) − pred + mite_spread_rate × (하우스 평균 M(틱 시작) − M), 0, 1)
+D' = clamp(D + conversion_factor × pred × H − D × min(1, predator_death_rate + predator_starvation_death × (1 − sat)), 0, 1)
+spider_mite_mean += (M' − spider_mite_mean) × min(1, mite_mean_relax_rate)
+피해: 총생산 × (1 − photosynthesis_damage_curve(spider_mite_mean))
+if M' ≥ mite_onset_index 처음 → DiseaseOnset{tile, spider_mite}
+```
+
+- `ReleasePredators{area, predator_id, per_m2}`: `D = min(1, D + per_m2 × index_per_individual_per_m2)`, 장부 `predators_released_per_m2`.
+- 방향:
+  - 응애는 12 °C 아래에서 멈추고 따뜻할수록 빨라요. 겨울 밤(5~8 °C)에는 안 늘고 낮에만 늘어요. 봄에 급증해요(S30).
+  - 건조하면 응애가 조금 빨라지고(근거가 엇갈려 약하게), 더 크게는 **천적 알이 부화하지 못해요**(S31). 다만 입력이 약 3일 평균 습도라서, 낮에만 건조하고 밤이 습한 겨울 하우스에서는 천적이 버텨요. 천적이 실패하는 건 밤까지 건조한 때(봄 고온기의 과다 환기, 밤 난방)예요.
+  - 천적은 20 °C에서 응애보다 1.4배 빠르지만 30 °C에서는 같아져요[R503]. 응애가 많아진 뒤나 더울 때 방사하면 따라잡지 못해요 → **일찍 방사**가 판단이에요.
+  - 응애를 다 먹으면 천적도 굶어 사라지고, 남은 응애가 다시 늘 수 있어요(방사 3주 뒤 억제, 4주째 재증가 [R509]).
+- 광합성 피해는 순간 밀도가 아니라 2주 평균을 읽어요. 응애를 잡아도 피해가 바로 사라지지 않아요.
+- 응애·흰가루병의 광합성 피해는 곱으로 겹쳐요: `총생산 × (1 − 흰가루) × (1 − 응애)`. [strawberry-fruit](strawberry-fruit.md) 3번 `gross`의 마지막에 곱해요.
 - 작물이 죽거나 제거되면 M, D = 0.
 
-### 5. 흰가루병
+### 4.6 병든 포기 제거 `RemovePlant{area}`
+
+- 대상 셀의 작물(살아 있든 죽었든)을 없애요. 체내 원소·건물·달린 과실은 계 밖으로 나가요(`*_removed_g`) — 원소 보존식에 `− removed` 항이 생겨요.
+- 그 셀의 지상부 상태(감염 3종, 응애, 천적, 잎 젖음)가 0이 돼요. 잿빛곰팡이·흰가루병 포자 원천과 탄저병 물 튐 원천, 탄저병 흙 접종원의 숙주 수용력이 없어져요. 이미 흙에 있는 접종원은 남아서 서서히 줄어요.
+- 작물이 없는 셀이면 enqueue에서 거부해요.
+- 빈 셀을 다시 심는 것(보식)은 M5b에서 다루지 않아요(질문 7). M5a `Plant`는 살아 있는 작물이 있으면 거부하므로 하우스에 한 포기라도 남아 있으면 쓸 수 없어요.
+
+### 4.7 정식 때 포기 간 차이 (난수)
+
+M5a가 감수성·병원균 편차를 `RngStream::Disease`로 분리한 것과 같은 이유로, M5b가 새로 뽑는 난수는 **새 스트림 `RngStream::Foliar`** 하나에서 뽑아요. biology 스트림(화아분화·수정률·낙과)과 Disease 스트림(M5a)의 순서·결과가 바뀌지 않아요. 세이브에 이 스트림 상태가 들어가요.
 
 ```
-spore_pm += Σ셀 (spore_source_pm × infection_pm) / 셀 수 − spore_pm × decay − spore_pm × ach × 비율
-infection_pm += rate_pm × spore_pm × temp_curve_pm(house_air) × rh_curve_pm(canopy_rh)
-                × (1 − free_water_inhibition × w) × light_curve_pm(inside_solar 하루 이동 평균)
-                × density_curve_pm(LAI) × s_N × (1 − infection_pm)
-희석: 잎이 새로 자란 만큼 infection_pm × (새 잎 / 전체 잎)만큼 줄어요(새 잎은 깨끗함)
-피해: 총생산 × (1 − pm_photosynthesis_damage_curve(infection_pm)), 수확 과실 중 흰가루 과실 비율 = pm_fruit_curve(infection_pm) → 기형과처럼 상품 아님(M4 기형과 집계에 원인 표시)
+정식 때(시나리오 [crop]과 Plant 명령 모두), f = [foliar] seedling_disease_factor, 타일 행 우선으로 포기마다:
+  ① latent_anthracnose_fraction × f > 0이면 u1: u1 < 그 값 → infection_anthracnose = latent_anthracnose_index
+  ② spider_mite_fraction × f > 0이면 u2: u2 < 그 값 → spider_mite = spider_mite_start_index
+  infection_powdery_mildew = powdery_mildew_start_index × f                              (난수 없음)
+매 틱: 타일 행 우선 → 과실 생성 순으로 잿빛곰팡이 썩음(p > 0인 과실만) → 그 틱 수확 과실의 흰가루 판정(p > 0만)
 ```
 
-- 방향: 습한 공기(잎 사이 습도 높음)를 좋아하지만 **잎이 젖어 있으면(w 큼) 억제**돼요. 그래서 밤새 결로로 젖는 하우스는 잿빛곰팡이가, 젖지 않고 습한·어두운 하우스는 흰가루병이 늘어요(S32). 국내 하우스는 봄(4~5월)과 가을에 많고 한겨울엔 적어요(2차 근거). 약광·밀식 효과는 출처가 없어 게임용 가정이에요.
+- 확률이 0이면 난수를 뽑지 않아요. 기존 시나리오(f = 0, 포자 0)는 Foliar 스트림을 한 번도 쓰지 않아요.
+- 과실 썩음을 biology 스트림에서 뽑지 않는 이유: 병이 있는 변형과 없는 변형의 수정률·낙과 난수가 같아야 비교(S26 등)가 병의 효과만 보여줘요. ([m5-overview](m5-overview.md) 4장은 "과실 썩음은 biology 난수"라고 적혀 있어요 → overview 변경 제안.)
 
-### 6. 병든 포기 제거 `RemovePlant{area}`
+## 5. 틱 순서
 
-- 셀의 작물을 없애요. 체내 원소·건물은 계 밖(`*_removed_g`)으로 — 보존식에 `− removed` 항이 생겨요.
-- 그 셀의 감염 조직이 사라져 잿빛곰팡이·흰가루병 포자 원천과 탄저병 숙주가 없어져요. 흙 접종원은 남아요.
-- 빈 셀은 `Plant`(하우스 전체 명령)로는 다시 못 심어요(살아 있는 작물이 있으므로) → 보식 명령은 디렉터 결정(M5b 명세에서).
+```
+1. 명령: RemovePlant, ReleasePredators (+ house-humidity의 SetFan, InstallDrip, 두상 관수 표시)
+3. 셀 d. 미생물: anthracnose 접종원 갱신(M5a 틀, 다른 무리와 함께 단계 시작 값으로)
+   셀 h. 작물:
+      h0. 저온 피해   h1. 생물계절
+      hw. (M5b) 잎 젖음·연속 젖음 시간                               (house-humidity 4.3)
+      h2. 스트레스
+      h3. 생장·분배: 총생산 × (1 − 흰가루 피해) × (1 − 응애 피해)     (틱 시작 inf_p, spider_mite_mean)
+      h4. 과실: 수확(흰가루 과실 판정) → 낙과 → 잿빛곰팡이 썩음
+      h5. 흡수
+      h6. 감염 진행: 질소 감수성 → M5a 시들음병·역병 → 탄저병 → 잿빛곰팡이 → 흰가루병(희석 포함)
+          → 뿌리 건강도(손상 합에 탄저병)·고사 → 낙엽
+      h7. 응애·칠레이리응애
+   k. 이벤트 판정 (DiseaseOnset에 anthracnose, botrytis, powdery_mildew, spider_mite 추가)
+4. 하우스: CO2 → 수증기 → 포자 압력 2개, 탄저병 포자 원천, 하우스 평균 응애, 하우스 안 일사 이동 평균
+```
 
-## 시나리오 테스트
+## 6. M4·M5a와의 연결
 
-S26~S31([m5-overview](m5-overview.md) 9장 M5b).
+| 읽는 값 | 어디서 | 쓰는 곳 |
+| --- | --- | --- |
+| `wet_run_hours`, `leaf_wetness_index`, `canopy_rh_index`, `house_rh_mean_index`, `overhead_irrigated_this_tick` | house-humidity | 탄저·잿빛곰팡이 감염, 흰가루병, 천적 부화, 물 튐 |
+| `house_air_temp_degC`, `inside_solar_W_per_m2`, `ach` | M4 house-climate | 온도 곡선, 흰가루병 빛, 포자 환기 |
+| `disease_susceptibility_factor` | M5a soil-microbes 5번 | 세 병의 감염 증가분 |
+| `antagonist_index`, 개체군 틀, `pathogen_spread_index` | M5a soil-microbes | 탄저병 흙 접종원과 보호 |
+| `mulch_id` | M5a disinfection | 물 튐 두 계수 |
+| 열 사멸·약제 사멸 | M5a disinfection | 탄저병 흙 접종원 소독 |
+| NH4, NO3 | M1 nitrogen | 질소 과다 감수성 |
+| `rgr_mean_per_day`, LAI, 과실 `development` | M4·M5a 사전 작업 | 흰가루병 어린 잎, 밀식, 과실 단계 |
 
-## 단순화와 비목표
+| 주는 값 | 받는 곳 |
+| --- | --- |
+| 총생산 배율(흰가루 × 응애) | strawberry-fruit 3번 `gross` |
+| 뿌리 손상(탄저병) | strawberry-minimal 5번 손상 합 |
+| 썩은 과실·흰가루 과실 | strawberry-fruit 수확·낙과 집계, 낙엽 규칙 |
+| `host_capacity × infection_anthracnose` | soil-microbes 무리 7의 수용력 |
+
+## 7. 목표값 (참고 범위)
+
+M5a와 같은 규칙이에요. 차수 보고에 현재 값을 채우고, 범위 밖이면 "목표 이탈"로 적어요. 테스트 기대값은 방향만 써요.
+
+| # | 지표 | 조건(시나리오) | 목표 범위 | 근거 범위 | 신뢰도 |
+| --- | --- | --- | --- | --- | --- |
+| B4 | 잿빛곰팡이 과실 손실(개수 비율) | 무관리 다습(`s26_closed`) 대 관리(`s26_vented`), 12~2월 | 10~30% 대 1~5% | 국내 무처리 11.5~13% [G1], 터널 1.1% 대 노지 11.3% [R207], 문헌 최대 50%(낮음) | 높음 |
+| B5 | 잿빛곰팡이 온도·젖음 | 단위 확인(같은 포자, 기온·연속 젖음만 바꿈) | 20 °C가 10·30 °C보다 빠름. 24 h 연속 젖음의 감염 증가가 6 h의 5배 이상 | Bulger 20 °C 과실 6 h 6%, 24 h 37% | 높음 |
+| B6 | 탄저병 두상 대 점적 | 감염 모종(등급 C), 9~11월 (`s28_overhead` 대 `s28_drip`) | 고사 포기 비율 2~4배. 점적 쪽 고사 2~10% | 스프링클러 대 점적 고사 20 대 40%, 2.5 대 7.5%, 6 대 24% [R313] | 중간 (육묘장 조건) |
+| B16 | 탄저병 잠복 모종의 손실 | 등급 C, 점적, 작기 끝 | 고사 5~30%, 수확 감소 30% 이하 | 모주 25% 감염 가까운 묘 고사 20~32%, 수량 −30% [R309], 감염 묘 수확 손실 약 30% [A2] | 중간 (미국) |
+| B17 | 탄저병 겨울 정지 | 같은 시나리오 12~2월 | 감염 지수 증가가 9~11월의 1/5 이하 | 최저 9 °C [R308], 진단 의뢰 9~11월 집중 [A2] | 중간 |
+| B18 | 흙 접종원 감소 | 숙주 없음, 60일 | 80~99% 감소 | 젖은 흙 4~10일·마른 흙 73~125일에 95%, 관부 56~98일 [R311][R312] | 중간 |
+| B7 | 응애 증식 | 25 °C 일정, 낮은 밀도, 습도 평균 0.7 | 하루 r 0.11~0.19 (배가 3.6~6.3일). 겨울 변온(밤 6 °C, 낮 22 °C) 하루 0.03~0.08 | 딸기 25 °C 0.107~0.144 [S405][S406], 0.11~0.27 [M2], 콩 0.181 [R503] | 중간 |
+| B19 | 응애 방치 피해 | 방사 없음, 3~5월 (`s30_hot`) | 수확 10~40% 감소 | 무처리 평균 약 25%, 무영향 보고도 있음(5부) | 낮음 |
+| B8 | 칠레이리응애 방제(일찍) | 응애 지수 0.05 이하에서 약 15마리/m² 방사, 15~28 °C, 습도 평균 0.6 이상 (`s31_predator`) | 3~5주에 응애 80% 이상 감소, 1주 뒤부터 감소 시작 | 1:4 방사 4주 98%, 1:10 4주 82% [S425][S432], 방사 뒤 3주 억제 [R509], 국내 방사 기준 [M8] | 중간 / 낮음(딸기 하우스 속도 실측 없음) |
+| B20 | 늦은 방사 | 응애 지수 0.15~0.2에서 같은 양 (`s31_predator_late`) | 6주 안에 80% 감소 못 함, 광합성 피해 누적 | 5부 B25 | 낮음 |
+| B9 | 천적의 약점 | 약 3일 평균 습도 0.6 이하(밤까지 건조) 또는 낮 30 °C 이상 (`s31_predator_dry`, `_hot`) | 방제 지연·약화: 같은 기간 응애 감소 60% 이하 | 부화 50% 습도 약 70% [S415], 상시 60%면 3~6% 부화 [S417], 30 °C에서 r 비 1.00 [R503]. 낮만 건조한 하우스는 방제 성공 [S407] | 중간 |
+| B10 | 흰가루병 조건 | 습하고 마른 잎 대 젖는 잎, 약광 대 밝음 (S32) | 무방제 작기 끝 병든 잎 면적 10~25%, 흰가루 과실 1~5%. 두상 관수 쪽이 점적보다 적음 | 감수성 품종 터널 잎 25~50%·과실 6~17%, 저항성 과실 0.4~2.3% [R207], 설향은 강한 편 [R416] | 높음(범위) / 출처 없음(약광) |
+| B21 | 질소 과다 | 표준 대 과다 처방, 같은 접종 (S29) | 과다 쪽 감염·손실이 1.2~2배 | 방향만 [A9][G3][N5]. 배율 근거 없음 | 낮음 |
+
+## 8. 데이터와 세이브
+
+### 시나리오 TOML (schema_version 7)
+
+```toml
+[house]
+drip_installed = true            # 필수 (house-humidity)
+
+[microbes]
+anthracnose = 0.0                # 필수 키로 추가 (흙·잔재 접종원 시작 지수)
+
+[foliar]                         # 필수 섹션
+seedling_disease_factor = 0.0    # 모종 등급의 잠복 탄저·응애·흰가루 값에 곱함 (0 = 깨끗한 모종, 1 = 등급 값 그대로)
+botrytis_background_index = 0.0  # 바깥에서 늘 들어오는 잿빛곰팡이 포자 수준
+powdery_mildew_background_index = 0.0
+```
+
+- **기존 M1~M5a 시나리오는 위 값(전부 0, 점적 설치)으로 올려요.** 그러면 지상부 병해충이 한 번도 생기지 않고 Foliar 난수도 쓰지 않아서 결과가 그대로예요(1작기 회귀 차이 0). M5a가 기존 시나리오의 병원균을 0으로 둔 것과 같은 방식이에요.
+- 기존 시나리오 대부분이 모종 등급 B·C를 써요. 그래서 등급에 잠복 감염을 붙이면서도 기존 결과를 지키려고 `seedling_disease_factor`를 뒀어요.
+- 일정 명령: `set_fan`(`on`), `install_drip`, `remove_plant`(`area`), `release_predators`(`predator`, `per_m2`, 선택 `area`).
+
+### `data/params.toml` (schema_version 7)
+
+추가: `[humidity]`, `[foliar_disease]`와 하위 4개, `[microbes.anthracnose]`, `[[predator]]`, `[root_damage] anthracnose_curve`, `[[mulch]]` 2키, `[[seedling_grade]]` 5키, `[[disinfectant]] kill_rate_per_hour.anthracnose`, 길항균 `competition.anthracnose`. 숨은 기본값 없이 전부 명시해요.
+
+### 세이브 형식 v8
+
+하우스: 수증기, 습도 평균, 팬, 점적, 포자 압력 2개, 탄저병 포자 원천, 하우스 평균 응애, 하우스 안 일사 평균, 수증기 장부. 셀: `anthracnose_index`와 그 소독 사멸 기록. 작물: 2장의 상태 전부 + 잎 젖음·시간 상태. 장부, 새 명령 4개, **Foliar 난수 스트림 상태**(Disease 스트림 다음), 새 파라미터 전부.
+
+## 9. 보존·불변 조건과 테스트
+
+### 보존·불변
+
+- 지수 0~1, `infection_anthracnose_index`는 줄지 않음, `soil_mineral_N_mean ≥ 0`, NaN 없음.
+- 원소 보존: 썩은 과실·흰가루 과실은 계 안 이동(썩은 과실 → 토양, 흰가루 과실 → 수확 반출 장부)이에요. `RemovePlant`만 계 밖 항(`− removed`)을 만들어요.
+- 물 수지: 이 명세는 물을 옮기지 않아요(습도 쪽 보존은 [house-humidity](house-humidity.md) 7장).
+- 포자·응애·천적은 원소 장부 밖이에요.
+- 결과가 셀 처리 순서에 의존하지 않아요(하우스 값은 틱 시작 값).
+- 결정론: 같은 시드 → 같은 해시. 확률 0이면 난수를 뽑지 않아요.
+
+### 단위 테스트
+
+| 조건 | 기대 |
+| --- | --- |
+| 토양 무기 N 3 대 20 g/m² (2주 뒤) | 20 쪽 `s_N`이 크고, 세 병의 감염 증가분이 그 비율만큼 큼. 시들음병 감염에는 영향 없음 |
+| 탄저병: 감염 0.05, 기온 27 대 10 °C | 27 °C만 진행 |
+| 탄저병: 흙 접종원 0.5, 연속 젖음 0 대 14 h | 젖은 쪽만 흙에서 감염 |
+| 탄저병: 두상 관수 틱 대 점적 틱, 같은 조건 | 두상 쪽만 물 튐 증가분 |
+| 탄저병: 하우스 포자 원천 > 0, 흙 접종원 0, 두상 관수, 필름 대 맨흙 | 필름 쪽 감염 증가가 큼(포기 → 포기) |
+| 탄저병: 포자 원천 0, 흙 접종원 0.5, 필름 대 맨흙 | 필름 쪽 감염 증가가 작음(흙 → 포기) |
+| 탄저병: 길항균 1 대 0 | 1 쪽 흙 경로 감염이 작음 |
+| 탄저병 감염 0.5 | 뿌리 손상 증가, 지수는 줄지 않음 |
+| 탄저병 흙 접종원, 숙주 없음 60일 | 80% 이상 감소. 병든 포기가 있는 칸은 증가 |
+| 잿빛곰팡이: 포자 0.5, 20 °C, 연속 젖음 6 대 24 h | 24 h 쪽 증가가 5배 이상 |
+| 잿빛곰팡이: 같은 젖음, 20 대 30 °C | 20 °C가 큼 |
+| 잿빛곰팡이: 젖음이 끊긴 뒤 | 감염 압력이 서서히 감소 |
+| 잿빛곰팡이: 감염 0.5, 과실 100개 | 썩은 수의 기대값이 확률 합과 맞고, 썩은 과실의 원소가 토양으로(보존) |
+| 포자 압력: 원천 0, 환기 대 밀폐 | 환기 쪽이 빨리 줄어듦. 배경값이 있으면 그 값으로 수렴 |
+| 흰가루병: 잎 사이 습도 0.5 대 0.85 | 0.5는 증가 0 |
+| 흰가루병: 잎 젖음 1 대 0, 같은 습도 | 젖은 쪽 증가가 작음 |
+| 흰가루병: RGR 0.03 대 0 | 생장이 빠른 쪽 증가가 큼 |
+| 흰가루병: 잎 건물이 2배로 | 병든 면적 비율이 절반(희석) |
+| 흰가루병 0.17 | 총생산 약 −5% |
+| 응애: 25 대 10 °C | 10 °C는 증가 0 |
+| 응애 0.01, 25 °C, 천적 없음 | S자로 증가, 1을 넘지 않음 |
+| 응애, 25 °C, 습도 평균 0.5 대 0.9 | 0.5 쪽 증가가 조금 빠름 |
+| 응애 0.05 + 천적, 습도 평균 0.8 대 0.45 | 0.8 쪽은 응애 감소·천적 증가, 0.45 쪽은 천적이 줄고 응애 증가 |
+| 응애 0, 천적 0.01 | 천적이 굶어 감소 |
+| 응애 밀도 급감 | 이동 평균과 광합성 피해는 서서히 회복 |
+| `ReleasePredators` 15마리/m² | 천적 지수 +0.00045, 장부 증가 |
+| `RemovePlant` | 그 셀 작물 없음, 원소가 `removed` 장부로(보존), 하우스 포자 원천 감소. 빈 셀이면 거부 |
+| 정식: 등급 C, 인자 1 | 잠복 포기 비율이 약 25%, 같은 시드면 같은 배치 |
+| 정식: 인자 0 또는 등급 A | Foliar 난수를 뽑지 않음. biology·Disease 스트림 수열이 M5a와 같음 |
+| 병해충 시작값 전부 0 | 작기 내내 0, 결과가 M5a와 비트 단위로 같음 |
+| 세이브 왕복 | 모든 상태와 Foliar 스트림 상태가 같음 |
+| 극한: 포자 1·연속 젖음 1000 h·N 100배·기온 45 °C | 지수 0~1, NaN 없음 |
+
+### 시나리오 (S26~S32)
+
+시드 20261119. 기간은 게임용 임의값이에요. 병해 시나리오는 `seedling_disease_factor = 1`과 배경 포자(잿빛곰팡이 0.05, 흰가루병 0.02)를 써요.
+
+| ID | 비교 | 기대 방향 | 목표값 | 기간 |
+| --- | --- | --- | --- | --- |
+| S26 | `s26_closed`(12/1~1/31, 3겹, 창 닫힘, 난방 6 °C) 대 `s26_vented`(아침 + 한낮 환기) | 닫힌 쪽 밤 습도·젖은 시간·잿빛곰팡이 감염 압력·썩은 과실 비율이 큼 (**완료 기준: 고습 시 병 발생 증가**) | B1, B2, B4, B11 | 62일 |
+| S27 | `s26_closed` 대 `s27_closed_fan`(유동팬 18~08시) | 팬 쪽 젖은 시간·감염·썩은 과실이 작고 하우스 습도는 거의 같음 (**완료 기준: 공기 흐름이 젖음을 줄여 병을 줄임**) | B3 | 62일 |
+| S28 | `s28_drip`(점적, 등급 C, 흑색 필름, 9/10 정식) 대 `s28_overhead`(점적 없음) 대 `s28_overhead_bare`(점적 없음, 필름 없음) 대 `s28_overhead_remove`(발병 이벤트가 난 포기를 제거) | 고사 포기: 두상 > 점적. 필름 + 두상이 맨흙 + 두상보다 큼(포기 → 포기 물 튐). 제거 쪽은 뒤따르는 발병이 적음 | B6, B16, B17 | 90일 |
+| S29 | `s29_standard` 대 `s29_n_excess`(M4 `season_standard`·`season_n_excess`와 같은 처방 + 병해 접종값) | 과다 쪽 탄저·잿빛곰팡이·흰가루 감염과 손실이 큼 | B21 | 263일 |
+| S30 | `s30_hot`(4/1~5/15, 낮 25~30 °C 관리) 대 `s30_cool`(낮 20 °C 관리, 환기를 일찍) | 따뜻한 쪽 응애 증가가 빠르고 광합성 피해가 큼 | B7, B19 | 45일 |
+| S31 | `s30_hot` 대 `s31_predator`(시작 때 방사, 습도 평균 0.6 이상) 대 `s31_predator_late`(4주 뒤 방사) 대 `s31_predator_dry`(방사, 밤 난방 + 낮 환기 과다로 약 3일 평균 습도 0.6 이하) | 일찍 방사 쪽 응애 감소. 늦은 방사 쪽은 방제 실패, 건조 쪽은 방제 지연·약화 (**완료 기준: 고온 건조에서 응애 증가와 포식 응애 방제**) | B8, B9, B20 | 45일 |
+| S32 | `s32_bright`(2겹, 점적) 대 `s32_dark`(4겹, 점적) 대 `s32_overhead`(2겹, 두상 관수) 대 `s32_dry`(2겹, 낮 환기 많음) | 흰가루병: 4겹 ≥ 2겹(약광은 게임용 가정이라 차이는 작게), 두상 관수 < 점적, 환기 많음 < 기본. 두상 관수 쪽은 잿빛곰팡이가 큼 | B10 | 3/1~5/15, 76일 |
+| 회귀 | M1~M5a 방향 테스트 전부 | 기존 방향 그대로 | - | 각 기간 |
+| **1작기 회귀** | M4 `season_*` 7개(schema 7 이행본) | M5a 최종 기준값과 차이 0이 기본. 허용 오차는 누적 ±3%, 월별 ±5%, 당도·경도 ±3%, 첫 수확 ±3일 | - | 263일 |
+| 보존 | 위 전부 + 극한(두상 관수 매 시간, 포자 1 시작, 천적 1000마리/m², 전 포기 제거) | 원소 보존(`removed` 포함), 수증기 보존, 지수 0~1, NaN 없음 | - | 매 틱 |
+| 결정론 | S26, S28, S31, `s29_standard` | 같은 시드 → 같은 해시 | - | - |
+
+- S31 건조 변형은 [house-humidity](house-humidity.md) 9.2(증산의 습도 되먹임) 결정에 달려 있어요. 되먹임이 없으면 평균 습도를 0.6 아래로 내리기 어려워서, 이 변형은 바깥이 건조한 기상 조각을 써야 해요.
+- S30은 두 변형의 습도 평균을 비슷하게 맞춰요(따뜻한 쪽이 보통 더 건조해서 온도와 습도 효과가 섞이지 않게).
+
+## 10. 단순화와 비목표
 
 - 살균제·살비제 없음(필요하면 M7과 함께 검토).
-- 포기 사이 전파는 하우스 평균(포자·응애 이동)으로만. 탄저병 물 튐의 이웃 셀 전파는 없음.
-- 응애·천적은 밀도 지수, 개체·세대 구조 없음. 휴면 없음.
-- 증상 표현(M7): 감염 지수 → 반점·회색 곰팡이·잎 뒷면 거미줄·흰 반점.
+- 포기 사이 전파는 하우스 평균(포자 압력, 탄저병 포자 원천, 응애 이동)으로만 해요. 이웃 칸 거리(물 튐 30~60 cm [A2][R302])는 계산하지 않아요.
+- 과실 탄저(C. acutatum)와 탄저병의 과실 반점은 없어요. 관부탄저만 다뤄요(이전 초안의 "과실 반점"을 뺌 — 질문 4).
+- 탄저병 흙 접종원 사멸의 수분 의존(젖은 흙에서 빨리 죽음)은 없어요(soil-microbes 틀에 자연 사멸의 수분 항이 없음).
+- 잿빛곰팡이의 죽은 잎·꽃잎 잔재(주요 접종원 [R405])와 잎 정리 작업은 없어요. 배경 포자로 대신해요.
+- 흰가루병의 잎 나이 구조는 RGR 이동 평균 하나로 대신해요. 자외선·필름 종류 효과 없음.
+- 응애·천적은 밀도 지수예요. 개체·세대 구조, 휴면, 질소 효과, 두상 관수의 씻김 효과(1회 약 20% [R515]), 어미의 건조 적응(1~4일 뒤 건조에 강한 알 [S417]) 없음. 천적은 칠레이리응애 1종(사막이리응애 없음).
+- 품종 차이 없음(설향 가정).
+- 증상 표현(M7): 감염 지수 → 시듦·회색 곰팡이·흰 반점·잎 뒷면 거미줄.
+
+## 11. 디렉터 결정이 필요한 점
+
+번호는 [house-humidity](house-humidity.md) 9장(질문 1·2)에서 이어져요.
+
+| # | 질문 | 선택지 | 추천 |
+| --- | --- | --- | --- |
+| 3 | 필름과 탄저병 물 튐 | (가) 두 경로: 흙 → 포기는 필름이 막고(0.1), 포기 → 포기는 필름이 키움(2.5) / (나) 이전 초안대로 필름이 줄임 / (다) 필름 효과 없음(1) | (가). 문헌은 비닐이 맨흙보다 2.3~2.7배 튄다고 해요. "필름 + 점적이 가장 안전, 필름 + 두상 관수가 가장 위험"이라는 판단이 생겨요 |
+| 4 | 탄저병 과실 피해 | (가) 관부탄저만(고사) / (나) 과실 반점·썩음도 | (가). 과실 탄저는 다른 종이고 근거 곡선도 그 종 것이라, 넣으면 병이 하나 더 느는 셈이에요 |
+| 5 | 흰가루병 약광 효과 | (가) 약하게 유지(최대 1.3배, 게임용 가정) / (나) 뺌 / (다) 필름의 자외선 투과로 바꿈 | (가). 정량 근거는 없지만 피복 겹수 판단(빛 대 보온)과 이어져요. S32 기대는 "4겹 ≥ 2겹, 차이는 작게"로 낮췄어요 |
+| 6 | 응애의 습도 반응과 피해 방식 | 습도: (가) 약한 곡선(건조 쪽 최대 1.15배) / (나) 곡선 없음 / (다) 강한 곡선(최대 3배). 피해: (가) 2주 평균 밀도 / (나) 순간 밀도 / (다) 누적 손상 상태 | 습도 (가), 피해 (가). 두 조사의 근거가 엇갈려요. 완료 기준 "고온 건조에서 응애 증가"는 주로 온도와 천적 실패로 나와요 |
+| 7 | 뽑은 자리 보식 | (가) M5b에서는 빈 칸으로 둠 / (나) 칸 단위 보식 명령 추가 | (가). 보식은 작기 중 묘 수급·비용과 묶여서 M7·M8이 맞아요 |
+| 8 | 기존 시나리오와 새 구조 | (가) `[foliar] seedling_disease_factor`를 두고 기존 시나리오는 0(결과 그대로) / (나) 등급 B·C에 잠복 감염을 바로 적용하고 1작기 기준값을 다시 씀 | (가). 새 상태(연속 젖음 시간, 이동 평균 3개)와 새 난수 스트림 `RngStream::Foliar`도 함께 확인해 주세요 |

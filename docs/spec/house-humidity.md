@@ -1,115 +1,292 @@
 # 하우스 습도: 수증기 수지, 결로, 잎 젖음, 공기 흐름, 유동팬, 점적 설치
 
-- 상태: 초안 (2026-11-19, M5b — M5a 승인 뒤 다듬어 다시 승인받아요). 2026-11-19 디렉터 결정: 점적은 설치 장비, 설치 전 관수는 두상 관수
+- 상태: 초안 (2026-11-19, 디렉터 승인 대기). 3차 근거 조사 반영본. M5b는 승인 전이라 코드를 쓰지 않아요
 - 마일스톤: M5b ([m5-overview](m5-overview.md))
-- 관련: [house-climate](house-climate.md)(창·환기 경로·CO2와 같은 틀), [strawberry-minimal](strawberry-minimal.md)(증산), [soil-water](soil-water.md)(증발), [foliar-disease](foliar-disease.md), [ADR-0011](../decisions/0011-house-climate-in-m4.md) 결정 6
-- 참고 자료: [references/m5-foliar-humidity.md](../../references/m5-foliar-humidity.md)(2차), [references/m5-microbes-disease.md](../../references/m5-microbes-disease.md)(1차)
+- 관련: [house-climate](house-climate.md)(창·환기 경로·CO2와 같은 틀), [strawberry-minimal](strawberry-minimal.md)(증산), [soil-water](soil-water.md)(증발), [disinfection](disinfection.md)(멀칭 증발 계수), [foliar-disease](foliar-disease.md), [ADR-0011](../decisions/0011-house-climate-in-m4.md) 결정 6, [ADR-0012](../decisions/0012-m5-split-and-population-index.md)
+- 참고 자료: [references/m5b-research.md](../../references/m5b-research.md)(3차, 출처 번호 **[S번호]**), [references/m5b-research-supplement.md](../../references/m5b-research-supplement.md)(3차 보충, **[R번호]**), [references/m5-foliar-humidity.md](../../references/m5-foliar-humidity.md)(2차, [H1]~)
+- 2026-11-19 디렉터 결정(이전): 점적은 설치 장비, 설치 전 관수는 두상 관수
+- **이번에 바뀐 점**: 결로를 틱 안 음해법으로(값 0.5 → 4), 피복 면 온도를 M4 피복 저항에서 계산, 이슬 문턱 0.95 → 0.92, 낮에는 이슬이 맺히지 않음, **연속 젖음 시간** 상태 추가, 수증기 장부와 보존식, 목표값 표(B1~B3, B11~B13). **구조 보완 제안 2개**(밤 수증기: 틈새 환기·밤 기본 증산, 증산의 습도 되먹임)는 9장에 따로 적었고 디렉터 결정이 필요해요
 
-## 목적
+## 1. 목적
 
 M4의 창 판단은 "따뜻함 대 CO2"였어요. M5b는 세 번째 축 **"습기"**를 더해요.
 
-- 겨울에 창을 닫아 두면 작물·흙에서 나온 수증기가 갇혀 밤 평균 85~92%, 새벽엔 95% 이상이 되고 잎이 젖어요 → 잿빛곰팡이병 (국내 딸기 하우스 실측, 2차 근거).
-- 아침에 잠깐 열거나 난방으로 기온을 올리면 습도가 내려가요. 유동팬은 하우스 습도는 거의 못 낮추지만(0~3%p) 잎 주변 공기를 움직여 젖은 잎을 빨리 말려요(이 크기는 출처 없음, 게임용).
-- 너무 말리면(봄 낮 환기 과다, 습도 55% 미만) 천적 칠레이리응애 알이 부화하지 못해 응애를 못 잡아요.
+- 겨울에 창을 닫아 두면 작물·흙에서 나온 수증기가 갇혀 밤 평균 85~95%가 되고 잎이 젖어요 → 잿빛곰팡이병([H1], [H2], [R110]).
+- 아침에 잠깐 열거나 난방으로 기온을 올리면 습도가 내려가요(난방 +6 °C에 약 −20%p [R112]).
+- 유동팬은 하우스 습도는 거의 못 낮추지만(−0.5%p) 잎 주변 공기를 움직여 젖은 시간을 크게 줄여요(토마토 터널 5 → 1 h [R209]).
+- 너무 말리면(낮 환기 과다) 천적 칠레이리응애 알이 부화하지 못해 응애를 못 잡아요([foliar-disease](foliar-disease.md) 5번).
 - 점적 호스를 깔기 전까지 관수는 두상 관수라 잎을 적시고 물을 튀겨 탄저병을 퍼뜨려요(대신 흰가루병은 줄어요). 점적은 돈 내고 까는 장비예요(비용 M7).
 
-## 상태 변수
+습도와 젖음은 **병해충에만** 영향을 줘요. 작물 생장·토양에는 직접 영향을 주지 않아요(9장 제안을 받아들이지 않는 한). 그래서 병원체가 없는 기존 시나리오는 결과가 그대로예요(8장 회귀).
+
+## 2. 상태 변수
+
+| 이름 | 위치 | 의미 | 단위 | 범위 |
+| --- | --- | --- | --- | --- |
+| `house_vapor_g_per_m3` | 하우스 | 공기 중 수증기 농도(절대 습도) | g/m³ | 0 이상, 포화 이하 |
+| `house_rh_mean_index` | 하우스 | 상대습도 이동 평균(약 3일). 천적 알 부화가 읽어요 | - | 0~1 |
+| `fan_on` | 하우스 | 유동팬 가동 | bool | |
+| `drip_installed` | 하우스 | 점적 호스 설치 여부. 설치 후 걷지 않음 | bool | |
+| `leaf_wetness_index` | 작물 | 잎 젖음 정도 | - | 0~1 |
+| `wet_run_hours` | 작물 | **연속 젖음 시간**. 젖음이 끊기면(아래 3번) 0으로 | h | 0 이상 |
+| `dry_run_hours` | 작물 | 마른 상태가 이어진 시간. 끊김 판정용 | h | 0 이상 |
+
+파생값(스냅샷·CSV, 저장 안 함):
 
 | 이름 | 위치 | 의미 | 단위 |
 | --- | --- | --- | --- |
-| `house_vapor_g_per_m3` | 하우스 | 공기 중 수증기 농도(절대 습도) | g/m³ |
-| `fan_on` | 하우스 | 유동팬 가동 | bool |
-| `drip_installed` | 하우스 | 점적 호스 설치 여부. 설치 후 걷지 않음 | bool |
-| `leaf_wetness_index` | 작물 | 잎 젖음 정도 | 0~1 |
-| `house_rh_index` (파생) | 하우스 | 상대습도 | 0~1 |
-| `airflow_index` (파생) | 하우스 | 잎 주변 공기 흐름 | 0~1 |
-| `canopy_rh_index` (파생) | 셀 | 잎 사이 상대습도 (빽빽하고 바람 없으면 높음) | 0~1 |
+| `house_rh_index` | 하우스 | 상대습도 = 수증기 ÷ 포화 농도(하우스 기온) | 0~1 |
+| `airflow_index` | 하우스 | 잎 주변 공기 흐름. 1 = 군락 안 풍속 약 0.3 m/s 이상(젖음이 억제되는 수준 [R209]) | 0~1 |
+| `cover_inner_temp_degC` | 하우스 | 피복 안쪽 면 온도 | °C |
+| `canopy_rh_index` | 셀 | 잎 사이 상대습도(빽빽하고 바람 없으면 높음) | 0~1 |
+| `overhead_irrigated_this_tick` | 셀 | 이번 틱에 두상 관수를 받았는지(병해 물 튐이 읽음) | bool |
 
-장부 추가: `fan_hours`(가동 시간, 전기료는 M7), `water_condensed_mm`(결로로 피복을 타고 빠진 물, 진단용 — 토양 물 장부 밖).
+장부 추가(하우스, 지면 1 m²당 mm. 1 mm = 1000 g/m²):
 
-## 파라미터 (`[humidity]`, 게임용 임의값, 프로토타입에서 B1~B3 목표로 맞춤)
+| 이름 | 의미 |
+| --- | --- |
+| `vapor_source_mm` | 공기로 들어온 수증기 누적(증산 + 증발) |
+| `water_condensed_mm` | 피복 결로로 빠진 양 누적 |
+| `vapor_vented_mm` | 환기·틈새로 나간 순량 누적(바깥이 더 습하면 음수 틱도 있음) |
+| `vapor_deposited_mm` | 포화 상한을 넘어 안개·이슬로 빠진 양 누적 |
+| `fan_hours` | 유동팬 가동 시간(전기료 M7) |
+| `drip_installations` | 점적 설치 횟수(비용 M7) |
 
-| 키 | 의미 | 초기값 |
+모든 값은 **플레이어 비공개 진짜 값**이 아니에요. 습도는 온습도계로 볼 수 있는 값이라 공개 대상이에요(표시·센서 오차는 M7). 잎 젖음과 연속 젖음 시간은 비공개예요.
+
+## 3. 파라미터 (`[humidity]`)
+
+값은 전부 프로토타입에서 6장 목표값(B1~B3, B11~B13)에 맞춰 조정해요. "근거" 칸에 출처가 없으면 게임용 임의값이에요.
+
+| 키 | 의미 | 단위 | 초기값 | 근거 |
+| --- | --- | --- | --- | --- |
+| `saturation_vapor_curve` | x = 기온, y = 포화 수증기 농도 | °C → g/m³ | `[[-10,2.35],[-5,3.41],[0,4.85],[5,6.8],[10,9.4],[15,12.8],[20,17.3],[25,23.0],[30,30.4],[35,39.6],[40,51.1],[50,83.0],[70,198]]` | Tetens 식(물 위 a 17.27, b 237.3) [R116]. 이전 초안의 −10 °C 2.14는 얼음 위 값이라 물 위 값으로 통일했어요(상대습도는 물 기준, m5b-research 1.4절). 도구 `tools/gen_saturation.py`가 만들고 코어는 표만 읽어요(ADR-0004) |
+| `inner_surface_resistance_m2K_per_W` | 피복 안쪽 면의 표면 열저항. 피복 면 온도 계산에 써요 | m²K/W | 0.09 | 게임용 임의값. 직렬 저항 추정(안쪽 대류 계수 + 복사 가정, [S102]). 다겹 피복 안쪽 면 온도 실측은 없음 |
+| `condensation_rate_per_hour` | 피복 포화 농도를 넘는 수증기의 시간당 결로 속도 상수 | 1/h | 4.0 (이전 0.5) | 결로 식 모양은 Vanthoor [S102][R101]. 크기는 두 조사 모두 열전달 계수에서 계산해 4~5 (계산값, 낮음) |
+| `rh_mean_relax_rate_per_hour` | 습도 이동 평균의 완화 비율 | 1/h | 0.014 | 게임용 임의값(약 3일. 칠레이리응애 알 기간 약 2일 [M7]) |
+| `vent_airflow_factor` | 환기 경로 1당 공기 흐름 지수 | - | 1.0 | 게임용 임의값. 측창만 연 하우스 안 풍속 실측 없음(터널 CFD로 바깥 풍속의 0.07~0.23배 [R212]) |
+| `fan_airflow_index` | 유동팬이 주는 공기 흐름 지수 | - | 0.6 (이전 0.5) | 게임용 임의값. 팬이 있어도 군락 안은 0.1~0.2 m/s에 그칠 수 있음 [R209]. 설치 기준 작물 높이 0.25~0.5 m/s [R210] |
+| `canopy_rh_boost_index` | 잎이 빽빽하고 바람이 없을 때 잎 사이 습도 가산 | - | 0.08 | 게임용 임의값. 딸기 실측 없음(장미 낮 군락은 15~25% 높음 [R222], 낮음) |
+| `canopy_lai_ref` | 위 가산이 최대가 되는 LAI | - | 3.0 | 게임용 임의값 |
+| `dew_rh_index` | 잎 사이 습도가 이 이상이면 잎이 젖기 시작 | - | 0.92 (이전 0.95) | RH 문턱법 90%(정답 비율 0.87~0.92 [R201] 중간), 온실 장미 94% [R203] |
+| `dew_solar_limit_W_per_m2` | 하우스 안 일사가 이보다 크면 이슬이 새로 맺히지 않음 | W/m² | 50 | 게임용 임의값. 이슬은 밤·새벽 현상이고 해가 들면 잎이 공기보다 따뜻해져요 |
+| `wetting_rate_per_hour` | 젖음 증가(1까지 남은 양의 비율) | 1/h | 0.5 | 게임용 임의값 |
+| `drying_rate_per_hour` | 마름 기본 속도 | 1/h | 0.3 | 게임용 임의값 |
+| `airflow_drying_factor` | 공기 흐름 1일 때 마름 속도 추가 배율(1 + 값) | - | 2.0 | 팬 대 정체 물방울 증발 1.7배 [S201], 풍속 0.1 → 0.3 m/s에 1.7~3배 [R209][R217] 중간 |
+| `drying_rh_curve` | x = 잎 사이 습도, y = 마름 배율 | - | `[[0.5,1.5],[0.8,1],[0.92,0.2],[1,0]]` | 게임용 임의값 |
+| `drying_solar_factor_per_W_per_m2` | 하우스 안 일사 1 W/m²당 마름 속도 추가 배율 | 1/(W/m²) | 0.01 | 게임용 임의값. 초안 식은 맑은 낮에도 마르는 데 약 4.5시간이 걸려요(m5b-research 5.2절). 정체 공기의 물방울은 약 2.4시간 [S201] |
+| `overhead_wet_index` | 두상 관수 직후 잎 젖음 | - | 1.0 | 게임용 임의값. 두상 관수 뒤 마름 시간 실측 없음 |
+| `wet_threshold_index` | 잎 젖음이 이 이상이면 "젖은 시간"으로 셈 | - | 0.5 | 게임용 임의값 |
+| `wetness_break_hours` | 마른 상태가 이만큼 이어지면 연속 젖음이 끊김 | h | 4 | 노스캐롤라이나 경보 기준 4 h [R215] 낮음. 탄저병은 6 h 이상 [A2] |
+
+기존 값 재사용(바꾸지 않아요): `house.air_volume_m3_per_m2` 3.0, `house.infiltration_air_changes_per_hour` 0.3(국내 단동 실측 0.056~0.336 회/h의 위쪽 끝 [R106] 높음), `house.vent_air_changes_per_hour` 30, `house.layer_resistance_m2K_per_W` 0.13.
+
+이전 초안의 `cover_temp_fraction`(겹수별 표)은 없앴어요. 아래 식이 M4의 피복 저항에서 계산해요(창 닫힘 2겹 0.65, 3겹 0.77, 4겹 0.83. 이전 초안 0.4 / 0.55 / 0.65).
+
+## 4. 프로세스
+
+### 4.1 공기 흐름 (하우스 단계 2, 환기 경로 계산 직후)
+
+```
+airflow_index = min(1, vent_airflow_factor × path + (fan_on ? fan_airflow_index : 0))
+```
+
+- `path`는 [house-climate](house-climate.md) 1번의 환기 경로(0~1)예요.
+- 팬은 **수증기를 빼지 않아요.** 잎 마름(4.3)과 잎 사이 습도에만 들어가요. 팬 하우스의 습도는 대조보다 0.5%p만 낮았어요[R209].
+
+### 4.2 수증기 수지 (하우스 단계 4, CO2 갱신 뒤)
+
+셀 계산이 끝난 뒤, 이번 틱의 증산·증발로 갱신해요. 작물·병해는 **틱 시작 때의** 습도를 써요(CO2와 같은 방식).
+
+```
+S     = Σ셀 (transpired_mm + evaporated_mm) × 1000 / 셀 수 / air_volume_m3_per_m2      (g/m³, 이번 틱 원천)
+v_out = outside_rh × sat(outside_air)
+frac  = R > 0 ? clamp(1 − inner_surface_resistance / R, 0, 1) : 0                       (R: house-climate 1번의 피복 저항 합, 창 개방 반영)
+T_c   = outside_air + frac × (house_air − outside_air)                                  → cover_inner_temp_degC
+v_c   = sat(T_c)
+ach   = infiltration_air_changes + vent_air_changes × path                               (CO2와 같은 값)
+k     = condensation_rate_per_hour
+
+v1 = (v + S + ach × v_out) / (1 + ach)                                                   (결로 없이 한 틱 뒤)
+if v1 > v_c:  v' = (v + S + ach × v_out + k × v_c) / (1 + ach + k),  cond = k × (v' − v_c)
+else:         v' = v1,                                               cond = 0
+vent = ach × (v' − v_out)                                                                (음수 = 바깥에서 들어옴)
+dep  = max(0, v' − sat(house_air)),  v' −= dep                                           (안개·이슬로 빠짐)
+
+house_vapor = v'
+house_rh_index = v' / sat(house_air)
+house_rh_mean_index += (house_rh_index − house_rh_mean_index) × min(1, rh_mean_relax_rate)
+장부: vapor_source += S × V / 1000, water_condensed += cond × V / 1000, vapor_vented += vent × V / 1000, vapor_deposited += dep × V / 1000    (V = air_volume_m3_per_m2)
+```
+
+- **왜 음해법인가**: 맑은 한낮 증산은 시간당 약 200 g/m²(공기 1 m³당 약 +67 g)로, 하우스 공기가 담을 수 있는 양(20 °C 포화 17.3 g/m³)의 몇 배예요. 1시간 틱에서 "원천을 더한 뒤 비율로 뺀다"(이전 초안)는 결로·환기 순서에 결과가 크게 좌우돼요. 위 식은 원천·환기·결로를 한 번에 풀어서 순서에 의존하지 않고, 어떤 입력에서도 `v' ≥ 0`이며 `v' − v = S − cond − vent − dep`가 정확히 성립해요. 지수 함수를 쓰지 않아요(ADR-0004).
+- 방향:
+  - 밤에 창을 닫으면 수증기가 피복 면 포화 농도(`v_c`) 근처에 붙어요. 그래서 상대습도는 대략 `sat(T_c) ÷ sat(하우스 기온)`이에요. 3겹(frac 0.77), 안 5.5 °C·밖 −3 °C면 약 0.87이에요.
+  - 겹이 많을수록 피복 면이 따뜻해 결로가 적고 습도가 높아요(4겹 약 0.90, 2겹 약 0.82).
+  - 난방은 하우스 기온과 피복 면 온도의 차이를 벌려 습도를 낮춰요(밖 −5 °C에서 무난방 2 °C 약 0.89 → 난방 10 °C 약 0.79).
+  - 환기하면 바깥 공기(겨울엔 절대 습도 약 3 g/m³ [H1])로 바뀌어요.
+- 월드 생성 시 `house_vapor`는 첫 틱 바깥 수증기 농도, `house_rh_mean_index`는 그때의 상대습도로 시작해요.
+- 위 숫자는 식에 값을 넣은 **손 계산**이에요. 프로토타입으로 확인한 값이 아니에요.
+
+### 4.3 잎 젖음 (작물 단계 h, 병해 앞)
+
+틱 시작 때의 습도(`house_rh_index`)와 이번 틱의 공기 흐름·일사를 써요.
+
+```
+canopy_rh = min(1, house_rh_index + canopy_rh_boost × min(1, LAI / canopy_lai_ref) × (1 − airflow_index))
+if overhead_irrigated_this_tick:                                  w = max(w, overhead_wet_index)
+elif canopy_rh ≥ dew_rh_index and inside_solar ≤ dew_solar_limit:  w += wetting_rate × (1 − w)
+else:  w −= w × min(1, drying_rate × (1 + airflow_drying_factor × airflow_index + drying_solar_factor × inside_solar) × drying_rh_curve(canopy_rh))
+
+if w ≥ wet_threshold_index:  wet_run_hours += 1, dry_run_hours = 0
+else:                        dry_run_hours += 1;  if dry_run_hours ≥ wetness_break_hours: wet_run_hours = 0
+```
+
+- **연속 젖음 시간**이 병 감염의 입력이에요([foliar-disease](foliar-disease.md)). 잿빛곰팡이 감염은 젖음 6시간이면 약 6%, 24시간이면 약 37%로(20 °C, Bulger 1987), 짧게 여러 번 젖는 것보다 길게 이어지는 젖음이 훨씬 위험해요. 잠깐 마른 것(4시간 미만)은 끊긴 것으로 치지 않아서, 밤마다 젖고 낮에 덜 마르면 며칠에 걸쳐 이어져요.
+- 유동팬은 두 경로로 효과를 내요. 잎 사이 습도 가산을 줄여 젖기 시작하는 문턱을 올리고(팬 0.6이면 하우스 습도 0.84 → 0.89부터 젖음), 마름을 최대 2.2배 빠르게 해요. 해가 들면 일사 항으로 더 빨리 말라요.
+- 작물이 없거나 죽은 셀은 `w = 0`, 시간 0이에요.
+
+### 4.4 명령
+
+| 명령 | 필드 | 효과 |
 | --- | --- | --- |
-| `saturation_vapor_curve` | x = 기온 °C, y = 포화 수증기 농도 g/m³ (도구 `tools/gen_saturation.py`가 Tetens 식으로 생성, 코어는 표만 읽음 — ADR-0004) | `[[-10,2.14],[0,4.85],[5,6.8],[10,9.4],[15,12.8],[20,17.3],[25,23.0],[30,30.4],[35,39.6],[40,51.1],[50,83.0],[70,198]]` |
-| `cover_temp_fraction` | 피복 안쪽 면 온도 = 바깥 + 비율 × (하우스 − 바깥). 겹이 많을수록 커요 | 겹수별 `[2겹 0.4, 3겹 0.55, 4겹 0.65]` |
-| `condensation_rate_per_hour` | 피복 포화 농도를 넘는 수증기 중 시간당 결로 비율 | 0.5 |
-| `vent_airflow_factor` | 환기 경로 1당 공기 흐름 | 1.0 |
-| `fan_airflow_index` | 유동팬의 공기 흐름 | 0.5 |
-| `canopy_rh_boost_index` | 잎이 빽빽하고(LAI ≥ 기준) 바람이 없을 때 잎 사이 습도 가산 | 0.08 |
-| `canopy_lai_ref` | 위 가산이 최대가 되는 LAI | 3.0 |
-| `dew_rh_index` | 잎 사이 습도가 이 이상이면 잎이 젖기 시작 | 0.95 |
-| `wetting_rate_per_hour` | 젖음 증가(1까지 남은 양의 비율) | 0.5 |
-| `drying_rate_per_hour` | 마름 기본 속도 | 0.3 |
-| `airflow_drying_factor` | 공기 흐름 1일 때 마름 속도 추가 배율 | 2.0 |
-| `drying_rh_curve` | x = 잎 사이 습도, y = 마름 배율 | `[[0.5,1.5],[0.8,1],[0.95,0.2],[1,0]]` |
-| `overhead_wet_index` | 두상 관수 직후 잎 젖음 | 1.0 |
+| `SetFan` | `on` | 다음 틱부터 유동팬 가동/정지. 가동 중 매 틱 `fan_hours += 1` |
+| `InstallDrip` | 없음(하우스 전체) | `drip_installed = true`. 이미 깔려 있으면 enqueue에서 거부. `drip_installations += 1` |
 
-## 프로세스
+- `Irrigate`는 필드가 바뀌지 않아요. **`drip_installed`가 거짓이면 그 관수는 두상 관수**예요: 토양 물 수지는 점적과 같고, 대상 셀에 `overhead_irrigated_this_tick`을 세워 4.3의 잎 젖음과 [foliar-disease](foliar-disease.md)의 물 튐을 일으켜요.
+- 두상 관수가 하우스 습도를 직접 올리지는 않아요(잎에 묻은 물의 증발은 계산하지 않음 — 10장).
+- `variant` 순서: M5a 뒤에 `SetFan, RemovePlant, ReleasePredators, InstallDrip`.
 
-### 1. 공기 흐름 (하우스 단계 2, 환기 경로 계산 직후)
+## 5. 틱 순서와 M4·M5a 연결
 
 ```
-airflow = min(1, vent_airflow_factor × path + (fan_on ? fan_airflow_index : 0))
+1. 명령: SetFan, InstallDrip, Irrigate(점적 없으면 셀에 overhead 표시)
+2. 하우스 환경(M4): 피복·창 → R, path → 기온·난방
+   (M5b) airflow_index                                              ← path
+3. 셀:
+   a. 수분: 증발(× M5a 멀칭 evaporation_factor), 증산               → transpired_mm, evaporated_mm (4.2의 원천)
+   …
+   h. 작물: (M5b) 잎 젖음·연속 젖음 시간 → 병해충(foliar-disease)   ← 틱 시작 house_rh_index, airflow_index, inside_solar
+4. 하우스 CO2(M4) → (M5b) 수증기 수지 → house_rh_index, house_rh_mean_index
 ```
 
-### 2. 수증기 수지 (하우스 단계 4, CO2와 함께)
+| 읽는 값 | 어디서 | 쓰는 곳 |
+| --- | --- | --- |
+| `R`(피복 저항 합), `path`, `house_air_temp_degC`, `inside_solar_W_per_m2` | M4 house-climate | 피복 면 온도, 환기, 공기 흐름, 이슬 조건 |
+| `ach` = 틈새 + 환기 × path | M4 CO2 수지와 같은 값 | 수증기 환기 |
+| `outside_air_temp_degC`, `outside_rh_percent` | 기상 데이터(M0부터 있는 열) | 바깥 수증기 |
+| 셀 `transpired_mm`, `evaporated_mm` | M2 증산, M1 증발 × M5a 멀칭 계수 | 수증기 원천 |
+| LAI | M2·M4 작물 | 잎 사이 습도 |
 
-```
-source_g   = Σ셀 (transpired_mm + evaporated_mm) × 1000 / 셀 수          (1 mm·m² = 1000 g)
-vapor     += source_g / air_volume_m3_per_m2
-T_cover    = outside + cover_temp_fraction(cover_layers) × (house_air − outside)
-cond       = max(0, vapor − sat(T_cover)) × min(1, condensation_rate)
-vapor     −= cond                                    → water_condensed_mm += cond × air_volume / 1000
-vapor_out  = outside_rh × sat(outside_air)
-vapor     += (vapor_out − vapor) × min(1, ach)       (ach는 CO2와 같은 환기 횟수)
-vapor      = min(vapor, sat(house_air))              (넘는 몫은 안개·이슬로 사라짐 — 잎 젖음에는 3번에서 반영)
-rh         = vapor / sat(house_air)
-```
+- M5a 멀칭(필름)을 덮은 하우스는 토양 증발이 0.1~0.2배라 수증기 원천이 줄어요. 따로 식을 두지 않아도 위 연결로 나와요.
+- 습도가 다른 모듈에 주는 값: `leaf_wetness_index`, `wet_run_hours`, `canopy_rh_index`, `house_rh_mean_index`, `overhead_irrigated_this_tick`, `airflow_index` → 전부 [foliar-disease](foliar-disease.md)만 읽어요.
 
-- 방향: 밤에 바깥이 추우면 피복이 차가워 결로가 수증기를 빼내지만, 하우스 기온도 내려가 상대습도는 90~100%에 머물러요. 낮에 환기하면 바깥 공기(겨울엔 절대 습도가 낮음)로 바뀌어 상대습도가 크게 내려가요. 난방은 하우스 기온을 올려 상대습도를 낮춰요.
-- 월드 생성 시 첫 틱 바깥 수증기 농도로 시작해요.
+## 6. 목표값 (참고 범위)
 
-### 3. 잎 젖음 (작물 단계, 병해 앞. 틱 시작 때의 습도를 씀)
+프로토타입 차수 보고에 아래 표의 현재 값을 채워요. 범위를 벗어나면 "목표 이탈"로 적고, 범위를 바꾸려면 디렉터 결정이 필요해요. 테스트 기대값은 방향만 쓰고 이 수치는 확인용이에요(M5a와 같은 규칙).
 
-```
-canopy_rh = min(1, rh + canopy_rh_boost × min(1, LAI / canopy_lai_ref) × (1 − airflow))
-if 이번 틱 두상 관수: w = max(w, overhead_wet_index)
-elif canopy_rh ≥ dew_rh_index: w += wetting_rate × (1 − w)
-else: w −= w × min(1, drying_rate × (1 + airflow_drying_factor × airflow) × drying_rh_curve(canopy_rh))
-```
+| # | 지표 | 조건(시나리오) | 목표 범위 | 근거 범위 | 신뢰도 |
+| --- | --- | --- | --- | --- | --- |
+| B1 | 겨울 밤 상대습도 | 12~2월, 3겹, 창 닫힘 (`s26_closed`) | 밤 평균 85~95%, 새벽 최고 95% 이상 | 함안 월평균 밤 85.6~87.3% [H1], 상주 3겹 82.7~91.1% [H2], 대구 이중 85~98% [R110] | 높음 |
+| B2 | 겨울 낮 상대습도 | 한낮 환기 (`s26_vented`) | 낮 평균 55~75% | 함안 12~2월 낮 58~66% [H1], 농진청 관리 목표 낮 60% [H4] | 높음 (9장 주의) |
+| B3 | 유동팬 효과 | 겨울 밤 밀폐, 팬 켬 대 끔 (`s27_closed_fan`) | 하우스 습도 차 0~3%p, 젖은 시간 40~70% 감소 | 습도 변화 없음, 아침 이슬량 −68%, 물방울 증발 1.7배, 하루 예 젖음 5 → 1 h [S201][R209]. RH 95% 4 h 이상인 밤 28 → 5 [R208] | 중간 (토마토·바질. 딸기 실측 없음, 젖은 시간 자체의 실측도 하루 예뿐) |
+| B11 | 밤 잎 젖음 시간 | 겨울 밤 밀폐, 팬 없음 (`s26_closed`) | 젖는 밤 5~12 h (중심 약 8 h) | 무가온 딸기 터널 4.5~5.2 h [R207], 온실 오이 4.8~12.2 h [R205] | 중간 (난방 딸기 하우스 실측 없음) |
+| B12 | 창 닫은 뒤 습도 상승 | 겨울 오후 창을 닫고 4시간 | +8~18%p | 딸기 3겹 하우스 80.2 → 93.2% (+13%p) [R112] | 중간 (한 사례) |
+| B13 | 난방 효과 | 겨울 밤 창 닫힘, 난방으로 +6 °C | −10~−25%p | 79.8 → 60.1% (−19.7%p, 약 3%p/°C) [R112] | 중간 (토마토, 단기) |
+| B14 | 겹수 효과 | 같은 밤, 2겹 대 4겹 | 4겹 쪽 습도가 높고 결로량이 작음(방향만) | 커튼 겹이 늘면 틈새 환기 33~74% 감소 [R106]. 습도 직접 비교는 없음 | 낮음 |
+| B15 | 환기와 젖는 날 | 매일 환기 대 밀폐, 30일 | 환기 쪽 젖는 밤 수가 절반 이하 | 터널이 노지보다 젖는 날 60% 이상 적음 [R207] | 중간 (조건 다름) |
 
-### 4. 명령
+## 7. 보존·불변 조건
 
-- `SetFan{on}`: 다음 틱부터 유동팬 가동/정지. 장부 `fan_hours`.
-- `InstallDrip`: 하우스 전체에 점적 호스를 깔아요(`drip_installed = true`, 이미 깔려 있으면 enqueue에서 거부). 장부 `drip_installations`(비용 M7).
-- `Irrigate`는 필드가 바뀌지 않아요. **`drip_installed`가 거짓이면 그 관수는 두상 관수**예요: 물 수지는 같고, 3번의 잎 젖음과 [foliar-disease](foliar-disease.md)의 물 튐을 일으켜요.
-- 시나리오 `[house] drip_installed`는 schema 7의 **필수 키**예요(숨은 기본값 없음). M1~M5a 시나리오는 지금 결과를 지키려고 `true`로 이행해요(지금까지의 관수는 젖음·물 튐이 없는 점적과 같았어요).
+- **수증기 보존**(매 틱, 상대 오차 1e-9): `house_vapor × V / 1000 = 시작값 + vapor_source_mm − water_condensed_mm − vapor_vented_mm − vapor_deposited_mm`.
+- **원천 일치**: `vapor_source_mm`의 증가분 = 그 틱 셀 평균 `water_transpired_mm + water_evaporated_mm` 증가분. 수증기는 토양 물 장부에서 이미 나간 물만 받아요. 토양 물 보존식(`토양 = 초기 + in − 증발 − 증산 − 배수`)은 바뀌지 않아요.
+- 결로수와 안개·이슬은 토양으로 돌아가지 않아요(피복을 타고 하우스 밖으로 — 10장). 그래서 **하우스 전체 물 수지**는 `관수 = 토양 변화 + 배수 + 결로 + 환기 순유출 + 안개·이슬 + 공기 중 변화`예요.
+- `0 ≤ house_rh_index ≤ 1`, `0 ≤ leaf_wetness_index ≤ 1`, `house_vapor ≥ 0`, 시간 상태 ≥ 0, NaN 없음.
+- 결정론: 난수를 쓰지 않아요.
 
-## 보존·불변 조건
+## 8. 테스트
 
-- 수증기는 원소·물 장부 밖이에요(증산·증발은 이미 토양 물 장부의 유출). `water_condensed_mm`은 진단용.
-- 0 ≤ rh ≤ 1, 0 ≤ w ≤ 1, vapor ≥ 0, NaN 없음.
-
-## 테스트 (단위)
+### 단위
 
 | 조건 | 기대 |
 | --- | --- |
-| 포화 표 | 단조 증가, 20 °C ≈ 17.3 g/m³ |
-| 겨울 밤, 창 닫힘 | rh ≥ 0.9 |
-| 같은 밤, 난방 10 °C 대 없음 | 난방 쪽 rh가 낮음 |
-| 겨울 한낮, 창 닫힘 대 환기 | 환기 쪽 rh가 낮음 |
-| 4겹 대 2겹, 같은 밤 | 4겹 쪽 결로가 작고 rh 높음 |
-| 팬 켬 대 끔, rh 0.93 | 켠 쪽 잎이 빨리 마름 |
-| LAI 4 대 1, 바람 없음 | 4 쪽 canopy_rh 높음 |
-| 두상 관수 | 그 틱 w = 1 |
-| 극한: 증산 매우 큼, 바깥 −15 °C | rh ≤ 1, NaN 없음 |
+| 포화 표 | 단조 증가, 20 °C ≈ 17.3 g/m³, 0 °C ≈ 4.85 |
+| 피복 면 온도 | 3겹 닫힘 frac ≈ 0.77, 창이 열릴수록 작아지고, 모든 겹 양쪽 100%면 바깥 기온 |
+| 원천 0, 창 닫힘, 안이 바깥보다 습함 | 수증기가 바깥 값 쪽으로 단조 감소(틈새) |
+| 큰 원천(시간당 300 g/m²), 창 닫힘 | `house_rh_index ≤ 1`, 초과분이 결로와 안개·이슬 장부로, 보존식 성립 |
+| 겨울 밤, 창 닫힘, 3겹 | 습도 ≥ 0.8이고 결로 > 0 |
+| 같은 밤, 난방 10 °C 대 없음 | 난방 쪽 습도가 낮음 |
+| 겨울 한낮, 창 닫힘 대 환기 | 환기 쪽 수증기 농도가 낮음 |
+| 4겹 대 2겹, 같은 밤 | 4겹 쪽 결로가 작고 습도가 높음 |
+| 바깥이 안보다 습함(여름 새벽) | 환기 순량이 음수, 보존식 성립 |
+| 팬 켬 대 끔 | 공기 흐름 지수가 `fan_airflow_index`만큼 큼. 하우스 수증기는 같음 |
+| 팬 켬 대 끔, 습도 0.9, LAI 3 | 끈 쪽만 젖기 시작 |
+| 젖은 잎, 팬 켬 대 끔, 습도 0.7 | 켠 쪽이 빨리 마름 |
+| LAI 4 대 1, 바람 없음 | 4 쪽 `canopy_rh`가 높음 |
+| 습도 1, 하우스 안 일사 200 W/m² | 새로 젖지 않음(낮 이슬 없음) |
+| 두상 관수(점적 미설치) | 그 틱 `w = 1`, 셀에 overhead 표시. 점적 설치 뒤 같은 관수는 표시 없음 |
+| 젖음 3 h → 마름 2 h → 젖음 3 h | `wet_run_hours`가 끊기지 않고 6 |
+| 젖음 3 h → 마름 4 h | `wet_run_hours` = 0 |
+| `InstallDrip` 두 번 | 두 번째는 enqueue에서 거부 |
+| 세이브 왕복 | 수증기, 습도 평균, 팬, 점적, 젖음, 시간 상태, 장부가 같음 |
+| 극한: 증산 100배, 바깥 −15 °C, 바깥 습도 0·100% | `0 ≤ rh ≤ 1`, `v ≥ 0`, 보존식 성립, NaN 없음 |
 
-## 단순화와 비목표
+### 시나리오 (S26, S27의 습도 쪽 기대. 병해 쪽은 [foliar-disease](foliar-disease.md) 9장)
 
-- 하우스 공기 한 덩어리, 높이별 습도 차이 없음. 잎 사이 습도는 셀 LAI와 공기 흐름으로만 근사.
-- 결로수는 토양으로 떨어지지 않고 빠진다고 봐요(낙수 피해 없음).
-- 잎 온도(복사 냉각) 따로 계산하지 않아요. 이슬은 잎 사이 습도 문턱으로 대신해요.
-- 증산이 습도에 따라 줄어드는 되먹임(VPD)과 Ca 이동(팁번)은 M7.
-- 제습기·포그·차광막 없음.
+| ID | 비교 | 기대 방향 | 목표값 |
+| --- | --- | --- | --- |
+| S26 | `s26_closed`(12~1월, 3겹, 창 닫힘, 난방 6 °C) 대 `s26_vented`(매일 9~10시 아침 환기 + 11~15시 한낮 환기) | 닫힌 쪽 밤 평균 습도, 젖은 시간, 가장 긴 연속 젖음이 큼 | B1, B2, B11, B15 |
+| S26b | `s26_closed` 대 `s26_heated`(난방 12 °C) | 난방 쪽 밤 습도·젖은 시간이 작고 난방 에너지가 큼 | B13 |
+| S27 | `s26_closed` 대 `s27_closed_fan`(유동팬 18~08시) | 팬 쪽 젖은 시간이 작고, 하우스 습도는 거의 같음 | B3 |
+| S28 | `s28_drip` 대 `s28_overhead` | 두상 관수 쪽은 관수 틱마다 잎 젖음 1, 젖은 시간이 큼 | - |
+
+### 1작기 회귀 (게이트, M5a와 같은 규칙)
+
+- 대상: M4 `season_*` 7개. 기준값: M5a 최종 승인 때 다시 쓴 1작기 기준값(`tests/baselines/m4_season_summary.json`). 허용 오차: 누적 수확 ±3%, 월별 ±5%, 평균 당도·경도 ±3%, 첫 수확 ±3일.
+- 기존 시나리오는 schema 7로 올릴 때 `drip_installed = true`, 팬 꺼짐, 지상부 병해충 시작값 0이에요([foliar-disease](foliar-disease.md) 8장). 습도는 병해충에만 영향을 주므로 **차이 0이 기본**이에요.
+- 9장 제안(밤 기본 증산, 증산의 습도 되먹임)을 받아들이면 토양 물이 조금 바뀌어 "차이 0"이 깨져요. 이때는 프로토타입 0차에서 회귀를 먼저 돌려 차이를 보고해요.
+- 결정론: `s26_closed`, `season_standard` 같은 시드 → 같은 해시.
+
+## 9. 구조 보완 제안 (디렉터 결정 필요)
+
+초안 식에 M4 값을 넣어 손으로 계산해 보니(정적 계산, 프로토타입 아님) 목표값 두 개가 지금 구조로는 나오기 어려워 보여요. M5a에서 구조 문제(지온)를 프로토타입 도중에 발견해 차수가 늘었던 것을 피하려고 미리 올려요.
+
+### 9.1 질문 1 — 밤 수증기: 틈새 환기와 밤 기본 증산 (B1)
+
+- 문제: 지금 증산은 일사에 비례해서 **밤에는 0**이에요. 밤의 수증기 원천은 토양 증발뿐인데(시간당 약 1 g/m², 필름 멀칭이면 그 0.1~0.2배) 틈새 환기 0.3 회/h가 빼가는 양(약 2.7 g/m²)보다 작아요. 그래서 밤 습도가 0.85가 아니라 약 0.6으로 떨어져요. 다른 세션의 조사도 초안 식을 14시간 돌려 밤 평균 56%를 얻었어요(m5b-research 1.6절).
+- **(가) 틈새 환기를 실측에 맞춤**: `house.infiltration_air_changes_per_hour` 0.3 → 0.1. 국내 다겹 단동 실측 0.056~0.106 회/h [S101] 높음. 빼가는 양이 약 0.9 g/m²로 줄어 밤 원천과 비슷해져요(m5b-research 1.6절 계산으로 밤 평균 약 83%). 다만 **CO2와 같은 M4 승인 키**라서 밤·아침 CO2와 1작기 결과가 바뀌어요 → 별도 파라미터 PR과 회귀 확인이 필요해요.
+- **(나) 밤 기본 증산**: 작물에 일사와 무관한 작은 증산을 더해요.
+
+```
+basal_mm = min(남은 water_mm, basal_transpiration_mm_per_hour_per_lai × LAI × min(수분 계수, 염류 계수))
+transpired_mm += basal_mm                                        (토양 물에서 빠짐, 장부 water_transpired_mm)
+```
+
+- `crop.basal_transpiration_mm_per_hour_per_lai` = 0.002(게임용 임의값). LAI 2.5면 시간당 5 g/m², 하룻밤 약 0.06 mm로 낮 증산(겨울 약 1.2 mm/일)의 약 5%예요. 근거: 밤 증산은 낮의 3~13%(여름 토마토, 낮음 [R117][R118]). 겨울 딸기 값은 못 찾았어요.
+- (나)의 영향: 토양 물 소비가 약 5% 늘어요 → 1작기 회귀를 확인해야 해요.
+- 추천: 실측 근거가 있는 **(가)를 먼저** 하고, 모자라면 (나)를 더해요. 프로토타입 0차에서 (가)·(나)·둘 다를 스윕 도구로 한 번에 돌려 B1과 1작기 회귀를 함께 보고해요.
+
+### 9.2 질문 2 — 증산의 습도 되먹임 (B2, 천적 축)
+
+- 문제: 증산이 습도와 무관해요. 맑은 한낮 원천(시간당 약 200 g/m²)이 워낙 커서, 창을 조금 열면 포화에 붙고 활짝 열어도 하우스가 바깥 기온 근처로 식어 습도가 약 0.9예요. **낮 55~75%(B2)가 나오지 않고, "너무 말려 천적이 실패한다"(S31 `s31_predator_dry`)를 만들 수 없어요.** 실제로는 공기가 습하면 증산이 줄어요.
+- 제안: 증산에 습도 배율을 곱해요. 실제 증산(토양 물)이 함께 줄어 보존은 그대로예요.
+
+```
+transpired_mm = (기존 식) × transpiration_humidity_curve(틱 시작 house_rh_index)
+```
+
+- `crop.transpiration_humidity_curve` 초기값 `[[0,1.3],[0.4,1.2],[0.6,1],[0.8,0.6],[0.95,0.2],[1,0.1]]`(게임용 임의값, 습도 0.6에서 1 = 지금 값).
+- 영향: 모든 작물 시나리오의 토양 물이 바뀌어요(창을 닫은 시간에는 증산 감소). [ADR-0011](../decisions/0011-house-climate-in-m4.md)과 이전 초안은 이 되먹임을 M7로 미뤘어요. 당기려면 ADR이 필요해요.
+- 추천: **받아들이되 프로토타입 0차에서 1작기 회귀를 먼저 확인**해요. 회귀가 크게 깨지면 받아들이지 않는 쪽으로 돌아가요.
+- 받아들이지 않으면: B2는 "환기 쪽이 닫힌 쪽보다 낮다"는 방향만 확인하고, 병해는 밤 젖음으로 갈려요(낮 이슬 금지 규칙이 낮 젖음을 막아요). 천적의 건조 축(S31 건조 변형)은 바깥이 매우 건조한 날에만 나와요.
+
+## 10. 단순화와 비목표
+
+- 하우스 공기 한 덩어리, 높이별·위치별 습도 차이 없음. 잎 사이 습도는 셀 LAI와 공기 흐름으로만 근사.
+- 결로수와 안개·이슬은 토양으로 떨어지지 않고 빠진다고 봐요(낙수 피해 없음).
+- 잎 온도(복사 냉각)를 따로 계산하지 않아요. 이슬은 잎 사이 습도 문턱과 일사 한계로 대신해요.
+- 두상 관수로 잎에 묻은 물의 증발, 두상 관수의 습도 상승은 없어요(물은 전부 토양으로).
+- 풍량이 모자란 팬이 오히려 젖음을 늘리는 현상[R209], 팬 대수·배치는 없어요. 팬은 켜짐/꺼짐 하나예요.
+- 바깥 바람 세기에 따른 환기·틈새 변화는 없어요(기상 데이터에 풍속이 없음).
+- 증산의 습도 되먹임은 9.2 결정에 따라요. Ca 이동(팁번)은 M7.
+- 제습기·포그·차광막·보온 커튼 개폐 없음.
