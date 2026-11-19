@@ -2,7 +2,7 @@
 //
 //   magic "FGSV" | format_version u32
 //   [정적 입력] params, scenario (토양 초기값, 기상 표 포함)
-//   [동적 상태] tick, next_command_seq, house(하우스 상태), biology_rng, pending_commands,
+//   [동적 상태] tick, next_command_seq, house(하우스 상태), biology_rng, disease_rng(M5a), pending_commands,
 //               tiles(토양 셀 + 작물 + 화방·과실·수확 기록), ledger
 //
 // state_hash()는 동적 상태 부분만 해시해요. 이벤트는 저장하지 않아요.
@@ -1506,6 +1506,8 @@ void World::write_dynamic(detail::ByteWriter& w) const {
 
     w.u64(biology_rng_.raw_state());
     w.u64(biology_rng_.raw_increment());
+    w.u64(disease_rng_.raw_state());
+    w.u64(disease_rng_.raw_increment());
 
     w.u64(pending_commands_.size());
     for (const QueuedCommand& queued : pending_commands_) {
@@ -1606,6 +1608,14 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
         return fail(ErrorCode::Truncated, "save data ends inside the house state");
     }
     biology_rng_ = Pcg32::from_raw(rng_state, rng_increment);
+    {
+        const std::uint64_t disease_state = r.u64();
+        const std::uint64_t disease_increment = r.u64();
+        if (!r.ok()) {
+            return fail(ErrorCode::Truncated, "save data ends inside the disease rng");
+        }
+        disease_rng_ = Pcg32::from_raw(disease_state, disease_increment);
+    }
 
     const std::uint64_t pending_count = r.u64();
     if (!r.ok() || pending_count > r.remaining() / kQueuedCommandMinBytes) {

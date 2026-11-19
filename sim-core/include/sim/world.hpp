@@ -115,6 +115,7 @@ private:
     std::vector<Tile> tiles_;  // 행 우선 순서, bed_rows × bed_cols
     HouseState house_;         // M4 하우스 기후 (house-climate)
     Pcg32 biology_rng_;        // M4 생물 변이 스트림 (RngStream::Biology)
+    Pcg32 disease_rng_;        // M5a 토양 병해 차이 스트림 (RngStream::Disease)
     Ledger ledger_;
 
     // 일시적 출력

@@ -283,7 +283,7 @@ TEST_CASE("Planted crops get susceptibility factors within the spread", "[unit][
     CHECK(hi - lo > 0.1);
 }
 
-// 난수 순서: 타일마다 화아분화 → 감수성 → 시들음병균 → 역병균 (월드 생성)
+// 난수 순서 (월드 생성): 타일마다 biology 스트림에서 화아분화, disease 스트림에서 감수성 → 시들음병균 → 역병균
 TEST_CASE("World creation draws biology random numbers in the documented order",
           "[unit][m5a][variation][determinism]") {
     sim::Params p = test::test_params();
@@ -297,11 +297,12 @@ TEST_CASE("World creation draws biology random numbers in the documented order",
     REQUIRE(grade != nullptr);
     const sim::Snapshot snap = create(p, s).snapshot();
     sim::Pcg32 rng = test::biology_rng(s.seed);
+    sim::Pcg32 disease = sim::make_stream(s.seed, static_cast<std::uint64_t>(sim::RngStream::Disease));
     for (std::size_t t = 0; t < snap.crops.size(); ++t) {
         const double u_induction = rng.next_unit_double();
-        const double u_susceptibility = rng.next_unit_double();
-        const double u_fusarium = rng.next_unit_double();
-        const double u_phytophthora = rng.next_unit_double();
+        const double u_susceptibility = disease.next_unit_double();
+        const double u_fusarium = disease.next_unit_double();
+        const double u_phytophthora = disease.next_unit_double();
         CHECK(snap.crops[t].induction_index == std::max(0.0, grade->initial_induction_index - 0.4 * u_induction));
         CHECK(snap.crops[t].disease_susceptibility_factor == 1.0 + 0.5 * (2.0 * u_susceptibility - 1.0));
         CHECK(snap.soil[t].microbe_index[idx(G::Fusarium)] ==
@@ -311,7 +312,7 @@ TEST_CASE("World creation draws biology random numbers in the documented order",
     }
 }
 
-// Plant 명령: 타일마다 화아분화 → 감수성 (병원균 차이는 생성 때만)
+// Plant 명령: 타일마다 화아분화(biology) → 감수성(disease) (병원균 차이는 생성 때만)
 TEST_CASE("Plant command draws induction then susceptibility per tile", "[unit][m5a][variation][plant]") {
     sim::Params p = test::test_params();
     p.phenology.induction_spread_index = 0.4;
@@ -323,11 +324,10 @@ TEST_CASE("Plant command draws induction then susceptibility per tile", "[unit][
     test::must_enqueue(world, sim::PlantCommand{.seedling_grade = "B", .plants_per_m2 = 8.0});
     world.step(1);
     const sim::Snapshot snap = world.snapshot();
-    sim::Pcg32 rng = test::biology_rng(s.seed);
+    sim::Pcg32 disease = sim::make_stream(s.seed, static_cast<std::uint64_t>(sim::RngStream::Disease));
     for (const sim::Crop& crop : snap.crops) {
         REQUIRE(crop.present);
-        (void)rng.next_unit_double();  // 화아분화
-        const double u = rng.next_unit_double();
+        const double u = disease.next_unit_double();
         CHECK(crop.disease_susceptibility_factor == 1.0 + 0.5 * (2.0 * u - 1.0));
     }
 }
