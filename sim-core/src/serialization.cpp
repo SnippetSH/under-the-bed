@@ -1144,6 +1144,25 @@ void write_command(detail::ByteWriter& w, const Command& command) {
             write_area(w, c.area);
             w.f64(c.per_plant);
         }
+        // M5a
+        void operator()(const SetMulchCommand& c) const {
+            write_area(w, c.area);
+            w.str(c.mulch_id);
+        }
+        void operator()(const ApplyDisinfectantCommand& c) const {
+            write_area(w, c.area);
+            w.str(c.disinfectant_id);
+            w.f64(c.g_per_m2);
+        }
+        void operator()(const AddInoculantCommand& c) const {
+            write_area(w, c.area);
+            w.str(c.inoculant_id);
+            w.f64(c.g_per_m2);
+        }
+        void operator()(const PlantCommand& c) const {
+            w.str(c.seedling_grade);
+            w.f64(c.plants_per_m2);
+        }
     };
     std::visit(Visitor{w}, command);
 }
@@ -1215,6 +1234,33 @@ std::expected<Command, Error> read_command(detail::ByteReader& r) {
             ThinFlowersCommand c;
             c.area = read_area(r);
             c.per_plant = r.f64();
+            return c;
+        }
+        // M5a
+        case 10: {
+            SetMulchCommand c;
+            c.area = read_area(r);
+            c.mulch_id = r.str();
+            return c;
+        }
+        case 11: {
+            ApplyDisinfectantCommand c;
+            c.area = read_area(r);
+            c.disinfectant_id = r.str();
+            c.g_per_m2 = r.f64();
+            return c;
+        }
+        case 12: {
+            AddInoculantCommand c;
+            c.area = read_area(r);
+            c.inoculant_id = r.str();
+            c.g_per_m2 = r.f64();
+            return c;
+        }
+        case 13: {
+            PlantCommand c;
+            c.seedling_grade = r.str();
+            c.plants_per_m2 = r.f64();
             return c;
         }
         default:

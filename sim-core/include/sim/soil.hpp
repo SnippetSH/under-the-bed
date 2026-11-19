@@ -3,9 +3,32 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 namespace sim {
+
+// ---- M5a 토양 미생물 (docs/spec/soil-microbes.md "무리"). 순서는 세이브·CSV 열 순서, 뒤에만 추가 ----
+enum class MicrobeGroup : std::uint8_t {
+    Decomposer = 0, NitrifierAob, NitrifierNob, Antagonist, Mycorrhiza, Fusarium, Phytophthora
+};
+inline constexpr std::size_t kMicrobeGroupCount = 7;
+// 데이터 키·CSV 열 이름 (`[microbes.<id>]`, 시나리오 `[microbes]`, `<id>_index`)
+inline constexpr std::array<std::string_view, kMicrobeGroupCount> kMicrobeGroupIds = {
+    "decomposer", "nitrifier_aob", "nitrifier_nob", "antagonist", "mycorrhiza", "fusarium", "phytophthora"};
+using MicrobeIndices = std::array<double, kMicrobeGroupCount>;  // MicrobeGroup 순서
+[[nodiscard]] constexpr std::size_t microbe(MicrobeGroup g) { return static_cast<std::size_t>(g); }
+
+// 토양 병해 (soil-microbes "작물 감염"). 병원균 무리와 짝: Fusarium <-> MicrobeGroup::Fusarium
+enum class SoilDisease : std::uint8_t { Fusarium = 0, Phytophthora };
+inline constexpr std::size_t kSoilDiseaseCount = 2;
+inline constexpr std::array<std::string_view, kSoilDiseaseCount> kSoilDiseaseIds = {"fusarium", "phytophthora"};
+[[nodiscard]] constexpr MicrobeGroup pathogen_of(SoilDisease d) {
+    return d == SoilDisease::Fusarium ? MicrobeGroup::Fusarium : MicrobeGroup::Phytophthora;
+}
+
+// 멀칭 없음 (SoilCell::mulch_def_index)
+inline constexpr std::int32_t kNoMulch = -1;
 
 // 토양 셀 1개 = 베드 면적 1 m², 근권 한 층 (docs/spec/m1-overview.md "토양 셀 상태")
 // 질소 풀은 모두 질소 원소(N) 기준이에요.
@@ -77,6 +100,13 @@ struct SoilCell {
     // 아질산 경보 상태 (이벤트 중복 방지)
     bool nitrite_alarm = false;
 
+    // M5a 토양 미생물·소독 (soil-microbes, disinfection). 모두 플레이어 비공개 진짜 값
+    MicrobeIndices microbe_index{};              // 무리별 상대 밀도 0~1
+    std::int32_t mulch_def_index = kNoMulch;     // params.mulches 인덱스, kNoMulch = 덮지 않음
+    std::vector<double> fumigant_residue_index;  // params.disinfectants 순서, 약제별 잔류 (표준량 1회 = 1)
+    // 파생값 (셀 단계 d2, 매 틱): 무리별 이번 틱 소독(열 + 약제) 사멸분. d3 무기화·망간이 읽어요
+    MicrobeIndices disinfection_kill_index{};
+
     [[nodiscard]] double relative_water() const { return water_mm / field_capacity_mm; }
 
     [[nodiscard]] double organic_N_g_per_m2() const { return labile_N_g_per_m2 + stable_N_g_per_m2; }
@@ -135,6 +165,12 @@ struct Ledger {
     double Mn_harvested_g = 0.0;
     double C_leaf_litter_g = 0.0;
 
+    // M5a (disinfection, soil-microbes)
+    double N_flush_g = 0.0;                      // 소독 무기화: 유기 N -> NH4+ (계 안 이동, 진단용)
+    double Mn_flush_g = 0.0;                     // 소독 환원: 산화물 -> 유효태 (계 안 이동, 진단용)
+    std::vector<double> disinfectant_applied_g;  // params.disinfectants 순서 (비용은 M7)
+    double inoculant_applied_g = 0.0;            // 유익균 제품 투입 합계 (담체 C·N은 C_in_g·N_in_g에)
+
     bool operator==(const Ledger&) const = default;
 };
 
@@ -147,7 +183,8 @@ enum class StressFactor : std::uint8_t {
 };
 inline constexpr std::size_t kStressFactorCount = 10;
 
-enum class RootDamageCause : std::uint8_t { Waterlog = 0, Heat, Nitrite, Acid };
+// M5a: Fusarium, Phytophthora(토양 병해), Fumigant(약제 잔류)를 뒤에 추가 (disinfection, soil-microbes)
+enum class RootDamageCause : std::uint8_t { Waterlog = 0, Heat, Nitrite, Acid, Fusarium, Phytophthora, Fumigant };
 
 // ---- M4 (docs/spec/strawberry-phenology.md, strawberry-fruit.md) ----
 
@@ -252,6 +289,10 @@ struct Crop {
     double reserve_g_per_m2 = 0.0;
     // 식물 상대 생장률(순생장 ÷ 전체 건물, /일)의 이동 평균. 유지 호흡 활성 보정이 읽어요. 저장 상태
     double rgr_mean_per_day = 0.0;
+
+    // M5a 토양 병해 (soil-microbes 3번): SoilDisease 순서. 감염은 줄지 않아요(0~1). 비공개 진짜 값
+    std::array<double, kSoilDiseaseCount> infection_index{};
+    std::array<bool, kSoilDiseaseCount> disease_onset_reported{};  // DiseaseOnset 이벤트를 냈는지
 
     // 달려 있는 과실 건물 합 g/m² (꽃은 0)
     [[nodiscard]] double fruit_g_per_m2() const {

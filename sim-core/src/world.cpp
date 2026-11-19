@@ -189,6 +189,15 @@ std::expected<void, Error> World::validate_command(const Command& command) const
             SIM_CHECK(world.validate_area(c.area));
             return validation::non_negative(c.per_plant, "thin_flowers per_plant");
         }
+        // ---- M5a 골격: 검증 규칙은 패키지 2(소독)·1(개체군)이 채워요 (TODO M5a) ----
+        std::expected<void, Error> operator()(const SetMulchCommand& c) const { return world.validate_area(c.area); }
+        std::expected<void, Error> operator()(const ApplyDisinfectantCommand& c) const {
+            return world.validate_area(c.area);
+        }
+        std::expected<void, Error> operator()(const AddInoculantCommand& c) const {
+            return world.validate_area(c.area);
+        }
+        std::expected<void, Error> operator()(const PlantCommand&) const { return {}; }
         std::expected<void, Error> operator()(const SetCoverLayersCommand& c) const {
             const HouseParams& h = world.params_.house;
             SIM_CHECK(validation::require(c.layers >= h.min_cover_layers && c.layers <= h.max_cover_layers,
@@ -276,6 +285,13 @@ void World::apply_command(const ThinFlowersCommand& command) {
         (void)process::thin_flowers(tile.crop, tile.soil, params_, command.per_plant, biology_rng_, ledger_);
     });
 }
+
+// ---- M5a 골격 (TODO M5a: disinfection.md 1·3·6번, soil-microbes.md 4번) ----
+
+void World::apply_command(const SetMulchCommand&) {}
+void World::apply_command(const ApplyDisinfectantCommand&) {}
+void World::apply_command(const AddInoculantCommand&) {}
+void World::apply_command(const PlantCommand&) {}
 
 // ---- 틱 ----
 

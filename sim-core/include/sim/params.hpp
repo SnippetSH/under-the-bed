@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "sim/curve.hpp"
+#include "sim/soil.hpp"
 
 namespace sim {
 
@@ -291,6 +292,10 @@ struct RootDamageParams {
     PiecewiseLinear heat_curve;      // x = soil_temp_degC
     PiecewiseLinear nitrite_curve;   // x = 유효 아질산 g N/m² (pH 배율 적용 후)
     PiecewiseLinear acid_curve;      // x = pH (ADR-0007, 알루미늄 독성 근사)
+    // M5a: x = 감염 지수 (soil-microbes 3번), x = 약제별 잔류 × 활성의 합 (disinfection 3번)
+    PiecewiseLinear fusarium_curve;
+    PiecewiseLinear phytophthora_curve;
+    PiecewiseLinear fumigant_curve;
 
     bool operator==(const RootDamageParams&) const = default;
 };
@@ -362,6 +367,106 @@ struct CropParams {
     bool operator==(const CropParams&) const = default;
 };
 
+// ---- M5a 토양 미생물 (docs/spec/soil-microbes.md) ----
+
+// 무리 하나 `[microbes.<id>]`. 수용력 규칙은 무리마다 코드가 정해요(명세 표):
+// decomposer = decomposer_food_curve(labile C), 질산화균 = 1, antagonist = antagonist_food_curve(labile C),
+// mycorrhiza = host_curve(뿌리) × p_curve(유효 P), 병원균 = saprophytic + host × 작물 감염 지수.
+struct MicrobeGroupParams {
+    double growth_rate_per_hour = 0.0;
+    PiecewiseLinear temp_curve;      // x = 토양 온도 °C
+    PiecewiseLinear moisture_curve;  // x = relative_water
+    PiecewiseLinear ph_curve;        // x = pH
+    PiecewiseLinear o2_curve;        // x = aeration_index
+    double base_death_rate_per_hour = 0.0;
+    PiecewiseLinear heat_kill_curve;  // x = 토양 온도 °C, y = 시간당 사멸 비율
+    double immigration_rate_per_hour = 0.0;
+    MicrobeIndices competition{};  // 다른 무리 -> α (자기 자신은 0)
+    // 병원균만 (fusarium, phytophthora). 다른 무리는 0 (로더가 키를 요구하지 않음)
+    double saprophytic_capacity_index = 0.0;
+    double host_capacity_index = 0.0;
+
+    bool operator==(const MicrobeGroupParams&) const = default;
+};
+
+// 공통 `[microbes]`
+struct MicrobesParams {
+    double capacity_floor_index = 0.0;
+    PiecewiseLinear decomposer_activity_curve;  // x = 분해균 지수, y = 분해균계수
+    PiecewiseLinear aob_activity_curve;         // x = 1단계균 지수, y = 질산화 1단계 속도 배율
+    PiecewiseLinear nob_activity_curve;         // x = 2단계균 지수
+    double antagonist_protection_factor = 0.0;
+    double mycorrhiza_p_release_factor = 0.0;
+    double mycorrhiza_water_relief_factor = 0.0;
+    double mycorrhiza_salt_relief_factor = 0.0;
+    PiecewiseLinear moist_heat_curve;       // x = relative_water, y = 열 사멸 배율
+    PiecewiseLinear decomposer_food_curve;  // x = 이분해성 C g/m², y = 수용력
+    PiecewiseLinear antagonist_food_curve;  // x = 이분해성 C g/m²
+    PiecewiseLinear mycorrhiza_host_curve;  // x = 뿌리 건물 g/m²
+    PiecewiseLinear mycorrhiza_p_curve;     // x = 유효 P g/m²
+    std::array<MicrobeGroupParams, kMicrobeGroupCount> groups;  // MicrobeGroup 순서
+
+    bool operator==(const MicrobesParams&) const = default;
+};
+
+// 작물 감염 `[soil_disease.<id>]` (SoilDisease 순서)
+struct SoilDiseaseParams {
+    double infection_rate_per_hour = 0.0;
+    PiecewiseLinear infection_env_curve_temp;  // x = 토양 온도 °C
+    PiecewiseLinear infection_env_curve_o2;    // x = aeration_index
+    PiecewiseLinear infection_env_curve_ph;    // x = pH
+    double onset_infection_index = 0.0;        // DiseaseOnset 이벤트 기준
+
+    bool operator==(const SoilDiseaseParams&) const = default;
+};
+
+// 유익균 제품 `[[inoculant]]`
+struct InoculantDef {
+    std::string id;
+    std::string name;
+    MicrobeIndices index_gain_per_g_per_m2{};  // 무리별 1 g/m²당 지수 증가 (포화식), 없는 무리는 0
+    double C_g_per_kg = 0.0;                   // 담체 유기물 (이분해성으로)
+    double N_g_per_kg = 0.0;
+
+    bool operator==(const InoculantDef&) const = default;
+};
+
+// ---- M5a 소독 (docs/spec/disinfection.md) ----
+
+struct DisinfectionParams {
+    double flush_N_g_per_m2_per_index = 0.0;  // 분해균 소독 사멸 지수 1당 유기 N -> NH4+
+    double flush_C_to_N_ratio = 0.0;
+    double mn_reduction_per_index = 0.0;  // 분해균 소독 사멸 지수 1당 산화물 -> 유효태 비율
+    double till_residue_release_fraction = 0.0;
+
+    bool operator==(const DisinfectionParams&) const = default;
+};
+
+// 멀칭 필름 `[[mulch]]`
+struct MulchDef {
+    std::string id;
+    std::string name;
+    double soil_solar_gain_degC_per_W_per_m2 = 0.0;  // 음수 = 반사로 식음
+    double evaporation_factor = 0.0;
+    double fumigant_retention_factor = 0.0;
+    double canopy_reflect_factor = 0.0;
+
+    bool operator==(const MulchDef&) const = default;
+};
+
+// 소독 약제 `[[disinfectant]]`
+struct DisinfectantDef {
+    std::string id;
+    std::string name;
+    double residue_index_per_g_per_m2 = 0.0;
+    MicrobeIndices kill_rate_per_hour{};        // 잔류 1·활성 1일 때 무리별 시간당 사멸 비율
+    double decay_rate_per_hour = 0.0;           // 필름 없음, 25 °C
+    PiecewiseLinear decay_temp_curve;           // x = 토양 온도 °C
+    PiecewiseLinear activation_moisture_curve;  // x = relative_water
+
+    bool operator==(const DisinfectantDef&) const = default;
+};
+
 // docs/spec/soil-chemistry.md "석회 정의"
 struct LimeDef {
     std::string id;
@@ -430,10 +535,16 @@ struct Params {
     PhenologyParams phenology;
     FruitParams fruit;
     DenitrificationParams denitrification;
+    MicrobesParams microbes;                                        // M5a
+    std::array<SoilDiseaseParams, kSoilDiseaseCount> soil_disease;  // M5a, SoilDisease 순서
+    DisinfectionParams disinfection;                                // M5a
     std::vector<SeedlingGradeDef> seedling_grades;
     std::vector<CompostDef> composts;
     std::vector<FertilizerDef> fertilizers;
     std::vector<LimeDef> limes;
+    std::vector<MulchDef> mulches;               // M5a
+    std::vector<DisinfectantDef> disinfectants;  // M5a
+    std::vector<InoculantDef> inoculants;        // M5a
 
     bool operator==(const Params&) const = default;
 };

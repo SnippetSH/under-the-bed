@@ -78,6 +78,11 @@ private:
     void apply_command(const SetHeaterCommand& command);
     void apply_command(const SetCoverLayersCommand& command);
     void apply_command(const ThinFlowersCommand& command);
+    // M5a (골격: 패키지 1·2가 채움)
+    void apply_command(const SetMulchCommand& command);
+    void apply_command(const ApplyDisinfectantCommand& command);
+    void apply_command(const AddInoculantCommand& command);
+    void apply_command(const PlantCommand& command);
 
     [[nodiscard]] std::expected<void, Error> validate_command(const Command& command) const;
     [[nodiscard]] std::expected<void, Error> validate_area(const TileArea& area) const;
