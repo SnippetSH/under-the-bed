@@ -3,7 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "sim/command.hpp"
@@ -78,7 +80,7 @@ private:
     void apply_command(const SetHeaterCommand& command);
     void apply_command(const SetCoverLayersCommand& command);
     void apply_command(const ThinFlowersCommand& command);
-    // M5a (골격: 패키지 1·2가 채움)
+    // M5a (disinfection, soil-microbes)
     void apply_command(const SetMulchCommand& command);
     void apply_command(const ApplyDisinfectantCommand& command);
     void apply_command(const AddInoculantCommand& command);
@@ -89,6 +91,11 @@ private:
     [[nodiscard]] const CompostDef* find_compost(std::string_view id) const;
     [[nodiscard]] const FertilizerDef* find_fertilizer(std::string_view id) const;
     [[nodiscard]] const LimeDef* find_lime(std::string_view id) const;
+    // M5a
+    [[nodiscard]] std::optional<std::size_t> find_mulch_index(std::string_view id) const;
+    [[nodiscard]] std::optional<std::size_t> find_disinfectant_index(std::string_view id) const;
+    [[nodiscard]] const InoculantDef* find_inoculant(std::string_view id) const;
+    [[nodiscard]] bool any_live_crop() const;
     void refresh_derived_cell_values();  // 생성·역직렬화 직후 통기 지수·EC 계산
 
     template <typename Fn>

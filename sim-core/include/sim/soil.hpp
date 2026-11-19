@@ -29,6 +29,8 @@ inline constexpr std::array<std::string_view, kSoilDiseaseCount> kSoilDiseaseIds
 
 // 멀칭 없음 (SoilCell::mulch_def_index)
 inline constexpr std::int32_t kNoMulch = -1;
+// SetMulch의 "걷기" id. params [[mulch]] id로는 쓸 수 없어요 (검증)
+inline constexpr std::string_view kNoMulchId = "none";
 
 // 토양 셀 1개 = 베드 면적 1 m², 근권 한 층 (docs/spec/m1-overview.md "토양 셀 상태")
 // 질소 풀은 모두 질소 원소(N) 기준이에요.
@@ -168,7 +170,8 @@ struct Ledger {
     // M5a (disinfection, soil-microbes)
     double N_flush_g = 0.0;                      // 소독 무기화: 유기 N -> NH4+ (계 안 이동, 진단용)
     double Mn_flush_g = 0.0;                     // 소독 환원: 산화물 -> 유효태 (계 안 이동, 진단용)
-    std::vector<double> disinfectant_applied_g;  // params.disinfectants 순서 (비용은 M7)
+    // params.disinfectants 순서 (비용은 M7). 첫 ApplyDisinfectant 전에는 비어 있어요(= 전부 0)
+    std::vector<double> disinfectant_applied_g;
     double inoculant_applied_g = 0.0;            // 유익균 제품 투입 합계 (담체 C·N은 C_in_g·N_in_g에)
 
     bool operator==(const Ledger&) const = default;

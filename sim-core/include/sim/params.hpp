@@ -11,7 +11,7 @@
 namespace sim {
 
 // 코어가 이해하는 파라미터 스키마 버전. data/params.toml의 schema_version과 같아야 해요.
-inline constexpr std::int64_t kParamsSchemaVersion = 5;
+inline constexpr std::int64_t kParamsSchemaVersion = 6;  // M5a
 
 // 값은 전부 data/params.toml에서 와요 (코드에 기본값을 두지 않아요).
 // 각 항목의 의미와 방향은 docs/spec/의 해당 명세를 따라요.

@@ -32,7 +32,10 @@ add_library(sim-core STATIC
   src/processes/organic_matter.cpp
   src/processes/soil_chemistry.cpp
   src/processes/soil_water.cpp
-  src/processes/temperature.cpp)
+  src/processes/temperature.cpp
+  src/processes/microbes.cpp
+  src/processes/disinfection.cpp
+  src/processes/soil_disease.cpp)
 
 target_include_directories(sim-core PUBLIC include PRIVATE src)
 target_compile_features(sim-core PUBLIC cxx_std_23)

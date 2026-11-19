@@ -44,6 +44,106 @@ std::expected<void, Error> factor_curve(const PiecewiseLinear& curve, std::strin
 
 constexpr std::int64_t kMaxCoverLayers = 64;  // 창 상태 배열 크기 상한 (검증용 안전장치)
 
+// ---- M5a (soil-microbes, disinfection) ----
+
+std::expected<void, Error> validate_microbes(const Params& p) {
+    const MicrobesParams& m = p.microbes;
+    SIM_CHECK(require(std::isfinite(m.capacity_floor_index) && m.capacity_floor_index > 0.0 &&
+                          m.capacity_floor_index <= 1.0,
+                      "microbes.capacity_floor_index must be within (0, 1]"));
+    SIM_CHECK(factor_curve(m.decomposer_activity_curve, "microbes.decomposer_activity_curve"));
+    SIM_CHECK(factor_curve(m.aob_activity_curve, "microbes.aob_activity_curve"));
+    SIM_CHECK(factor_curve(m.nob_activity_curve, "microbes.nob_activity_curve"));
+    SIM_CHECK(fraction(m.antagonist_protection_factor, "microbes.antagonist_protection_factor"));
+    SIM_CHECK(non_negative(m.mycorrhiza_p_release_factor, "microbes.mycorrhiza_p_release_factor"));
+    SIM_CHECK(fraction(m.mycorrhiza_water_relief_factor, "microbes.mycorrhiza_water_relief_factor"));
+    SIM_CHECK(fraction(m.mycorrhiza_salt_relief_factor, "microbes.mycorrhiza_salt_relief_factor"));
+    SIM_CHECK(validate_curve(m.moist_heat_curve, "microbes.moist_heat_curve"));
+    SIM_CHECK(factor_curve(m.decomposer_food_curve, "microbes.decomposer_food_curve"));
+    SIM_CHECK(factor_curve(m.antagonist_food_curve, "microbes.antagonist_food_curve"));
+    SIM_CHECK(factor_curve(m.mycorrhiza_host_curve, "microbes.mycorrhiza_host_curve"));
+    SIM_CHECK(factor_curve(m.mycorrhiza_p_curve, "microbes.mycorrhiza_p_curve"));
+    for (std::size_t g = 0; g < kMicrobeGroupCount; ++g) {
+        const MicrobeGroupParams& gp = m.groups[g];
+        const std::string id(kMicrobeGroupIds[g]);
+        SIM_CHECK(non_negative(gp.growth_rate_per_hour, std::format("microbes.{}.growth_rate_per_hour", id)));
+        SIM_CHECK(factor_curve(gp.temp_curve, std::format("microbes.{}.temp_curve", id)));
+        SIM_CHECK(factor_curve(gp.moisture_curve, std::format("microbes.{}.moisture_curve", id)));
+        SIM_CHECK(factor_curve(gp.ph_curve, std::format("microbes.{}.ph_curve", id)));
+        SIM_CHECK(factor_curve(gp.o2_curve, std::format("microbes.{}.o2_curve", id)));
+        SIM_CHECK(fraction(gp.base_death_rate_per_hour, std::format("microbes.{}.base_death_rate_per_hour", id)));
+        SIM_CHECK(factor_curve(gp.heat_kill_curve, std::format("microbes.{}.heat_kill_curve", id)));
+        SIM_CHECK(fraction(gp.immigration_rate_per_hour, std::format("microbes.{}.immigration_rate_per_hour", id)));
+        for (std::size_t h = 0; h < kMicrobeGroupCount; ++h) {
+            SIM_CHECK(non_negative(gp.competition[h],
+                                   std::format("microbes.{}.competition.{}", id, kMicrobeGroupIds[h])));
+        }
+        SIM_CHECK(require(gp.competition[g] == 0.0,
+                          std::format("microbes.{}.competition must not name the group itself", id)));
+        SIM_CHECK(fraction(gp.saprophytic_capacity_index, std::format("microbes.{}.saprophytic_capacity_index", id)));
+        SIM_CHECK(fraction(gp.host_capacity_index, std::format("microbes.{}.host_capacity_index", id)));
+    }
+    for (std::size_t d = 0; d < kSoilDiseaseCount; ++d) {
+        const SoilDiseaseParams& dp = p.soil_disease[d];
+        const std::string id(kSoilDiseaseIds[d]);
+        SIM_CHECK(non_negative(dp.infection_rate_per_hour, std::format("soil_disease.{}.infection_rate_per_hour", id)));
+        SIM_CHECK(factor_curve(dp.infection_env_curve_temp, std::format("soil_disease.{}.infection_env_curve_temp", id)));
+        SIM_CHECK(factor_curve(dp.infection_env_curve_o2, std::format("soil_disease.{}.infection_env_curve_o2", id)));
+        // pH 배율은 1보다 클 수 있어요 (시들음병 pH 5 = 1.7)
+        SIM_CHECK(validate_curve(dp.infection_env_curve_ph, std::format("soil_disease.{}.infection_env_curve_ph", id)));
+        SIM_CHECK(require(std::isfinite(dp.onset_infection_index) && dp.onset_infection_index > 0.0 &&
+                              dp.onset_infection_index <= 1.0,
+                          std::format("soil_disease.{}.onset_infection_index must be within (0, 1]", id)));
+    }
+    std::set<std::string, std::less<>> inoculant_ids;
+    for (const InoculantDef& d : p.inoculants) {
+        SIM_CHECK(require(!d.id.empty() && inoculant_ids.insert(d.id).second,
+                          std::format("inoculant id '{}' must be non-empty and unique", d.id)));
+        for (std::size_t g = 0; g < kMicrobeGroupCount; ++g) {
+            SIM_CHECK(non_negative(d.index_gain_per_g_per_m2[g],
+                                   std::format("inoculant '{}' index_gain_per_g_per_m2.{}", d.id, kMicrobeGroupIds[g])));
+        }
+        SIM_CHECK(non_negative(d.C_g_per_kg, std::format("inoculant '{}' C_g_per_kg", d.id)));
+        SIM_CHECK(non_negative(d.N_g_per_kg, std::format("inoculant '{}' N_g_per_kg", d.id)));
+    }
+    return {};
+}
+
+std::expected<void, Error> validate_disinfection(const Params& p) {
+    const DisinfectionParams& d = p.disinfection;
+    SIM_CHECK(non_negative(d.flush_N_g_per_m2_per_index, "disinfection.flush_N_g_per_m2_per_index"));
+    SIM_CHECK(non_negative(d.flush_C_to_N_ratio, "disinfection.flush_C_to_N_ratio"));
+    SIM_CHECK(non_negative(d.mn_reduction_per_index, "disinfection.mn_reduction_per_index"));
+    SIM_CHECK(fraction(d.till_residue_release_fraction, "disinfection.till_residue_release_fraction"));
+    std::set<std::string, std::less<>> mulch_ids;
+    for (const MulchDef& m : p.mulches) {
+        SIM_CHECK(require(!m.id.empty() && m.id != kNoMulchId && mulch_ids.insert(m.id).second,
+                          std::format("mulch id '{}' must be non-empty, unique and not '{}'", m.id, kNoMulchId)));
+        // 음수 = 반사로 식음 (백색 필름)
+        SIM_CHECK(finite(m.soil_solar_gain_degC_per_W_per_m2,
+                         std::format("mulch '{}' soil_solar_gain_degC_per_W_per_m2", m.id)));
+        SIM_CHECK(non_negative(m.evaporation_factor, std::format("mulch '{}' evaporation_factor", m.id)));
+        SIM_CHECK(non_negative(m.fumigant_retention_factor, std::format("mulch '{}' fumigant_retention_factor", m.id)));
+        SIM_CHECK(non_negative(m.canopy_reflect_factor, std::format("mulch '{}' canopy_reflect_factor", m.id)));
+    }
+    std::set<std::string, std::less<>> disinfectant_ids;
+    for (const DisinfectantDef& f : p.disinfectants) {
+        SIM_CHECK(require(!f.id.empty() && disinfectant_ids.insert(f.id).second,
+                          std::format("disinfectant id '{}' must be non-empty and unique", f.id)));
+        SIM_CHECK(non_negative(f.residue_index_per_g_per_m2,
+                               std::format("disinfectant '{}' residue_index_per_g_per_m2", f.id)));
+        for (std::size_t g = 0; g < kMicrobeGroupCount; ++g) {
+            SIM_CHECK(non_negative(f.kill_rate_per_hour[g],
+                                   std::format("disinfectant '{}' kill_rate_per_hour.{}", f.id, kMicrobeGroupIds[g])));
+        }
+        SIM_CHECK(non_negative(f.decay_rate_per_hour, std::format("disinfectant '{}' decay_rate_per_hour", f.id)));
+        SIM_CHECK(validate_curve(f.decay_temp_curve, std::format("disinfectant '{}' decay_temp_curve", f.id)));
+        SIM_CHECK(factor_curve(f.activation_moisture_curve,
+                               std::format("disinfectant '{}' activation_moisture_curve", f.id)));
+    }
+    return {};
+}
+
 }  // namespace
 
 std::expected<void, Error> require(bool ok, std::string_view what) {
@@ -194,6 +294,10 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(validate_curve(rd.heat_curve, "root_damage.heat_curve"));
     SIM_CHECK(validate_curve(rd.nitrite_curve, "root_damage.nitrite_curve"));
     SIM_CHECK(validate_curve(rd.acid_curve, "root_damage.acid_curve"));
+    // M5a: 병(감염 지수), 약제(잔류 × 활성) 손상 곡선 (soil-microbes 3번, disinfection 3번)
+    SIM_CHECK(validate_curve(rd.fusarium_curve, "root_damage.fusarium_curve"));
+    SIM_CHECK(validate_curve(rd.phytophthora_curve, "root_damage.phytophthora_curve"));
+    SIM_CHECK(validate_curve(rd.fumigant_curve, "root_damage.fumigant_curve"));
 
     const CropParams& crop = p.crop;
     SIM_CHECK(positive(crop.specific_leaf_area_m2_per_g, "crop.specific_leaf_area_m2_per_g"));
@@ -448,6 +552,8 @@ std::expected<void, Error> validate_params(const Params& p) {
         SIM_CHECK(require(l.ca_fraction + l.mg_fraction <= 1.0,
                           std::format("lime '{}' ca_fraction + mg_fraction must be <= 1", l.id)));
     }
+    SIM_CHECK(validate_microbes(p));
+    SIM_CHECK(validate_disinfection(p));
     return {};
 }
 
@@ -489,6 +595,10 @@ std::expected<void, Error> validate_scenario(const Scenario& s) {
     SIM_CHECK(non_negative(soil.mn_g_per_m2, "soil.mn_g_per_m2"));
     SIM_CHECK(non_negative(soil.mn_oxide_g_per_m2, "soil.mn_oxide_g_per_m2"));
     SIM_CHECK(non_negative(soil.p_fixed_g_per_m2, "soil.p_fixed_g_per_m2"));
+    // M5a: 시나리오 [microbes] 시작 지수 0~1
+    for (std::size_t g = 0; g < kMicrobeGroupCount; ++g) {
+        SIM_CHECK(fraction(soil.microbe_index[g], std::format("microbes.{}", kMicrobeGroupIds[g])));
+    }
 
     if (s.crop) {
         SIM_CHECK(require(!s.crop->seedling_grade.empty(), "crop.seedling_grade must not be empty"));

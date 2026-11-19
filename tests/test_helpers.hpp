@@ -297,6 +297,159 @@ inline sim::Params test_params() {
         {.id = "calcium_carbonate", .name = "탄산석회", .eq_per_kg = 20.0, .ca_fraction = 1.0, .mg_fraction = 0.0},
         {.id = "dolomite", .name = "고토석회", .eq_per_kg = 21.7, .ca_fraction = 0.6, .mg_fraction = 0.4},
     };
+
+    // ---- M5a (docs/spec/soil-microbes.md, disinfection.md 표의 초기값). 쓰지 않는 축은 항등 [[0,1],[14,1]] ----
+    p.root_damage.fusarium_curve = {{{{0, 0}}, {{0.1, 0.0005}}, {{0.4, 0.003}}, {{0.8, 0.01}}}};
+    p.root_damage.phytophthora_curve = {{{{0, 0}}, {{0.1, 0.001}}, {{0.4, 0.006}}, {{0.8, 0.02}}}};
+    p.root_damage.fumigant_curve = {{{{0, 0}}, {{0.03, 0}}, {{0.1, 0.005}}, {{0.3, 0.03}}, {{1, 0.2}}}};
+    {
+        const sim::PiecewiseLinear identity = {{{{0, 1}}, {{14, 1}}}};
+        sim::MicrobesParams& m = p.microbes;
+        m.capacity_floor_index = 0.01;
+        m.decomposer_activity_curve = {{{{0, 0.15}}, {{0.5, 0.7}}, {{1, 1}}}};
+        m.aob_activity_curve = {{{{0, 0}}, {{0.2, 0.4}}, {{1, 1}}}};
+        m.nob_activity_curve = {{{{0, 0}}, {{0.2, 0.4}}, {{1, 1}}}};
+        m.antagonist_protection_factor = 0.5;
+        m.mycorrhiza_p_release_factor = 2.0;
+        m.mycorrhiza_water_relief_factor = 0.3;
+        m.mycorrhiza_salt_relief_factor = 0.3;
+        m.moist_heat_curve = {{{{0.2, 0.3}}, {{0.5, 0.7}}, {{0.8, 1.0}}}};
+        m.decomposer_food_curve = {{{{0, 0.4}}, {{10, 0.8}}, {{30, 1}}}};
+        m.antagonist_food_curve = {{{{0, 0.3}}, {{20, 0.6}}, {{60, 1}}}};
+        m.mycorrhiza_host_curve = {{{{0, 0.05}}, {{5, 0.5}}, {{15, 1}}}};
+        m.mycorrhiza_p_curve = {{{{0, 1}}, {{25, 0.6}}, {{50, 0.3}}, {{100, 0.1}}}};
+        using G = sim::MicrobeGroup;
+        auto& groups = m.groups;
+        const auto idx = [](G g) { return sim::microbe(g); };
+        groups[idx(G::Decomposer)] = {
+            .growth_rate_per_hour = 0.05,
+            .temp_curve = {{{{0, 0.1}}, {{10, 0.5}}, {{25, 1}}, {{38, 1}}, {{45, 0.3}}}},
+            .moisture_curve = {{{{0.1, 0.2}}, {{0.5, 1}}, {{1.2, 1}}, {{1.8, 0.6}}}},
+            .ph_curve = identity,
+            .o2_curve = identity,
+            .base_death_rate_per_hour = 0.0005,
+            .heat_kill_curve = {{{{40, 0}}, {{45, 0.005}}, {{50, 0.03}}, {{55, 0.1}}}},
+            .immigration_rate_per_hour = 0.002,
+        };
+        const sim::PiecewiseLinear nitrifier_temp = {{{{0, 0}}, {{5, 0.2}}, {{25, 1}}, {{35, 1}}, {{40, 0.3}}}};
+        const sim::PiecewiseLinear nitrifier_o2 = {{{{0, 0.1}}, {{0.3, 0.6}}, {{0.5, 1}}}};
+        const sim::PiecewiseLinear nitrifier_heat = {{{{33, 0}}, {{36, 0.005}}, {{40, 0.02}}, {{45, 0.06}}, {{50, 0.15}}}};
+        groups[idx(G::NitrifierAob)] = {
+            .growth_rate_per_hour = 0.008,
+            .temp_curve = nitrifier_temp,
+            .moisture_curve = identity,
+            .ph_curve = {{{{4.5, 0.2}}, {{5.5, 0.6}}, {{6.5, 1}}, {{8.5, 1}}}},
+            .o2_curve = nitrifier_o2,
+            .base_death_rate_per_hour = 0.0002,
+            .heat_kill_curve = nitrifier_heat,
+            .immigration_rate_per_hour = 0.0005,
+        };
+        groups[idx(G::NitrifierNob)] = {
+            .growth_rate_per_hour = 0.008,
+            .temp_curve = nitrifier_temp,
+            .moisture_curve = identity,
+            .ph_curve = {{{{4.5, 0.2}}, {{5.5, 0.6}}, {{6.5, 1}}, {{7.5, 0.8}}, {{8.5, 0.5}}}},
+            .o2_curve = nitrifier_o2,
+            .base_death_rate_per_hour = 0.0002,
+            .heat_kill_curve = nitrifier_heat,
+            .immigration_rate_per_hour = 0.0005,
+        };
+        groups[idx(G::Antagonist)] = {
+            .growth_rate_per_hour = 0.02,
+            .temp_curve = {{{{5, 0.2}}, {{20, 1}}, {{35, 1}}, {{42, 0.4}}}},
+            .moisture_curve = {{{{0.2, 0.3}}, {{0.5, 1}}, {{1.3, 0.8}}}},
+            .ph_curve = identity,
+            .o2_curve = identity,
+            .base_death_rate_per_hour = 0.0003,
+            .heat_kill_curve = {{{{45, 0}}, {{50, 0.005}}, {{55, 0.03}}}},
+            .immigration_rate_per_hour = 0.0002,
+        };
+        groups[idx(G::Antagonist)].competition[idx(G::Fusarium)] = 0.3;
+        groups[idx(G::Antagonist)].competition[idx(G::Phytophthora)] = 0.3;
+        groups[idx(G::Mycorrhiza)] = {
+            .growth_rate_per_hour = 0.004,
+            .temp_curve = {{{{8, 0.1}}, {{18, 1}}, {{30, 1}}, {{38, 0.3}}}},
+            .moisture_curve = {{{{0.2, 0.5}}, {{0.5, 1}}, {{1.3, 0.6}}}},
+            .ph_curve = identity,
+            .o2_curve = {{{{0, 0.1}}, {{0.4, 1}}}},
+            .base_death_rate_per_hour = 0.0003,
+            .heat_kill_curve = {{{{36, 0}}, {{40, 0.01}}, {{45, 0.05}}, {{50, 0.15}}}},
+            .immigration_rate_per_hour = 0.0001,
+        };
+        groups[idx(G::Fusarium)] = {
+            .growth_rate_per_hour = 0.01,
+            .temp_curve = {{{{10, 0.1}}, {{20, 0.6}}, {{28, 1}}, {{32, 1}}, {{36, 0.5}}}},
+            .moisture_curve = identity,
+            .ph_curve = {{{{4.5, 1}}, {{5.5, 1}}, {{6.5, 0.6}}, {{7.5, 0.4}}}},
+            .o2_curve = identity,
+            .base_death_rate_per_hour = 0.00002,
+            .heat_kill_curve = {{{{37, 0}}, {{40, 0.017}}, {{43, 0.07}}, {{45, 0.09}}, {{50, 0.25}}, {{55, 0.6}}}},
+            .immigration_rate_per_hour = 0.0,
+            .saprophytic_capacity_index = 0.3,
+            .host_capacity_index = 0.7,
+        };
+        groups[idx(G::Fusarium)].competition[idx(G::Antagonist)] = 0.8;
+        groups[idx(G::Phytophthora)] = {
+            .growth_rate_per_hour = 0.03,
+            .temp_curve = {{{{7, 0.1}}, {{15, 0.6}}, {{20, 1}}, {{25, 1}}, {{30, 0.4}}, {{32, 0.1}}}},
+            .moisture_curve = {{{{0.5, 0.1}}, {{0.9, 0.5}}, {{1.2, 1}}}},
+            .ph_curve = identity,
+            .o2_curve = {{{{0, 1}}, {{0.3, 0.6}}, {{0.5, 0.1}}}},
+            .base_death_rate_per_hour = 0.0001,
+            .heat_kill_curve = {{{{37, 0}}, {{40, 0.02}}, {{43, 0.08}}, {{45, 0.12}}, {{50, 0.3}}}},
+            .immigration_rate_per_hour = 0.0,
+            .saprophytic_capacity_index = 0.2,
+            .host_capacity_index = 0.8,
+        };
+        groups[idx(G::Phytophthora)].competition[idx(G::Antagonist)] = 0.8;
+
+        p.soil_disease[static_cast<std::size_t>(sim::SoilDisease::Fusarium)] = {
+            .infection_rate_per_hour = 0.004,
+            .infection_env_curve_temp = {{{{15, 0}}, {{22, 0.4}}, {{28, 1}}, {{32, 1}}, {{36, 0.5}}}},
+            .infection_env_curve_o2 = {{{{0, 1}}, {{1, 1}}}},
+            .infection_env_curve_ph = {{{{4.5, 1.8}}, {{5.0, 1.7}}, {{5.5, 1.4}}, {{6.5, 1}}, {{7.5, 0.8}}}},
+            .onset_infection_index = 0.15,
+        };
+        p.soil_disease[static_cast<std::size_t>(sim::SoilDisease::Phytophthora)] = {
+            .infection_rate_per_hour = 0.01,
+            .infection_env_curve_temp = {{{{8, 0.1}}, {{15, 0.5}}, {{20, 1}}, {{25, 1}}, {{29, 0.4}}, {{32, 0}}}},
+            .infection_env_curve_o2 = {{{{0, 1}}, {{0.25, 0.6}}, {{0.4, 0.05}}, {{0.5, 0}}}},
+            .infection_env_curve_ph = identity,
+            .onset_infection_index = 0.1,
+        };
+        p.inoculants = {
+            {.id = "bacillus_product", .name = "고초균제", .index_gain_per_g_per_m2 = {}, .C_g_per_kg = 300,
+             .N_g_per_kg = 10},
+            {.id = "trichoderma_product", .name = "트리코더마제", .index_gain_per_g_per_m2 = {}, .C_g_per_kg = 300,
+             .N_g_per_kg = 10},
+            {.id = "mycorrhiza_product", .name = "균근균제", .index_gain_per_g_per_m2 = {}, .C_g_per_kg = 200,
+             .N_g_per_kg = 5},
+        };
+        p.inoculants[0].index_gain_per_g_per_m2[idx(G::Antagonist)] = 0.02;
+        p.inoculants[1].index_gain_per_g_per_m2[idx(G::Antagonist)] = 0.025;
+        p.inoculants[2].index_gain_per_g_per_m2[idx(G::Mycorrhiza)] = 0.02;
+    }
+    p.disinfection = {.flush_N_g_per_m2_per_index = 6.0, .flush_C_to_N_ratio = 6.0, .mn_reduction_per_index = 0.03,
+                      .till_residue_release_fraction = 0.5};
+    p.mulches = {
+        {.id = "clear_film", .name = "투명 필름", .soil_solar_gain_degC_per_W_per_m2 = 0.025, .evaporation_factor = 0.1,
+         .fumigant_retention_factor = 0.3, .canopy_reflect_factor = 0.0},
+        {.id = "black_film", .name = "흑색 필름", .soil_solar_gain_degC_per_W_per_m2 = 0.008, .evaporation_factor = 0.2,
+         .fumigant_retention_factor = 0.3, .canopy_reflect_factor = 0.0},
+        {.id = "white_film", .name = "백색 필름", .soil_solar_gain_degC_per_W_per_m2 = -0.004, .evaporation_factor = 0.2,
+         .fumigant_retention_factor = 0.3, .canopy_reflect_factor = 0.25},
+    };
+    // 약제 kill_rate 순서: decomposer, nitrifier_aob, nitrifier_nob, antagonist, mycorrhiza, fusarium, phytophthora
+    p.disinfectants = {
+        {.id = "dazomet", .name = "다조멧", .residue_index_per_g_per_m2 = 1.0 / 30.0,
+         .kill_rate_per_hour = {0.006, 0.002, 0.001, 0.006, 0.02, 0.012, 0.015}, .decay_rate_per_hour = 0.02,
+         .decay_temp_curve = {{{{5, 0.3}}, {{15, 0.6}}, {{25, 1}}, {{35, 1.5}}}},
+         .activation_moisture_curve = {{{{0.2, 0.1}}, {{0.5, 0.7}}, {{0.7, 1}}}}},
+        {.id = "chloropicrin", .name = "클로로피크린", .residue_index_per_g_per_m2 = 1.0 / 4.0,
+         .kill_rate_per_hour = {0.01, 0.03, 0.03, 0.01, 0.02, 0.015, 0.02}, .decay_rate_per_hour = 0.012,
+         .decay_temp_curve = {{{{5, 0.4}}, {{15, 0.7}}, {{25, 1}}, {{35, 1.4}}}},
+         .activation_moisture_curve = {{{{0.2, 0.6}}, {{0.5, 0.9}}, {{0.7, 1}}}}},
+    };
     return p;
 }
 
@@ -364,10 +517,17 @@ inline sim::SoilInit test_soil() {
         .mn_g_per_m2 = 5.0,
         .mn_oxide_g_per_m2 = 100.0,
         .p_fixed_g_per_m2 = 150.0,
+        // M5a: m5-overview 11장 기본 줄 (decomposer, nitrifier_aob, nitrifier_nob, antagonist, mycorrhiza,
+        // fusarium, phytophthora)
+        .microbe_index = {1.0, 1.0, 1.0, 0.5, 0.1, 0.0, 0.0},
     };
 }
 
-// test_soil()로 만든 셀 하나
+// test_soil()로 만든 셀 하나.
+// M5a: 멀칭 없음, 약제 잔류 0 (test_params() 약제 수만큼)은 월드 생성과 같아요.
+// 단, microbe_index는 0으로 남겨요: 작물 갱신이 셀의 균근균 지수로 물·염류 스트레스를 완화하므로,
+// M2~M4 작물·과실 단위 테스트가 옛 식 그대로 돌도록 해요. 미생물 테스트는 지수를 직접 넣어요.
+// (활동 계수는 프로세스 함수 인자, 기본값 1이라 이 셀의 지수와 무관해요.)
 inline sim::SoilCell test_cell() {
     const sim::SoilInit s = test_soil();
     sim::SoilCell cell{
@@ -398,6 +558,7 @@ inline sim::SoilCell test_cell() {
     cell.mn_g_per_m2 = s.mn_g_per_m2;
     cell.mn_oxide_g_per_m2 = s.mn_oxide_g_per_m2;
     cell.p_fixed_g_per_m2 = s.p_fixed_g_per_m2;
+    cell.fumigant_residue_index.assign(test_params().disinfectants.size(), 0.0);
     // M3: 용액 상태를 평형값으로 맞춰요 (World 생성과 같은 초기화). 총량을 바꾼 테스트는 test::settle()을 다시 불러요.
     sim::process::set_solution_to_equilibrium(cell, test_params());
     return cell;
