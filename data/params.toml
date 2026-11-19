@@ -104,7 +104,7 @@ drainage_rate_per_hour = 0.3              # 포장용수량 초과분 중 시간
 drainage_compaction_curve = [[0, 1.0], [0.5, 0.6], [1.0, 0.1]]  # x = compaction_index, y = 배수 속도 배율. 게임용 임의값 (aeration.md)
 
 [soil_temperature]  # docs/spec/soil-temperature.md
-relax_rate_per_hour = 0.04                # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
+relax_rate_per_hour = 0.04  # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
 heat_degC_per_g_C = 0.4                   # 호흡 탄소 1 g/m²당 토양 온도 상승. 게임용 임의값
 evap_cooling_degC_per_mm = 2.5  # 토양 증발 1 mm당 토양 온도 하강 °C. 7월 밀폐·무피복 지온 최고 38.6~39.7 °C(참고 35~40)에 맞춘 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 
@@ -119,7 +119,7 @@ o2_curve = [[0, 0.15], [0.3, 0.6], [0.6, 1.0], [1, 1.0]]  # x = aeration_index. 
 
 [nitrification]  # docs/spec/nitrogen.md
 step1_rate_per_hour = 0.01                # NH4+ -> NO2- 최대 속도. 게임용 임의값
-step2_rate_per_hour = 0.08                # NO2- -> NO3- 최대 속도. 게임용 임의값
+step2_rate_per_hour = 0.2  # NO2- -> NO3- 최대 속도. 게임용 임의값
 temp_curve = [[0, 0], [5, 0.1], [15, 0.5], [25, 0.9], [32, 1.0], [40, 0.6], [50, 0.1]]  # x = 토양 온도 °C. 게임용 임의값
 moisture_curve = [[0, 0], [0.3, 0.2], [0.6, 0.8], [0.9, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값
 step1_ph_curve = [[4.5, 0.1], [5.5, 0.5], [6.5, 1.0], [8.0, 1.0], [9.0, 0.6]]  # x = pH. 게임용 임의값
@@ -279,7 +279,7 @@ capacity_floor_index = 0.01                                    # 수용력 하�
 decomposer_activity_curve = [[0, 0.15], [0.5, 0.7], [0.8, 1], [1, 1]]  # x = 분해균 지수, y = 분해균계수. 게임용 임의값
 aob_activity_curve = [[0, 0], [0.2, 0.4], [0.8, 1], [1, 1]]  # x = 1단계 질산화균 지수, y = 1단계 속도 배율. 게임용 임의값
 nob_activity_curve = [[0, 0], [0.2, 0.4], [0.8, 1], [1, 1]]  # x = 2단계 질산화균 지수, y = 2단계 속도 배율. 게임용 임의값
-antagonist_protection_factor = 0.5                             # 길항균 지수 1일 때 감염 압력 감소 비율. 게임용 임의값
+antagonist_protection_factor = 0.8  # 길항균 지수 1일 때 감염 압력 감소 비율. 게임용 임의값
 mycorrhiza_p_release_factor = 2.0                              # 균근균 지수 1일 때 고정 -> 유효 인산 속도 증가 배율. 게임용 임의값
 mycorrhiza_water_relief_factor = 0.1  # 균근균 지수 1일 때 수분 스트레스 결손분 완화 비율. 게임용 임의값
 mycorrhiza_salt_relief_factor = 0.1  # 〃 염류 스트레스. 게임용 임의값
@@ -295,47 +295,47 @@ mycorrhiza_p_curve = [[0, 1], [25, 0.6], [50, 0.3], [100, 0.1]]  # x = 유효 P 
 # saprophytic_capacity_index, host_capacity_index는 병원균(fusarium, phytophthora)만 가져요 (다른 무리에 쓰면 오류).
 
 [microbes.decomposer]  # 분해균
-growth_rate_per_hour = 0.05                                    # 최대 성장률 r. 게임용 임의값
+growth_rate_per_hour = 0.0015  # 최대 성장률 r. 게임용 임의값
 temp_curve = [[0, 0.1], [10, 0.5], [25, 1], [38, 1], [45, 0.3]]
 moisture_curve = [[0.1, 0.2], [0.5, 1], [1.2, 1], [1.8, 0.6]]
 ph_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
 o2_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
-base_death_rate_per_hour = 0.0005
+base_death_rate_per_hour = 0.00003
 heat_kill_curve = [[40, 0], [45, 0.005], [50, 0.03], [55, 0.1]]  # 다조멧 뒤 바이오매스 54~75% 감소, 5~8주 회복 [S13]에 맞춰 덜 죽음
-immigration_rate_per_hour = 0.002
+immigration_rate_per_hour = 0.0002
 competition = {}                                               # 경쟁 상대 없음 (전부 0)
 
 [microbes.nitrifier_aob]  # 질산화균 1단계
-growth_rate_per_hour = 0.008
+growth_rate_per_hour = 0.003
 temp_curve = [[0, 0], [5, 0.2], [25, 1], [35, 1], [40, 0.3]]
 moisture_curve = [[0, 1], [14, 1]]                             # 쓰지 않는 축 (항등)
 ph_curve = [[4.5, 0.2], [5.5, 0.6], [6.5, 1], [8.5, 1]]
 o2_curve = [[0, 0.1], [0.3, 0.6], [0.5, 1]]
-base_death_rate_per_hour = 0.0002
+base_death_rate_per_hour = 0.00005
 heat_kill_curve = [[33, 0], [36, 0.005], [40, 0.02], [45, 0.06], [50, 0.15]]  # 태양열 35~40 도에서도 생균 -99% [S19]
 immigration_rate_per_hour = 0.0005
 competition = {}
 
 [microbes.nitrifier_nob]  # 질산화균 2단계
-growth_rate_per_hour = 0.008
+growth_rate_per_hour = 0.003
 temp_curve = [[0, 0], [5, 0.2], [25, 1], [35, 1], [40, 0.3]]
 moisture_curve = [[0, 1], [14, 1]]                             # 쓰지 않는 축 (항등)
 ph_curve = [[4.5, 0.2], [5.5, 0.6], [6.5, 1], [7.5, 0.8], [8.5, 0.5]]
 o2_curve = [[0, 0.1], [0.3, 0.6], [0.5, 1]]
-base_death_rate_per_hour = 0.0002
+base_death_rate_per_hour = 0.00005
 heat_kill_curve = [[33, 0], [36, 0.005], [40, 0.02], [45, 0.06], [50, 0.15]]  # 1단계와 같음 (민감도 차이 근거 없음)
 immigration_rate_per_hour = 0.0005
 competition = {}
 
 [microbes.antagonist]  # 근권 길항균 (Bacillus, Trichoderma)
-growth_rate_per_hour = 0.02
-temp_curve = [[5, 0.2], [20, 1], [35, 1], [42, 0.4]]
+growth_rate_per_hour = 0.0015
+temp_curve = [[5, 0.2], [20, 1], [35, 1], [42, 0.4], [47, 0]]
 moisture_curve = [[0.2, 0.3], [0.5, 1], [1.3, 0.8]]
 ph_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
 o2_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
-base_death_rate_per_hour = 0.0003
+base_death_rate_per_hour = 0.00003
 heat_kill_curve = [[45, 0], [50, 0.005], [55, 0.03]]           # 포자 형성균은 잘 버팀
-immigration_rate_per_hour = 0.0002
+immigration_rate_per_hour = 0.0001
 competition = { fusarium = 0.3, phytophthora = 0.3 }           # 병원균이 길항균 자리를 적게 차지 (비대칭)
 
 [microbes.mycorrhiza]  # 균근균
@@ -350,7 +350,7 @@ immigration_rate_per_hour = 0.0001
 competition = {}
 
 [microbes.fusarium]  # 시들음병균 (후막포자, 반감기 약 4년. 생존 연수는 출처 미확인)
-growth_rate_per_hour = 0.01
+growth_rate_per_hour = 0.002
 temp_curve = [[10, 0.1], [20, 0.6], [28, 1], [32, 1], [36, 0.5]]
 moisture_curve = [[0, 1], [14, 1]]                             # 쓰지 않는 축 (항등)
 ph_curve = [[4.5, 1], [5.5, 1], [6.5, 0.6], [7.5, 0.4]]
@@ -358,12 +358,12 @@ o2_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 �
 base_death_rate_per_hour = 0.00002
 heat_kill_curve = [[37, 0], [40, 0.017], [43, 0.07], [45, 0.09], [50, 0.25], [55, 0.6]]  # 젖은 흙 43 도 2일 약 99%, 40 도 8~14일 [S2]
 immigration_rate_per_hour = 0.0                                # 병원균은 유입 0 (오염 토양·감염 모종으로만 생김)
-saprophytic_capacity_index = 0.3                               # 부생 수용력. 게임용 임의값
+saprophytic_capacity_index = 0.6  # 부생 수용력. 게임용 임의값
 host_capacity_index = 0.7                                      # 숙주(감염 지수 1)가 더하는 수용력. 게임용 임의값
-competition = { antagonist = 0.8 }                             # 길항균이 병원균 자리를 크게 차지 (비대칭)
+competition = { antagonist = 0.4 }  # 길항균이 병원균 자리를 크게 차지 (비대칭)
 
 [microbes.phytophthora]  # 역병균 (난포자, 반감기 약 9개월)
-growth_rate_per_hour = 0.03
+growth_rate_per_hour = 0.005
 temp_curve = [[7, 0.1], [15, 0.6], [20, 1], [25, 1], [30, 0.4], [32, 0.1]]  # 국내 딸기 분리균 최적 20~25 도 [S24]
 moisture_curve = [[0.5, 0.1], [0.9, 0.5], [1.2, 1]]
 ph_curve = [[0, 1], [14, 1]]                                   # 쓰지 않는 축 (항등)
@@ -371,13 +371,13 @@ o2_curve = [[0, 1], [0.3, 0.6], [0.5, 0.1]]
 base_death_rate_per_hour = 0.0001
 heat_kill_curve = [[37, 0], [40, 0.02], [43, 0.08], [45, 0.12], [50, 0.3]]  # 출처 미확인. 같은 난균 Pythium이 시들음병균만큼 버팀 [S3]
 immigration_rate_per_hour = 0.0
-saprophytic_capacity_index = 0.2
+saprophytic_capacity_index = 0.5
 host_capacity_index = 0.8
-competition = { antagonist = 0.8 }
+competition = { antagonist = 0.4 }
 
 # 작물 감염 [soil_disease.<id>] (soil-microbes "작물 감염")
 [soil_disease.fusarium]
-infection_rate_per_hour = 0.004                                # 압력 1일 때 감염 진행. 게임용 임의값
+infection_rate_per_hour = 0.002  # 압력 1일 때 감염 진행. 게임용 임의값
 infection_env_curve_temp = [[15, 0], [22, 0.4], [28, 1], [32, 1], [36, 0.5]]  # 발병 최고 지온 약 28 도 [S6, S7]
 infection_env_curve_o2 = [[0, 1], [1, 1]]                      # 통기 영향 없음 (항등)
 infection_env_curve_ph = [[4.5, 1.8], [5.0, 1.7], [5.5, 1.4], [6.5, 1], [7.5, 0.8]]  # pH 5가 6.5의 1.6~1.8배 [S8, 수경]
@@ -392,9 +392,9 @@ onset_infection_index = 0.1
 
 # 소독 공통 [disinfection] (disinfection "[disinfection]")
 [disinfection]
-flush_N_g_per_m2_per_index = 6.0                               # 분해균 소독 사멸 지수 1당 유기 N -> NH4+ (약 30 mg N/kg). 근거 방향 [S13, S19], 크기는 게임용 임의값
+flush_N_g_per_m2_per_index = 18  # 분해균 소독 사멸 지수 1당 유기 N -> NH4+ (약 30 mg N/kg). 근거 방향 [S13, S19], 크기는 게임용 임의값
 flush_C_to_N_ratio = 6.0                                       # 죽은 미생물 몸 C:N. 게임용 임의값
-mn_reduction_per_index = 0.03                                  # 분해균 소독 사멸 지수 1당 산화물 -> 유효태 Mn 비율. 방향만 근거 [S21], 크기는 게임용 임의값
+mn_reduction_per_index = 0.12  # 분해균 소독 사멸 지수 1당 산화물 -> 유효태 Mn 비율. 방향만 근거 [S21], 크기는 게임용 임의값
 till_residue_release_fraction = 0.5                            # 경운 1회가 날려 보내는 약제 잔류 비율. 게임용 임의값
 
 # 모종 등급 (docs/spec/strawberry-phenology.md, ADR-0006). 전부 게임용 임의값
@@ -577,7 +577,7 @@ mg_fraction = 0.4
 [[mulch]]
 id = "clear_film"
 name = "투명 필름"
-soil_solar_gain_degC_per_W_per_m2 = 0.025
+soil_solar_gain_degC_per_W_per_m2 = 0.022
 evaporation_factor = 0.1
 fumigant_retention_factor = 0.3
 canopy_reflect_factor = 0.0
@@ -593,7 +593,7 @@ canopy_reflect_factor = 0.0
 [[mulch]]
 id = "white_film"
 name = "백색 필름"
-soil_solar_gain_degC_per_W_per_m2 = -0.004                     # 반사로 식음
+soil_solar_gain_degC_per_W_per_m2 = -0.012                     # 반사로 식음
 evaporation_factor = 0.2
 fumigant_retention_factor = 0.3
 canopy_reflect_factor = 0.25                                   # 반사광이 잎에 다시 닿는 비율 (작물 광합성 광량에만)
@@ -603,7 +603,7 @@ canopy_reflect_factor = 0.25                                   # 반사광이 �
 id = "dazomet"
 name = "다조멧"
 residue_index_per_g_per_m2 = 0.03333333333333333               # 1/30 (double 1.0/30.0과 같게 17자리): 표준 30 g/m2 = 잔류 1 (일본 공식 딸기 20~30, 국내 시험 권장 40 [S9, S12])
-kill_rate_per_hour = { decomposer = 0.006, nitrifier_aob = 0.002, nitrifier_nob = 0.001, antagonist = 0.006, mycorrhiza = 0.02, fusarium = 0.012, phytophthora = 0.015 }
+kill_rate_per_hour = { decomposer = 0.015, nitrifier_aob = 0.002, nitrifier_nob = 0.001, antagonist = 0.015, mycorrhiza = 0.02, fusarium = 0.025, phytophthora = 0.025 }
 decay_rate_per_hour = 0.02                                     # 필름 없음, 25 도. 필름 아래 반감기 약 5일
 decay_temp_curve = [[5, 0.3], [15, 0.6], [25, 1], [35, 1.5]]
 activation_moisture_curve = [[0.2, 0.1], [0.5, 0.7], [0.7, 1]] # 입제는 젖어야 가스가 나옴
