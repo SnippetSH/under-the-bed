@@ -149,6 +149,9 @@ struct SoilTemperatureParams {
     double relax_rate_per_hour = 0.0;
     double heat_degC_per_g_C = 0.0;
     double evap_cooling_degC_per_mm = 0.0;  // 증발 1 mm당 토양 온도 하강 (soil-temperature)
+    // M5a 프로토타입 3차: 깊은 흙 온도 항. 완화 목표 중 깊은 흙 온도의 비율(0~1, 0이면 이전 식 그대로)
+    double deep_coupling_fraction = 0.0;
+    double deep_relax_rate_per_hour = 0.0;  // 깊은 흙 온도가 근권 온도를 따라가는 시간당 비율 (0~1)
 
     bool operator==(const SoilTemperatureParams&) const = default;
 };
@@ -399,6 +402,9 @@ struct MicrobesParams {
     double mycorrhiza_p_release_factor = 0.0;
     double mycorrhiza_water_relief_factor = 0.0;
     double mycorrhiza_salt_relief_factor = 0.0;
+    // M5a 프로토타입 3차: 셀 간 차이 (biology 난수, 0이면 난수를 뽑지 않음)
+    double pathogen_spread_index = 0.0;        // 월드 생성 때 병원균 시작 지수 × (1 + 값 × (2U − 1)), 0~1
+    double susceptibility_spread_index = 0.0;  // 정식 때 포기 감수성 1 + 값 × (2U − 1), 0~1
     PiecewiseLinear moist_heat_curve;       // x = relative_water, y = 열 사멸 배율
     PiecewiseLinear decomposer_food_curve;  // x = 이분해성 C g/m², y = 수용력
     PiecewiseLinear antagonist_food_curve;  // x = 이분해성 C g/m²

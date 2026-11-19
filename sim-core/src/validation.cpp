@@ -58,6 +58,8 @@ std::expected<void, Error> validate_microbes(const Params& p) {
     SIM_CHECK(non_negative(m.mycorrhiza_p_release_factor, "microbes.mycorrhiza_p_release_factor"));
     SIM_CHECK(fraction(m.mycorrhiza_water_relief_factor, "microbes.mycorrhiza_water_relief_factor"));
     SIM_CHECK(fraction(m.mycorrhiza_salt_relief_factor, "microbes.mycorrhiza_salt_relief_factor"));
+    SIM_CHECK(fraction(m.pathogen_spread_index, "microbes.pathogen_spread_index"));
+    SIM_CHECK(fraction(m.susceptibility_spread_index, "microbes.susceptibility_spread_index"));
     SIM_CHECK(validate_curve(m.moist_heat_curve, "microbes.moist_heat_curve"));
     SIM_CHECK(factor_curve(m.decomposer_food_curve, "microbes.decomposer_food_curve"));
     SIM_CHECK(factor_curve(m.antagonist_food_curve, "microbes.antagonist_food_curve"));
@@ -184,6 +186,8 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(non_negative(p.soil_temperature.relax_rate_per_hour, "soil_temperature.relax_rate_per_hour"));
     SIM_CHECK(non_negative(p.soil_temperature.heat_degC_per_g_C, "soil_temperature.heat_degC_per_g_C"));
     SIM_CHECK(non_negative(p.soil_temperature.evap_cooling_degC_per_mm, "soil_temperature.evap_cooling_degC_per_mm"));
+    SIM_CHECK(fraction(p.soil_temperature.deep_coupling_fraction, "soil_temperature.deep_coupling_fraction"));
+    SIM_CHECK(fraction(p.soil_temperature.deep_relax_rate_per_hour, "soil_temperature.deep_relax_rate_per_hour"));
 
     const OrganicMatterParams& om = p.organic_matter;
     SIM_CHECK(non_negative(om.labile_decay_rate_per_hour, "organic_matter.labile_decay_rate_per_hour"));

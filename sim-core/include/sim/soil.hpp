@@ -47,6 +47,9 @@ struct SoilCell {
 
     // 온도 (soil-temperature)
     double soil_temp_degC = 0.0;
+    // 깊은 흙 온도 (M5a 프로토타입 3차): 근권 완화 목표의 일부를 차지하고 근권 온도를 아주 느리게 따라가요.
+    // 월드 생성 때 시나리오 soil_temp_degC로 시작해요
+    double deep_soil_temp_degC = 0.0;
 
     // 유기물 (organic-matter)
     double labile_C_g_per_m2 = 0.0;
@@ -296,6 +299,8 @@ struct Crop {
     // M5a 토양 병해 (soil-microbes 3번): SoilDisease 순서. 감염은 줄지 않아요(0~1). 비공개 진짜 값
     std::array<double, kSoilDiseaseCount> infection_index{};
     std::array<bool, kSoilDiseaseCount> disease_onset_reported{};  // DiseaseOnset 이벤트를 냈는지
+    // 포기 간 감수성 차이 (M5a 프로토타입 3차): 두 토양 병해의 감염 증가분에 곱해요. 정식 때 정해지고 기본 1
+    double disease_susceptibility_factor = 1.0;
 
     // 달려 있는 과실 건물 합 g/m² (꽃은 0)
     [[nodiscard]] double fruit_g_per_m2() const {

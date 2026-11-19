@@ -123,7 +123,11 @@ inline sim::Params test_params() {
         .drainage_compaction_curve = {{{{0, 1.0}}, {{0.5, 0.6}}, {{1.0, 0.1}}}},
     };
 
-    p.soil_temperature = {.relax_rate_per_hour = 0.04, .heat_degC_per_g_C = 0.4, .evap_cooling_degC_per_mm = 0.0};
+    p.soil_temperature = {.relax_rate_per_hour = 0.04,
+                          .heat_degC_per_g_C = 0.4,
+                          .evap_cooling_degC_per_mm = 0.0,
+                          .deep_coupling_fraction = 0.0,
+                          .deep_relax_rate_per_hour = 0.0};
 
     p.organic_matter = {
         .labile_decay_rate_per_hour = 0.004,
@@ -313,6 +317,8 @@ inline sim::Params test_params() {
         m.mycorrhiza_p_release_factor = 2.0;
         m.mycorrhiza_water_relief_factor = 0.3;
         m.mycorrhiza_salt_relief_factor = 0.3;
+        m.pathogen_spread_index = 0.0;  // M5a 프로토타입 3차: 셀 간 차이는 단위 테스트에서 꺼요
+        m.susceptibility_spread_index = 0.0;
         m.moist_heat_curve = {{{{0.2, 0.3}}, {{0.5, 0.7}}, {{0.8, 1.0}}}};
         m.decomposer_food_curve = {{{{0, 0.4}}, {{10, 0.8}}, {{30, 1}}}};
         m.antagonist_food_curve = {{{{0, 0.3}}, {{20, 0.6}}, {{60, 1}}}};
@@ -473,6 +479,11 @@ inline sim::Params repo_params() {
     p.phenology.induction_nitrogen_curve = {{{{0, 1}}, {{1.05, 1}}, {{1.15, 0.7}}, {{1.5, 0.5}}}};
     p.phenology.induction_spread_index = 0.4;
     p.soil_temperature.evap_cooling_degC_per_mm = 2.5;
+    // M5a 프로토타입 3차 (2026-11-19 디렉터 결정): 깊은 흙 온도 항, 병원균 시작·포기 감수성 셀 간 차이
+    p.soil_temperature.deep_coupling_fraction = 0.4;
+    p.soil_temperature.deep_relax_rate_per_hour = 0.004;
+    p.microbes.pathogen_spread_index = 0.5;
+    p.microbes.susceptibility_spread_index = 0.5;
     sim::CropParams& c = p.crop;
     c.light_use_efficiency_g_per_MJ = 2.1;
     c.mn_uptake_rate_per_g_root_per_hour = 0.00002;
@@ -535,6 +546,7 @@ inline sim::SoilCell test_cell() {
         .water_mm = s.water_mm,
         .drained_mm_this_tick = 0.0,
         .soil_temp_degC = s.soil_temp_degC,
+        .deep_soil_temp_degC = s.soil_temp_degC,  // M5a 프로토타입 3차: 월드 생성과 같이 시나리오 지온에서 시작
         .labile_C_g_per_m2 = s.labile_C_g_per_m2,
         .labile_N_g_per_m2 = s.labile_N_g_per_m2,
         .stable_C_g_per_m2 = s.stable_C_g_per_m2,

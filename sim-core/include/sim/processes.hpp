@@ -45,6 +45,12 @@ namespace sim::process {
 
 // ---- temperature.cpp (docs/spec/soil-temperature.md) ----
 
+// 완화 목표 (M5a 프로토타입 3차): (1 − deep_coupling_fraction) × air_target_degC + deep_coupling_fraction × 깊은 흙 온도.
+// air_target_degC는 하우스 기온 + 멀칭 지온 이득(soil_relax_target_degC)이에요.
+[[nodiscard]] double soil_relax_blend_target_degC(const SoilCell& cell, const SoilTemperatureParams& params,
+                                                  double air_target_degC);
+// house_air_temp_degC = 하우스 기온 + 멀칭 지온 이득(soil_relax_target_degC). 깊은 흙 혼합은 안에서 해요.
+// 순서: 목표 혼합 → 근권 완화 → 증발 냉각 → 깊은 흙 온도가 근권 온도를 따라감
 void relax_soil_temperature(SoilCell& cell, const SoilTemperatureParams& params, double house_air_temp_degC,
                             double evaporated_mm = 0.0);
 

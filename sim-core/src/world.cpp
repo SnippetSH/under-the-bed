@@ -26,6 +26,7 @@ SoilCell make_cell(const SoilInit& init, const Params& params) {
     cell.base_buffer_eq_per_m2_per_pH = init.base_buffer_eq_per_m2_per_pH;
     cell.water_mm = init.water_mm;
     cell.soil_temp_degC = init.soil_temp_degC;
+    cell.deep_soil_temp_degC = init.soil_temp_degC;  // M5a 프로토타입 3차: 깊은 흙도 시나리오 지온에서 시작
     cell.labile_C_g_per_m2 = init.labile_C_g_per_m2;
     cell.labile_N_g_per_m2 = init.labile_N_g_per_m2;
     cell.stable_C_g_per_m2 = init.stable_C_g_per_m2;
@@ -60,6 +61,35 @@ void apply_induction_spread(Crop& crop, const Crop& planted, const PhenologyPara
     }
 }
 
+// 포기 감수성 차이 (M5a 프로토타입 3차, soil-microbes 3번): 0이면 난수를 뽑지 않고 1 그대로.
+// 월드 생성과 Plant 명령이 같은 규칙을 써요 (타일마다 화아분화 차이 다음에 1회).
+void apply_susceptibility_spread(Crop& crop, const MicrobesParams& microbes, Pcg32& biology_rng) {
+    crop.disease_susceptibility_factor = 1.0;
+    if (microbes.susceptibility_spread_index > 0.0) {
+        const double u = biology_rng.next_unit_double();
+        crop.disease_susceptibility_factor = 1.0 + microbes.susceptibility_spread_index * (2.0 * u - 1.0);
+    }
+}
+
+// 병원균 시작 지수의 셀 간 차이 (M5a 프로토타입 3차, soil-microbes 1번): 월드 생성 때만.
+// 병원균 무리(MicrobeGroup 순서: fusarium, phytophthora)마다 시작 지수 > 0이고 spread > 0일 때만 1회씩 뽑아요.
+// 지수 × (1 + spread × (2U − 1))은 자르기 전 평균이 시작 지수와 같고, [0, 1]로 잘라요.
+void apply_pathogen_spread(SoilCell& cell, const SoilInit& init, const MicrobesParams& microbes, Pcg32& biology_rng) {
+    if (!(microbes.pathogen_spread_index > 0.0)) {
+        return;
+    }
+    for (std::size_t d = 0; d < kSoilDiseaseCount; ++d) {
+        const std::size_t g = microbe(pathogen_of(static_cast<SoilDisease>(d)));
+        const double start_index = init.microbe_index[g];
+        if (!(start_index > 0.0)) {
+            continue;
+        }
+        const double u = biology_rng.next_unit_double();
+        cell.microbe_index[g] =
+            std::clamp(start_index * (1.0 + microbes.pathogen_spread_index * (2.0 * u - 1.0)), 0.0, 1.0);
+    }
+}
+
 }  // namespace
 
 World::World(Params params, Scenario scenario)
@@ -68,17 +98,27 @@ World::World(Params params, Scenario scenario)
       tiles_(static_cast<std::size_t>(scenario_.bed_rows) * static_cast<std::size_t>(scenario_.bed_cols),
              Tile{make_cell(scenario_.soil, params_), Crop{}}),
       biology_rng_(make_stream(scenario_.seed, static_cast<std::uint64_t>(RngStream::Biology))) {
+    std::optional<Crop> planted;
     if (scenario_.crop) {
         // 등급 존재는 create()에서 검증됨 (validate_scenario_against_params)
         const SeedlingGradeDef* grade = process::find_seedling_grade(params_, scenario_.crop->seedling_grade);
         if (grade != nullptr) {
-            Crop planted = process::plant_crop(*grade, scenario_.crop->plants_per_m2, params_);
-            planted.establishment_index = scenario_.crop->initial_establishment_index;
-            for (Tile& tile : tiles_) {
-                tile.crop = planted;
-                apply_induction_spread(tile.crop, planted, params_.phenology, biology_rng_);
-            }
+            planted = process::plant_crop(*grade, scenario_.crop->plants_per_m2, params_);
+            planted->establishment_index = scenario_.crop->initial_establishment_index;
         }
+    }
+    // biology 난수 순서 (결정론): 타일 행 우선 순서대로, 타일마다
+    //   1) 화아분화 차이 (작물이 있고 induction_spread_index > 0)
+    //   2) 감수성 차이 (작물이 있고 susceptibility_spread_index > 0)
+    //   3) 병원균 시작 차이 (MicrobeGroup 순서, pathogen_spread_index > 0이고 시작 지수 > 0인 무리만)
+    // 차이가 모두 0이면 난수를 뽑지 않아 이전 난수 순서·결과와 같아요.
+    for (Tile& tile : tiles_) {
+        if (planted) {
+            tile.crop = *planted;
+            apply_induction_spread(tile.crop, *planted, params_.phenology, biology_rng_);
+            apply_susceptibility_spread(tile.crop, params_.microbes, biology_rng_);
+        }
+        apply_pathogen_spread(tile.soil, scenario_.soil, params_.microbes, biology_rng_);
     }
     const CalendarTime t0 = calendar_at(scenario_.start_day_of_year, 0);
     house_ = process::initial_house(params_.house, scenario_.cover_layers,
@@ -404,7 +444,9 @@ void World::apply_command(const PlantCommand& command) {
         // 죽은 작물의 체내 원소·건물은 낙엽 규칙으로 토양에 (장부 보존)
         process::return_dead_crop_to_soil(tile.crop, tile.soil, params_.crop, ledger_);
         tile.crop = planted;
+        // biology 난수 순서: 타일마다 화아분화 차이 → 감수성 차이 (월드 생성과 같음, 병원균 차이는 생성 때만)
         apply_induction_spread(tile.crop, planted, params_.phenology, biology_rng_);
+        apply_susceptibility_spread(tile.crop, params_.microbes, biology_rng_);
         // 모종의 체내 원소는 계 밖에서 들어온 투입 (tick 0 정식은 초기값이라 장부에 넣지 않아요)
         ledger_.N_in_g += planted.plant_N_g_per_m2;
         ledger_.P_in_g += planted.plant_P_g_per_m2;

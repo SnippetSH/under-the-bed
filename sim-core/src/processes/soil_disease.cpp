@@ -37,8 +37,10 @@ std::array<std::optional<DiseaseOnsetEvent>, kSoilDiseaseCount> update_soil_infe
         const auto disease = static_cast<SoilDisease>(d);
         const SoilDiseaseParams& dp = params.soil_disease[d];
         const double infection = clamp01(crop.infection_index[d]);
-        const double increase = std::min(
-            1.0, non_negative(dp.infection_rate_per_hour) * infection_pressure(disease, cell, params));
+        // M5a 프로토타입 3차: 포기 감수성(정식 때 정해짐, 기본 1)을 증가분에 곱해요. 1이면 이전 식과 같아요
+        const double increase =
+            std::min(1.0, non_negative(dp.infection_rate_per_hour) * infection_pressure(disease, cell, params) *
+                              non_negative(crop.disease_susceptibility_factor));
         // 줄지 않음 (증가분 ≥ 0, 1에서 멈춤)
         crop.infection_index[d] = clamp01(infection + increase * (1.0 - infection));
         if (!crop.disease_onset_reported[d] && crop.infection_index[d] >= dp.onset_infection_index) {

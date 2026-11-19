@@ -166,6 +166,8 @@ drainage_compaction_curve = [[0, 1.0], [1.0, 0.1]]
 relax_rate_per_hour = 0.04
 heat_degC_per_g_C = 0.4
 evap_cooling_degC_per_mm = 0.0
+deep_coupling_fraction = 0
+deep_relax_rate_per_hour = 0
 [organic_matter]
 labile_decay_rate_per_hour = 0.004
 stable_decay_rate_per_hour = 0.00002
@@ -323,6 +325,8 @@ antagonist_protection_factor = 0.5
 mycorrhiza_p_release_factor = 2.0
 mycorrhiza_water_relief_factor = 0.3
 mycorrhiza_salt_relief_factor = 0.3
+pathogen_spread_index = 0
+susceptibility_spread_index = 0
 moist_heat_curve = [[0.2, 0.3], [0.8, 1.0]]
 decomposer_food_curve = [[0, 0.4], [30, 1]]
 antagonist_food_curve = [[0, 0.3], [60, 1]]

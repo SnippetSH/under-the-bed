@@ -665,6 +665,8 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         p.soil_temperature.relax_rate_per_hour = r.number("relax_rate_per_hour");
         p.soil_temperature.heat_degC_per_g_C = r.number("heat_degC_per_g_C");
         p.soil_temperature.evap_cooling_degC_per_mm = r.number("evap_cooling_degC_per_mm");
+        p.soil_temperature.deep_coupling_fraction = r.number("deep_coupling_fraction");      // M5a 프로토타입 3차
+        p.soil_temperature.deep_relax_rate_per_hour = r.number("deep_relax_rate_per_hour");  // M5a 프로토타입 3차
     });
     run("organic_matter", [&](TableReader& r) {
         auto& om = p.organic_matter;
@@ -789,6 +791,8 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         m.mycorrhiza_p_release_factor = r.number("mycorrhiza_p_release_factor");
         m.mycorrhiza_water_relief_factor = r.number("mycorrhiza_water_relief_factor");
         m.mycorrhiza_salt_relief_factor = r.number("mycorrhiza_salt_relief_factor");
+        m.pathogen_spread_index = r.number("pathogen_spread_index");              // M5a 프로토타입 3차
+        m.susceptibility_spread_index = r.number("susceptibility_spread_index");  // M5a 프로토타입 3차
         m.moist_heat_curve = r.curve("moist_heat_curve");
         m.decomposer_food_curve = r.curve("decomposer_food_curve");
         m.antagonist_food_curve = r.curve("antagonist_food_curve");

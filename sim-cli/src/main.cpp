@@ -18,6 +18,7 @@
 // mulched_fraction과 멀칭 id(mulch_id, 섞여 있으면 mixed), 작물 평균 감염 지수 infection_<병>_index, 이번 틱 소독 사멸
 // disinfection_kill_<id>_index와 지금까지의 누적 disinfection_kill_cum_<id>_index(셀 평균), 장부 ledger_N_flush_g,
 // ledger_Mn_flush_g, ledger_inoculant_applied_g, ledger_disinfectant_applied_<id>_g. 전부 플레이어 비공개 진짜 값이에요.
+// M5a 프로토타입 3차 열: 깊은 흙 온도 deep_soil_temp_degC(셀 평균), 포기 감수성 disease_susceptibility_factor(작물 평균).
 // --no-hash를 주면 state_hash 열을 비워 둬요 (긴 실행을 빠르게). 최종 해시는 그래도 찍어요.
 // 표준 출력에는 이벤트 종류별 횟수, 수확 합계, 최종 상태 해시를 찍어요.
 
@@ -164,6 +165,7 @@ Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndi
     SOIL_COL(water_mm);
     SOIL_COL(drained_mm_this_tick);
     SOIL_COL(soil_temp_degC);
+    SOIL_COL(deep_soil_temp_degC);  // M5a 프로토타입 3차: 깊은 흙 온도 (하우스 평균)
     SOIL_COL(labile_C_g_per_m2);
     SOIL_COL(labile_N_g_per_m2);
     SOIL_COL(stable_C_g_per_m2);
@@ -340,6 +342,7 @@ Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndi
         crop_col(std::format("infection_{}_index", sim::kSoilDiseaseIds[d]),
                  [d](const sim::Crop& c) { return c.infection_index[d]; });
     }
+    CROP_COL(disease_susceptibility_factor);  // M5a 프로토타입 3차: 포기 감수성 (작물 평균)
     crop_col("last_gross_g_per_m2", [](const sim::Crop& c) { return c.last_gross_g_per_m2; });
     crop_col("last_respiration_g_per_m2", [](const sim::Crop& c) { return c.last_respiration_g_per_m2; });
     STATUS_COL("excess_index_N", excess_N);

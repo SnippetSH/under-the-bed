@@ -152,6 +152,7 @@ void write_cell(detail::ByteWriter& w, const SoilCell& c) {
     w.i32(c.mulch_def_index);
     write_f64_list(w, c.fumigant_residue_index);
     write_indices(w, c.disinfection_kill_index);
+    w.f64(c.deep_soil_temp_degC);  // M5a 프로토타입 3차
 }
 
 void read_cell(detail::ByteReader& r, SoilCell& c) {
@@ -203,6 +204,7 @@ void read_cell(detail::ByteReader& r, SoilCell& c) {
     c.mulch_def_index = r.i32();
     read_f64_list(r, c.fumigant_residue_index);
     read_indices(r, c.disinfection_kill_index);
+    c.deep_soil_temp_degC = r.f64();  // M5a 프로토타입 3차
 }
 
 void write_crop(detail::ByteWriter& w, const Crop& c) {
@@ -292,6 +294,7 @@ void write_crop(detail::ByteWriter& w, const Crop& c) {
     for (const bool reported : c.disease_onset_reported) {
         w.u8(reported ? 1 : 0);
     }
+    w.f64(c.disease_susceptibility_factor);  // M5a 프로토타입 3차
 }
 
 void read_crop(detail::ByteReader& r, Crop& c) {
@@ -421,6 +424,7 @@ void read_crop(detail::ByteReader& r, Crop& c) {
         }
         reported = flag == 1;
     }
+    c.disease_susceptibility_factor = r.f64();  // M5a 프로토타입 3차
 }
 
 // 세이브의 작물 구조 검사: 과위·화방 인덱스가 범위 안이고, 꽃(set = false)은 건물이 0이고,
@@ -465,6 +469,8 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.soil_temperature.relax_rate_per_hour);
     w.f64(p.soil_temperature.heat_degC_per_g_C);
     w.f64(p.soil_temperature.evap_cooling_degC_per_mm);
+    w.f64(p.soil_temperature.deep_coupling_fraction);
+    w.f64(p.soil_temperature.deep_relax_rate_per_hour);
     w.f64(p.organic_matter.labile_decay_rate_per_hour);
     w.f64(p.organic_matter.stable_decay_rate_per_hour);
     w.f64(p.organic_matter.humification_fraction);
@@ -745,6 +751,8 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(m.mycorrhiza_p_release_factor);
     w.f64(m.mycorrhiza_water_relief_factor);
     w.f64(m.mycorrhiza_salt_relief_factor);
+    w.f64(m.pathogen_spread_index);
+    w.f64(m.susceptibility_spread_index);
     write_curve(w, m.moist_heat_curve);
     write_curve(w, m.decomposer_food_curve);
     write_curve(w, m.antagonist_food_curve);
@@ -813,6 +821,8 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.soil_temperature.relax_rate_per_hour = r.f64();
     p.soil_temperature.heat_degC_per_g_C = r.f64();
     p.soil_temperature.evap_cooling_degC_per_mm = r.f64();
+    p.soil_temperature.deep_coupling_fraction = r.f64();
+    p.soil_temperature.deep_relax_rate_per_hour = r.f64();
     p.organic_matter.labile_decay_rate_per_hour = r.f64();
     p.organic_matter.stable_decay_rate_per_hour = r.f64();
     p.organic_matter.humification_fraction = r.f64();
@@ -1113,6 +1123,8 @@ void read_params(detail::ByteReader& r, Params& p) {
     m.mycorrhiza_p_release_factor = r.f64();
     m.mycorrhiza_water_relief_factor = r.f64();
     m.mycorrhiza_salt_relief_factor = r.f64();
+    m.pathogen_spread_index = r.f64();
+    m.susceptibility_spread_index = r.f64();
     read_curve(r, m.moist_heat_curve);
     read_curve(r, m.decomposer_food_curve);
     read_curve(r, m.antagonist_food_curve);
