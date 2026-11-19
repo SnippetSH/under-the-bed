@@ -1,7 +1,7 @@
 # S11 alkaline: pH 7.8, 적정 관수, 21일 — manganese.md S11 표.
 # 값은 전부 게임용 임의값이에요 (기준 토양 = 이행된 M2 s4_optimal, docs/spec/m3-overview.md).
 
-schema_version = 5
+schema_version = 6
 
 [scenario]
 name = "m3/s11_alkaline"
@@ -45,6 +45,15 @@ s_g_per_m2 = 3.0
 seedling_grade = "B"       # 모종 등급 (M4 이행, 잎 28 / 관부 16 / 뿌리 12 g/m2)
 plants_per_m2 = 8.0
 initial_establishment_index = 1.0  # (2026-11-18 프로토타입 점검으로 조정)
+
+[microbes]  # M5a 필수: 모든 셀의 무리별 시작 지수 (m5-overview 11장 기본값. 병원균 0 = 오염 없음)
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 1.0
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.0
+phytophthora = 0.0
 
 [difficulty]
 stress_combination = "minimum"

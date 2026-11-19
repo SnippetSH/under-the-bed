@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "sim/soil.hpp"
+
 namespace sim {
 
 // 한 시간 동안의 외부 기상 입력
@@ -43,6 +45,8 @@ struct SoilInit {
     double mn_g_per_m2 = 0.0;
     double mn_oxide_g_per_m2 = 0.0;
     double p_fixed_g_per_m2 = 0.0;
+    // M5a: 시나리오 `[microbes]`(필수). 모든 셀의 무리별 시작 지수 0~1 (MicrobeGroup 순서)
+    MicrobeIndices microbe_index{};
 
     bool operator==(const SoilInit&) const = default;
 };

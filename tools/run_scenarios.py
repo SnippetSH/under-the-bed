@@ -1,9 +1,12 @@
-"""M1~M4 비교 시나리오(S1~S3, S4~S10, S5·S6·S11·S12, M4 작기·처방·적과·S13·S15·S18)를 sim-cli로 돌리고
-겹친 그래프를 runs/<m1|m2|m3|m4>/에 저장해요.
+"""M1~M5a 비교 시나리오(S1~S3, S4~S10, S5·S6·S11·S12, M4 작기·처방·적과·S13·S15·S18, M5a S19~S25·S33)를 sim-cli로 돌리고
+겹친 그래프를 runs/<m1|m2|m3|m4|m5a>/에 저장해요.
 
 시나리오 파일은 data/scenarios/<m1|m2|m3|m4>/<name>.toml 이에요(S11-lime은 m2의 s9_* 시나리오를 읽고 runs/m3/에 써요).
 없는 파일이 있는 그룹은 건너뛰어요. M4 그룹(M4-season, M4-prescriptions, M4-thinning, S13, S15, S18-winter,
 S18-autumn, S18-co2)은 runs/m4/에 써요. 같은 시나리오·기간은 한 번만 돌려 CSV를 같이 써요.
+M5a 그룹(M5a-S19, M5a-S19b, M5a-S19c, M5a-S20, M5a-S21, M5a-S21-chem, M5a-S22, M5a-S23, M5a-S24, M5a-S25, M5a-S33-disinfect,
+M5a-S33-planted)은 data/scenarios/m5a/(tools/gen_m5a_scenarios.py가 만듦)를 읽고 runs/m5a/에 써요. 열은 토양 온도·미생물 지수·NH4/NO3/NO2·
+용액 Mn·감염 지수·수확이에요. M5a-S22는 소독 변형(정식이 tick 1488)의 앞쪽을 잘라 x축을 맞춰요(Group.trim_ticks).
 작기(263일) 그룹은 Release 빌드 sim-cli가 빨라요(--cli로 지정).
 M4-season, M4-prescriptions, M4-thinning은 월별 수확량 막대 그래프(<그룹>_monthly.png)도 만들어요.
 
@@ -36,6 +39,8 @@ class Group:
     days: int
     columns: tuple[str, ...]
     scenario_dir: str | None = None  # 시나리오 폴더가 출력 폴더와 다를 때
+    days_by_scenario: tuple[tuple[str, int], ...] = ()  # 시나리오마다 실행 일수가 다를 때 (days는 기본값)
+    trim_ticks: tuple[tuple[str, int], ...] = ()  # 시나리오 앞쪽 N틱을 잘라(CSV 사본) x축을 맞춰요
     monthly: bool = False  # True면 월별 수확량 막대 그래프(<그룹>_monthly.png)도 만들어요 (M4 작기)
     no_hash: bool = False  # True면 sim-cli에 --no-hash (긴 실행에서 해시 열을 빼서 빨라요)
 
@@ -92,6 +97,52 @@ GROUPS = [
           no_hash=True),
 ]
 
+# M5a (2026-11-19). 시나리오는 data/scenarios/m5a/ (tools/gen_m5a_scenarios.py). 열은 판정 지표를 중심으로 골랐어요.
+M5A = "m5a"
+MICROBE_COLS = ("decomposer_index", "nitrifier_aob_index", "nitrifier_nob_index", "antagonist_index", "mycorrhiza_index",
+                "fusarium_index", "phytophthora_index")
+KILL_COLS = ("disinfection_kill_cum_fusarium_index", "disinfection_kill_cum_phytophthora_index",
+             "disinfection_kill_cum_nitrifier_aob_index", "disinfection_kill_cum_antagonist_index")
+S19_COLS = ("soil_temp_degC", "water_mm", "fusarium_index", "phytophthora_index") + KILL_COLS[:2]
+S20_COLS = ("soil_temp_degC",) + MICROBE_COLS + ("nh4_N_g_per_m2", "fumigant_residue_dazomet_index",
+                                                  "fumigant_residue_chloropicrin_index")
+S21_COLS = ("nh4_N_g_per_m2", "no2_N_g_per_m2", "no3_N_g_per_m2", "mn_solution_g_per_m2", "sufficiency_Ca",
+            "root_health", "nitrifier_aob_index", "nitrifier_nob_index", "fumigant_residue_dazomet_index",
+            "fumigant_residue_chloropicrin_index", "leaf_g_per_m2")
+S22_COLS = ("infection_fusarium_index", "fusarium_index", "antagonist_index", "crop_alive_fraction", "root_health",
+            "leaf_g_per_m2")
+S23_COLS = ("infection_phytophthora_index", "phytophthora_index", "soil_temp_degC", "aeration_index", "root_health",
+            "crop_alive_fraction")
+S24_COLS = ("antagonist_index", "fusarium_index", "infection_fusarium_index", "labile_C_g_per_m2")
+S25_COLS = ("mycorrhiza_index", "p_g_per_m2", "p_fixed_g_per_m2", "sufficiency_P", "leaf_g_per_m2", "water_mm")
+S33_DISINFECT_COLS = ("soil_temp_degC", "water_mm", "mulched_fraction", "fusarium_index", "phytophthora_index",
+                      "disinfection_kill_cum_fusarium_index")
+S33_PLANTED_COLS = ("soil_temp_degC", "water_mm", "ledger_water_evaporated_mm", "last_gross_g_per_m2",
+                    "leaf_g_per_m2", "harvest_fresh_g_per_m2")
+
+GROUPS += [
+    Group("M5a-S19", M5A, ("s19_solar_4w", "s19_closed_nofilm", "s19_vented"), 28, S19_COLS, no_hash=True),
+    Group("M5a-S19b", M5A, ("s19_solar_2w", "s19_solar_4w"), 28, S19_COLS, no_hash=True),
+    Group("M5a-S19c", M5A, ("s19_solar_dry", "s19_solar_4w"), 28, S19_COLS, no_hash=True),
+    Group("M5a-S20", M5A, ("s20_none", "s20_solar", "s20_dazomet", "s20_chloropicrin"), 70, S20_COLS, no_hash=True),
+    Group("M5a-S21", M5A, ("s21_plant_day0", "s21_plant_day42", "s21_plant_day0_alkaline"), 98, S21_COLS,
+          no_hash=True),
+    Group("M5a-S21-chem", M5A, ("s21_dazomet_day0", "s21_dazomet_day3", "s21_dazomet_day21", "s21_chloropicrin_day21"), 77, S21_COLS,
+          no_hash=True),
+    Group("M5a-S22", M5A, ("s22_fusarium_none", "s22_fusarium_solar", "s22_fusarium_antagonist", "s22_fusarium_acid"),
+          120, S22_COLS, days_by_scenario=(("s22_fusarium_solar", 182),), trim_ticks=(("s22_fusarium_solar", 1488),),
+          no_hash=True),
+    Group("M5a-S23", M5A, ("s23_proper", "s23_waterlogged_mild", "s23_waterlogged_hot", "s23_waterlogged_cold"), 28,
+          S23_COLS, no_hash=True),
+    Group("M5a-S24", M5A, ("s24_no_compost", "s24_compost"), 60, S24_COLS, no_hash=True),
+    Group("M5a-S25", M5A, ("s25_standard_none", "s25_standard_inoc", "s25_dry_none", "s25_dry_inoc", "s25_highp_none",
+                           "s25_highp_inoc"), 42, S25_COLS, no_hash=True),
+    Group("M5a-S33-disinfect", M5A, ("s33_disinfect_clear", "s33_disinfect_black", "s33_disinfect_white",
+                                     "s33_disinfect_none"), 28, S33_DISINFECT_COLS, no_hash=True),
+    Group("M5a-S33-planted", M5A, ("s33_planted_clear", "s33_planted_black", "s33_planted_white", "s33_planted_none"),
+          60, S33_PLANTED_COLS, no_hash=True),
+]
+
 # 월별 수확량 막대 그래프의 달 이름·순서 (정식 9월 ~ 5월)
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 SEASON_MONTH_ORDER = [8, 9, 10, 11, 0, 1, 2, 3, 4]
@@ -139,6 +190,23 @@ def plot_monthly(csvs: list[Path], labels: list[str], out: Path, title: str) -> 
     print(f"wrote {out}")
 
 
+def trimmed_copy(csv_path: Path, drop_ticks: int) -> Path:
+    """앞쪽 drop_ticks행을 잘라 tick을 0부터 다시 매긴 CSV 사본(<이름>_aligned.csv)을 만들어요."""
+    out = csv_path.with_name(csv_path.stem + "_aligned.csv")
+    with csv_path.open(encoding="utf-8", newline="") as f:
+        lines = f.read().splitlines()
+    header, rows = lines[0], lines[1:]
+    names = header.split(",")
+    tick_col = names.index("tick")
+    kept = []
+    for row in rows[drop_ticks:]:
+        cells = row.split(",")
+        cells[tick_col] = str(int(cells[tick_col]) - drop_ticks)
+        kept.append(",".join(cells))
+    out.write_text("\n".join([header] + kept) + "\n", encoding="utf-8")
+    return out
+
+
 def run_cli(cli: Path, params: Path, scenario: Path, ticks: int, out: Path, no_hash: bool = False) -> bool:
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [str(cli), "--params", str(params), "--scenario", str(scenario), "--ticks", str(ticks), "--out", str(out)]
@@ -183,15 +251,18 @@ def main() -> int:
         print(f"[{group.name}] {group.days} days: {', '.join(group.scenarios)}")
         csvs: list[Path] = []
         ok = True
+        days_of = dict(group.days_by_scenario)
+        trim_of = dict(group.trim_ticks)
         for name, path in paths.items():
             csv_path = out_dir / f"{name}.csv"
-            key = (path, group.days)
+            days = days_of.get(name, group.days)
+            key = (path, days)
             if key not in done:
-                if not run_cli(args.cli, args.params, path, group.days * HOURS_PER_DAY, csv_path, group.no_hash):
+                if not run_cli(args.cli, args.params, path, days * HOURS_PER_DAY, csv_path, group.no_hash):
                     ok = False
                     break
                 done[key] = csv_path
-            csvs.append(done[key])
+            csvs.append(trimmed_copy(done[key], trim_of[name]) if name in trim_of else done[key])
         if not ok:
             failures += 1
             continue

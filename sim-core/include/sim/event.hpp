@@ -42,8 +42,16 @@ struct FruitHarvestedEvent {
     bool operator==(const FruitHarvestedEvent&) const = default;
 };
 
-using EventPayload =
-    std::variant<CommandAppliedEvent, NitriteThresholdExceededEvent, PlantDiedEvent, FruitHarvestedEvent>;
+// 토양 병해 증상이 보이기 시작함: 감염 지수가 처음 onset_infection_index 이상 (soil-microbes 3번, M5a)
+struct DiseaseOnsetEvent {
+    std::uint32_t tile_index;
+    SoilDisease disease;
+
+    bool operator==(const DiseaseOnsetEvent&) const = default;
+};
+
+using EventPayload = std::variant<CommandAppliedEvent, NitriteThresholdExceededEvent, PlantDiedEvent,
+                                  FruitHarvestedEvent, DiseaseOnsetEvent>;
 
 struct Event {
     std::uint64_t tick;  // 이벤트가 발생한 틱 (처리 중이던 틱 번호)

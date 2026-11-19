@@ -17,15 +17,18 @@ void apply_irrigation(SoilCell& cell, double amount_mm, const AerationParams& ae
 }
 
 double update_soil_water(SoilCell& cell, const SoilWaterParams& params, double inside_solar_W_per_m2,
-                         double canopy_interception, double transpiration_demand_mm, Ledger& ledger) {
-    // 증발: 잠재 증발 × 수분 계수 × (1 − 수관 차광), 보유 수분을 넘지 않아요
+                         double canopy_interception, double transpiration_demand_mm, Ledger& ledger,
+                         double evaporation_factor) {
+    // 증발: 잠재 증발 × 수분 계수 × (1 − 수관 차광) × 멀칭 증발 배율(M5a), 보유 수분을 넘지 않아요
     const double solar = std::max(0.0, inside_solar_W_per_m2);
     const double potential_mm =
         std::max(0.0, params.evap_mm_per_hour_per_W_per_m2 * solar + params.evap_base_mm_per_hour);
     const double relative_water = cell.field_capacity_mm > 0.0 ? cell.water_mm / cell.field_capacity_mm : 0.0;
     const double shade_factor = 1.0 - std::clamp(canopy_interception, 0.0, 1.0);
-    const double evaporated_mm = std::clamp(potential_mm * params.evap_moisture_curve(relative_water) * shade_factor,
-                                            0.0, std::max(0.0, cell.water_mm));
+    const double mulch_factor = evaporation_factor > 0.0 ? evaporation_factor : 0.0;  // 음수·NaN은 0
+    const double evaporated_mm =
+        std::clamp(potential_mm * params.evap_moisture_curve(relative_water) * shade_factor * mulch_factor, 0.0,
+                   std::max(0.0, cell.water_mm));
     cell.water_mm -= evaporated_mm;
     ledger.water_evaporated_mm += evaporated_mm;
 

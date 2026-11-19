@@ -104,10 +104,47 @@ struct ThinFlowersCommand {
     bool operator==(const ThinFlowersCommand&) const = default;
 };
 
+// ---- M5a (docs/spec/disinfection.md, soil-microbes.md, m5-overview 8장) ----
+
+// 멀칭 덮기·걷기. mulch_id = params [[mulch]] id, "none"이면 걷음
+struct SetMulchCommand {
+    TileArea area;
+    std::string mulch_id;
+
+    bool operator==(const SetMulchCommand&) const = default;
+};
+
+// 약제 소독: 잔류 += g_per_m2 × residue_index_per_g_per_m2
+struct ApplyDisinfectantCommand {
+    TileArea area;
+    std::string disinfectant_id;
+    double g_per_m2 = 0.0;
+
+    bool operator==(const ApplyDisinfectantCommand&) const = default;
+};
+
+// 유익균 제품 투입
+struct AddInoculantCommand {
+    TileArea area;
+    std::string inoculant_id;
+    double g_per_m2 = 0.0;
+
+    bool operator==(const AddInoculantCommand&) const = default;
+};
+
+// 정식 (하우스 전체, 2026-11-19 디렉터 결정). 살아 있는 작물이 하나라도 있으면 enqueue에서 거부
+struct PlantCommand {
+    std::string seedling_grade;
+    double plants_per_m2 = 0.0;
+
+    bool operator==(const PlantCommand&) const = default;
+};
+
 // 플레이어 행동. 직렬화는 variant 인덱스를 쓰므로, 기존 항목의 순서를 바꾸지 말고 뒤에만 추가해요.
 using Command = std::variant<NoopCommand, IrrigateCommand, AddCompostCommand, AddFertilizerCommand, AddLimeCommand,
                              TillCommand, SetWindowCommand, SetHeaterCommand, SetCoverLayersCommand,
-                             ThinFlowersCommand>;
+                             ThinFlowersCommand, SetMulchCommand, ApplyDisinfectantCommand, AddInoculantCommand,
+                             PlantCommand>;
 
 struct QueuedCommand {
     std::uint64_t seq;  // 투입 순서 일련번호

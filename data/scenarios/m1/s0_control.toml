@@ -1,6 +1,6 @@
 # S1 기준(무처리) — docs/spec/m1-overview.md "시나리오 테스트 (M1)" 표. 값은 전부 게임용 임의값이에요.
 
-schema_version = 5
+schema_version = 6
 
 [scenario]
 name = "s0_control"
@@ -39,6 +39,15 @@ ca_g_per_m2 = 400.0
 mg_g_per_m2 = 60.0
 p_g_per_m2 = 25.0
 s_g_per_m2 = 3.0
+
+[microbes]  # M5a 필수: 모든 셀의 무리별 시작 지수 (m5-overview 11장 기본값. 병원균 0 = 오염 없음)
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 1.0
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.0
+phytophthora = 0.0
 
 [difficulty]
 stress_combination = "minimum"

@@ -72,6 +72,7 @@ private:
 // 서브시스템 스트림 ID. 순서를 바꾸지 말고 뒤에만 추가해요.
 enum class RngStream : std::uint64_t {
     Biology = 1,  // M4 strawberry-fruit "생물 변이 난수": 꽃 수 소수부, 수정률, 크기 변이, 저온 과실 손실
+    Disease = 2,  // M5a 토양 병해 차이: 포기 감수성, 병원균 시작 편차 (생물 변이 스트림 순서를 건드리지 않게 분리)
 };
 
 [[nodiscard]] inline Pcg32 make_stream(std::uint64_t master_seed, std::uint64_t stream_id) {

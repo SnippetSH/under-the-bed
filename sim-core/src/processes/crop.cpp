@@ -313,6 +313,37 @@ double fruit_target_dry_g(const Fruit& fruit, const FruitParams& fp, double deve
 
 }  // namespace
 
+void return_dead_crop_to_soil(Crop& crop, SoilCell& cell, const CropParams& params, Ledger& ledger) {
+    if (crop.present) {
+        // 낙엽 규칙(share = 1): 체내 원소 전부를 토양에, 건물 × C 비율 → 이분해성 C
+        const double leaf_fruit_g_per_m2 = non_negative(crop.leaf_g_per_m2) + crop.fruit_g_per_m2();
+        const double crown_root_g_per_m2 = non_negative(crop.crown_g_per_m2) + non_negative(crop.root_g_per_m2);
+        const double dead_g_per_m2 = leaf_fruit_g_per_m2 + crown_root_g_per_m2;
+        const double litter_C_g_per_m2 = return_litter(crop, cell, params, dead_g_per_m2, dead_g_per_m2);
+        const double leaf_C_g_per_m2 = leaf_fruit_g_per_m2 * params.dry_matter_C_fraction;
+        ledger.C_leaf_litter_g += leaf_C_g_per_m2;
+        ledger.C_root_litter_g += litter_C_g_per_m2 - leaf_C_g_per_m2;
+        // 건물이 0이라 return_litter가 옮기지 않은 원소(있다면)도 토양으로
+        cell.labile_N_g_per_m2 += non_negative(crop.plant_N_g_per_m2);
+        cell.p_g_per_m2 += non_negative(crop.plant_P_g_per_m2);
+        cell.k_g_per_m2 += non_negative(crop.plant_K_g_per_m2);
+        cell.k_solution_g_per_m2 += non_negative(crop.plant_K_g_per_m2);
+        cell.ca_g_per_m2 += non_negative(crop.plant_Ca_g_per_m2);
+        cell.ca_solution_g_per_m2 += non_negative(crop.plant_Ca_g_per_m2);
+        cell.mg_g_per_m2 += non_negative(crop.plant_Mg_g_per_m2);
+        cell.mg_solution_g_per_m2 += non_negative(crop.plant_Mg_g_per_m2);
+        cell.mn_g_per_m2 += non_negative(crop.plant_Mn_g_per_m2);
+        cell.mn_solution_g_per_m2 += non_negative(crop.plant_Mn_g_per_m2);
+        // 남은 저장 (보통 고사 때 이미 0)
+        if (crop.reserve_g_per_m2 > 0.0) {
+            const double reserve_C_g_per_m2 = crop.reserve_g_per_m2 * params.dry_matter_C_fraction;
+            cell.labile_C_g_per_m2 += reserve_C_g_per_m2;
+            ledger.C_root_litter_g += reserve_C_g_per_m2;
+        }
+    }
+    crop = Crop{};
+}
+
 const SeedlingGradeDef* find_seedling_grade(const Params& params, std::string_view id) {
     for (const SeedlingGradeDef& grade : params.seedling_grades) {
         if (grade.id == id) {
@@ -469,8 +500,8 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
     const double growth_factor_establish = update_phenology(crop, params, env, fruit_dry_g_per_m2, biology_rng);
     judge_anthesis(crop, fp, env.house_air_temp_mean_degC, env.tick, biology_rng);
 
-    // ---- h2. 스트레스 계수 ----
-    const WaterSaltFactors water_salt = water_salt_factors(cell, cp);
+    // ---- h2. 스트레스 계수 (M5a: 균근균 완화, soil-microbes 2번. h5 흡수도 같은 값을 써요) ----
+    const WaterSaltFactors water_salt = mycorrhiza_relieved(water_salt_factors(cell, cp), cell, params.microbes);
     const NutrientStatus status = status_from_requirement(crop, nutrient_requirement(crop, cp, fruit_dry_g_per_m2));
     // StressFactor 순서 그대로 (동률이면 앞선 요인을 기록)
     const std::array<double, kStressFactorCount> factors{
@@ -506,8 +537,12 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
 
     // ---- h3. 총생산 − 유지 호흡 → 분배 ----
     const double interception = canopy_interception(crop, cp);
-    const double potential_g_per_m2 = cp.light_use_efficiency_g_per_MJ * non_negative(env.inside_solar_W_per_m2) *
-                                      cp.par_fraction * kMJ_per_W_h * interception * cp.temp_curve(air_degC);
+    // M5a 백색 필름 반사광 (disinfection 1번): 광합성 광량에만 더해요
+    const double crop_light_W_per_m2 =
+        non_negative(env.inside_solar_W_per_m2) *
+        (1.0 + non_negative(env.canopy_reflect_factor) * (1.0 - std::clamp(interception, 0.0, 1.0)));
+    const double potential_g_per_m2 = cp.light_use_efficiency_g_per_MJ * crop_light_W_per_m2 * cp.par_fraction *
+                                      kMJ_per_W_h * interception * cp.temp_curve(air_degC);
     const double gross_g_per_m2 = non_negative(potential_g_per_m2 * cp.co2_growth_curve(env.house_co2_ppm) *
                                                combined_factor * growth_factor_establish);
     const double respiration_g_per_m2 =
@@ -749,15 +784,19 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
                                                      std::min(mn_demand_g_per_m2, mn_capacity_g_per_m2));
     }
 
-    // ---- h6. 뿌리 건강도 → 뿌리 고사 → 낙엽 → 고사 판정 ----
+    // ---- h6. 감염 진행 (M5a, soil-microbes 3번) → 뿌리 건강도 → 뿌리 고사 → 낙엽 → 고사 판정 ----
+    result.disease_onsets = update_soil_infection(crop, cell, params, env.tile_index);
     const RootDamageParams& rd = params.root_damage;
     const double effective_nitrite = non_negative(effective_nitrite_g_N_per_m2(cell, params.nitrification));
-    // RootDamageCause 순서 그대로 (동률이면 앞선 원인)
-    const std::array<double, 4> damage_terms{
+    // RootDamageCause 순서 그대로 (동률이면 앞선 원인). M5a: 병(감염 지수), 약제(잔류 × 활성의 합)
+    const std::array<double, 7> damage_terms{
         rd.waterlog_curve(cell.aeration_index),
         rd.heat_curve(cell.soil_temp_degC),
         rd.nitrite_curve(effective_nitrite),
         rd.acid_curve(cell.ph),
+        rd.fusarium_curve(crop.infection_index[static_cast<std::size_t>(SoilDisease::Fusarium)]),
+        rd.phytophthora_curve(crop.infection_index[static_cast<std::size_t>(SoilDisease::Phytophthora)]),
+        rd.fumigant_curve(fumigant_exposure_index(cell, params)),
     };
     double damage_per_hour = 0.0;
     std::size_t dominant_cause_index = 0;

@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <string>
 #include <string_view>
@@ -28,7 +29,7 @@ std::string weather_csv(std::size_t rows, std::string_view newline = "\n") {
 }
 
 constexpr std::string_view kValidScenario = R"(
-schema_version = 5
+schema_version = 6
 [scenario]
 name = "t"
 seed = 7
@@ -38,6 +39,14 @@ weather_csv = "w.csv"
 bed_rows = 2
 bed_cols = 5
 cover_layers = 3
+[microbes]
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 0.9
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.0
+phytophthora = 0.25
 [soil]
 field_capacity_mm = 60.0
 water_mm = 45
@@ -68,7 +77,7 @@ stress_combination = "minimum"
 
 // 형식 검증용 params 문서 (값은 명세 값이 아니어도 돼요)
 constexpr std::string_view kValidParams = R"(
-schema_version = 5
+schema_version = 6
 [house]
 layer_transmittance_factor = 0.9
 layer_resistance_m2K_per_W = 0.13
@@ -157,6 +166,8 @@ drainage_compaction_curve = [[0, 1.0], [1.0, 0.1]]
 relax_rate_per_hour = 0.04
 heat_degC_per_g_C = 0.4
 evap_cooling_degC_per_mm = 0.0
+deep_coupling_fraction = 0
+deep_relax_rate_per_hour = 0
 [organic_matter]
 labile_decay_rate_per_hour = 0.004
 stable_decay_rate_per_hour = 0.00002
@@ -245,6 +256,9 @@ waterlog_curve = [[0, 0.01], [0.5, 0]]
 heat_curve = [[32, 0], [45, 0.03]]
 nitrite_curve = [[0, 0], [8, 0.015]]
 acid_curve = [[4.0, 0.006], [5.6, 0.0]]
+fusarium_curve = [[0, 0], [0.8, 0.01]]
+phytophthora_curve = [[0, 0], [0.8, 0.02]]
+fumigant_curve = [[0, 0], [1, 0.2]]
 [crop]
 specific_leaf_area_m2_per_g = 0.02
 light_interception_curve = [[0, 0], [4, 0.94]]
@@ -302,6 +316,113 @@ co2_g_per_g_dry_matter = 1.65
 co2_growth_curve = [[50, 0], [400, 1.0], [1200, 1.25]]
 cold_leaf_damage_curve = [[-6, 0.05], [0, 0]]
 cold_fruit_loss_curve = [[-4, 0.2], [0, 0]]
+[microbes]
+capacity_floor_index = 0.01
+decomposer_activity_curve = [[0, 0.15], [1, 1]]
+aob_activity_curve = [[0, 0], [1, 1]]
+nob_activity_curve = [[0, 0], [1, 1]]
+antagonist_protection_factor = 0.5
+mycorrhiza_p_release_factor = 2.0
+mycorrhiza_water_relief_factor = 0.3
+mycorrhiza_salt_relief_factor = 0.3
+pathogen_spread_index = 0
+susceptibility_spread_index = 0
+moist_heat_curve = [[0.2, 0.3], [0.8, 1.0]]
+decomposer_food_curve = [[0, 0.4], [30, 1]]
+antagonist_food_curve = [[0, 0.3], [60, 1]]
+mycorrhiza_host_curve = [[0, 0.05], [15, 1]]
+mycorrhiza_p_curve = [[0, 1], [100, 0.1]]
+[microbes.decomposer]
+growth_rate_per_hour = 0.01
+temp_curve = [[0, 0], [25, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.0002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0.001
+competition = {}
+[microbes.nitrifier_aob]
+growth_rate_per_hour = 0.01
+temp_curve = [[0, 0], [25, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.0002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0.001
+competition = {}
+[microbes.nitrifier_nob]
+growth_rate_per_hour = 0.01
+temp_curve = [[0, 0], [25, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.0002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0.001
+competition = {}
+[microbes.antagonist]
+growth_rate_per_hour = 0.01
+temp_curve = [[0, 0], [25, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.0002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0.001
+competition = { fusarium = 0.3, phytophthora = 0.3 }
+[microbes.mycorrhiza]
+growth_rate_per_hour = 0.01
+temp_curve = [[0, 0], [25, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.0002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0.001
+competition = {}
+[microbes.fusarium]
+growth_rate_per_hour = 0.01
+temp_curve = [[0, 0], [25, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.0002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0.001
+competition = { antagonist = 0.8 }
+saprophytic_capacity_index = 0.3
+host_capacity_index = 0.7
+[microbes.phytophthora]
+growth_rate_per_hour = 0.01
+temp_curve = [[0, 0], [25, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.0002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0.001
+competition = { antagonist = 0.8 }
+saprophytic_capacity_index = 0.3
+host_capacity_index = 0.7
+[soil_disease.fusarium]
+infection_rate_per_hour = 0.004
+infection_env_curve_temp = [[15, 0], [28, 1]]
+infection_env_curve_o2 = [[0, 1], [1, 1]]
+infection_env_curve_ph = [[4.5, 1.8], [6.5, 1]]
+onset_infection_index = 0.15
+[soil_disease.phytophthora]
+infection_rate_per_hour = 0.01
+infection_env_curve_temp = [[8, 0.1], [25, 1]]
+infection_env_curve_o2 = [[0, 1], [0.5, 0]]
+infection_env_curve_ph = [[0, 1], [14, 1]]
+onset_infection_index = 0.1
+[disinfection]
+flush_N_g_per_m2_per_index = 6.0
+flush_C_to_N_ratio = 6
+mn_reduction_per_index = 0.03
+till_residue_release_fraction = 0.5
 [[seedling_grade]]
 id = "A"
 leaf_g_per_plant = 4.0
@@ -360,6 +481,34 @@ name = "lime one"
 eq_per_kg = 20.0
 ca_fraction = 1.0
 mg_fraction = 0.0
+[[mulch]]
+id = "clear_film"
+name = "clear"
+soil_solar_gain_degC_per_W_per_m2 = 0.025
+evaporation_factor = 0.1
+fumigant_retention_factor = 0.3
+canopy_reflect_factor = 0.0
+[[mulch]]
+id = "white_film"
+name = "white"
+soil_solar_gain_degC_per_W_per_m2 = -0.004
+evaporation_factor = 0.2
+fumigant_retention_factor = 0.3
+canopy_reflect_factor = 0.25
+[[disinfectant]]
+id = "dazomet"
+name = "dazomet"
+residue_index_per_g_per_m2 = 0.03333333333333333
+kill_rate_per_hour = { decomposer = 0.006, nitrifier_aob = 0.002, nitrifier_nob = 0.001, antagonist = 0.006, mycorrhiza = 0.02, fusarium = 0.012, phytophthora = 0.015 }
+decay_rate_per_hour = 0.02
+decay_temp_curve = [[5, 0.3], [35, 1.5]]
+activation_moisture_curve = [[0.2, 0.1], [0.7, 1]]
+[[inoculant]]
+id = "bacillus_product"
+name = "bacillus"
+index_gain_per_g_per_m2 = { antagonist = 0.02 }
+C_g_per_kg = 300.0
+N_g_per_kg = 10.0
 )";
 
 // 문서 안의 문자열을 한 번 바꿔요 (없으면 테스트 실수라서 실패).
@@ -386,7 +535,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
     SECTION("valid document fills every field") {
         auto p = simdata::parse_params_toml(kValidParams, "p.toml");
         REQUIRE(p.has_value());
-        CHECK(p->schema_version == 5);
+        CHECK(p->schema_version == 6);
         CHECK(p->house.ground_heat_W_per_m2 == 6.1);  // M4: house.base_offset_degC 삭제로 같은 float 키 검사로 바꿈
         CHECK(p->soil_water.evap_moisture_curve.points.size() == 2);
         CHECK(p->soil_water.evap_moisture_curve(0.5) == 0.5);
@@ -481,7 +630,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
                    ContainsSubstring("missing required key 'soil_water.drainage_rate_per_hour'"));
     }
     SECTION("missing table is rejected") {
-        auto p = simdata::parse_params_toml("schema_version = 5\n", "p.toml");
+        auto p = simdata::parse_params_toml("schema_version = 6\n", "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'house'"));
     }
@@ -513,7 +662,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(q.error().message, ContainsSubstring("organic_matter.humification_fraction"));
     }
     SECTION("old schema version is rejected") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 5", "schema_version = 4"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -626,7 +775,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(doc.error().message, ContainsSubstring("unknown key 'house.bed_depth_cm'"));
     }
     SECTION("missing table") {
-        auto doc = simdata::parse_scenario_toml("schema_version = 5\n[scenario]\n", "s.toml");
+        auto doc = simdata::parse_scenario_toml("schema_version = 6\n[scenario]\n", "s.toml");
         CHECK_FALSE(doc.has_value());
     }
     SECTION("negative seed") {
@@ -634,7 +783,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
             simdata::parse_scenario_toml(replaced(kValidScenario, "seed = 7", "seed = -1"), "s.toml").has_value());
     }
     SECTION("unsupported schema version") {
-        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 5", "schema_version = 4"),
+        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 6", "schema_version = 4"),
                                                 "s.toml");
         REQUIRE_FALSE(doc.has_value());
         CHECK(doc.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -955,7 +1104,7 @@ TEST_CASE("M3 params reject missing, removed and unknown keys", "[unit][loader][
         CHECK_FALSE(p.has_value());
     }
     SECTION("params schema 4 (M3) is rejected as an old version") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 5", "schema_version = 4"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -987,7 +1136,7 @@ TEST_CASE("M3 scenario soil keys are read and required", "[unit][loader][m3]") {
 TEST_CASE("Repository params and scenarios carry the M3 fields", "[unit][loader][data][m3]") {
     auto params = simdata::load_params(test::repo_path("data/params.toml"));
     REQUIRE(params.has_value());
-    CHECK(params->schema_version == 5);
+    CHECK(params->schema_version == 6);
     CHECK(params->cation_exchange.solver_iterations == 60);
     CHECK(params->crop.mn_max_uptake_ratio == 30.0);
     bool has_mnso4 = false;
@@ -1086,7 +1235,7 @@ TEST_CASE("M4 params reject missing, removed and malformed keys", "[unit][loader
         CHECK_FALSE(floating.has_value());
     }
     SECTION("params schema 4 (M3) is rejected as an old version") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 5", "schema_version = 4"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -1214,4 +1363,275 @@ TEST_CASE("Repository params and scenarios carry the M4 fields", "[unit][loader]
     REQUIRE(s13->crop.has_value());
     CHECK(s13->crop->seedling_grade == "B");
     CHECK(s13->crop->plants_per_m2 == 8.0);
+}
+
+// ---- M5a (schema 6): 미생물·소독·멀칭·유익균 ----
+
+TEST_CASE("M5a params tables are read", "[unit][loader][m5a]") {
+    auto p = simdata::parse_params_toml(kValidParams, "p.toml");
+    REQUIRE(p.has_value());
+    CHECK(p->schema_version == 6);
+    CHECK(p->microbes.capacity_floor_index == 0.01);
+    CHECK(p->microbes.moist_heat_curve.points.size() == 2);
+    const auto& fus = p->microbes.groups[sim::microbe(sim::MicrobeGroup::Fusarium)];
+    CHECK(fus.competition[sim::microbe(sim::MicrobeGroup::Antagonist)] == 0.8);
+    CHECK(fus.competition[sim::microbe(sim::MicrobeGroup::Fusarium)] == 0.0);
+    CHECK(fus.saprophytic_capacity_index == 0.3);
+    CHECK(fus.host_capacity_index == 0.7);
+    const auto& ant = p->microbes.groups[sim::microbe(sim::MicrobeGroup::Antagonist)];
+    CHECK(ant.competition[sim::microbe(sim::MicrobeGroup::Fusarium)] == 0.3);
+    CHECK(ant.competition[sim::microbe(sim::MicrobeGroup::Phytophthora)] == 0.3);
+    CHECK(ant.saprophytic_capacity_index == 0.0);  // 병원균이 아니라서 읽지 않아요
+    const auto& dec = p->microbes.groups[sim::microbe(sim::MicrobeGroup::Decomposer)];
+    CHECK(dec.competition == sim::MicrobeIndices{});
+    CHECK(p->soil_disease[static_cast<std::size_t>(sim::SoilDisease::Phytophthora)].onset_infection_index == 0.1);
+    CHECK(p->disinfection.till_residue_release_fraction == 0.5);
+    CHECK(p->root_damage.fumigant_curve.points.size() == 2);
+    REQUIRE(p->mulches.size() == 2);
+    CHECK(p->mulches[1].id == "white_film");
+    CHECK(p->mulches[1].soil_solar_gain_degC_per_W_per_m2 == -0.004);
+    REQUIRE(p->disinfectants.size() == 1);
+    CHECK(p->disinfectants[0].kill_rate_per_hour[sim::microbe(sim::MicrobeGroup::NitrifierNob)] == 0.001);
+    REQUIRE(p->inoculants.size() == 1);
+    CHECK(p->inoculants[0].index_gain_per_g_per_m2[sim::microbe(sim::MicrobeGroup::Antagonist)] == 0.02);
+    CHECK(p->inoculants[0].index_gain_per_g_per_m2[sim::microbe(sim::MicrobeGroup::Mycorrhiza)] == 0.0);
+    CHECK(p->inoculants[0].C_g_per_kg == 300.0);
+}
+
+TEST_CASE("M5a params reject missing, unknown and malformed keys", "[unit][loader][m5a]") {
+    SECTION("missing microbes table") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "[microbes]\n", "[microbez]\n"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+    }
+    SECTION("missing group") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "[microbes.mycorrhiza]", "[microbes.myco]"),
+                                            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+    }
+    SECTION("missing curve key (no hidden default)") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "ph_curve = [[0, 1], [14, 1]]\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("ph_curve"));
+    }
+    SECTION("unknown id in competition") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "{ fusarium = 0.3, phytophthora = 0.3 }", "{ fusarium = 0.3, anthracnose = 0.3 }"),
+            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("anthracnose"));
+    }
+    SECTION("competition must not list the group itself") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "{ fusarium = 0.3, phytophthora = 0.3 }", "{ antagonist = 0.3 }"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+    }
+    SECTION("capacity keys are rejected on non-pathogen groups") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "[microbes.mycorrhiza]\n", "[microbes.mycorrhiza]\nhost_capacity_index = 0.5\n"),
+            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("host_capacity_index"));
+    }
+    SECTION("capacity keys are required on pathogens") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "host_capacity_index = 0.7\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("host_capacity_index"));
+    }
+    SECTION("unknown common microbes key") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "[microbes]\n", "[microbes]\nspore_factor = 1\n"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+    }
+    SECTION("disinfectant kill_rate needs all seven ids") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, ", phytophthora = 0.015 }", " }"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+    }
+    SECTION("disinfectant kill_rate rejects unknown ids") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "phytophthora = 0.015 }", "phytophthora = 0.015, rhizoctonia = 0.1 }"), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("rhizoctonia"));
+    }
+    SECTION("inoculant gain may be partial but not unknown") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "{ antagonist = 0.02 }", "{ antagonist = 0.02, mycorrhiza = 0.01 }"), "p.toml");
+        REQUIRE(p.has_value());
+        CHECK(p->inoculants[0].index_gain_per_g_per_m2[sim::microbe(sim::MicrobeGroup::Mycorrhiza)] == 0.01);
+        auto bad = simdata::parse_params_toml(
+            replaced(kValidParams, "{ antagonist = 0.02 }", "{ yeast = 0.02 }"), "p.toml");
+        REQUIRE_FALSE(bad.has_value());
+    }
+    SECTION("missing mulch, disinfectant and inoculant arrays") {
+        for (const char* name : {"[[mulch]]", "[[disinfectant]]", "[[inoculant]]"}) {
+            std::string text(kValidParams);
+            // 배열 이름만 틀리게 바꾸면 필수 배열이 없어요
+            std::string bad = text;
+            std::size_t pos = 0;
+            const std::string from(name);
+            const std::string to = from.substr(0, from.size() - 2) + "x]]";
+            while ((pos = bad.find(from, pos)) != std::string::npos) {
+                bad.replace(pos, from.size(), to);
+                pos += to.size();
+            }
+            REQUIRE_FALSE(simdata::parse_params_toml(bad, "p.toml").has_value());
+        }
+    }
+    SECTION("root_damage needs the M5a curves") {
+        auto p = simdata::parse_params_toml(
+            replaced(kValidParams, "fumigant_curve = [[0, 0], [1, 0.2]]\n", ""), "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK_THAT(p.error().message, ContainsSubstring("fumigant_curve"));
+    }
+    SECTION("schema 5 params are rejected") {
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 5"),
+                                            "p.toml");
+        REQUIRE_FALSE(p.has_value());
+        CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
+    }
+}
+
+TEST_CASE("M5a scenario microbes section is read and required", "[unit][loader][m5a]") {
+    auto doc = simdata::parse_scenario_toml(kValidScenario, "s.toml");
+    REQUIRE(doc.has_value());
+    const auto& mi = doc->scenario.soil.microbe_index;
+    CHECK(mi[sim::microbe(sim::MicrobeGroup::Decomposer)] == 1.0);
+    CHECK(mi[sim::microbe(sim::MicrobeGroup::NitrifierNob)] == 0.9);
+    CHECK(mi[sim::microbe(sim::MicrobeGroup::Antagonist)] == 0.5);
+    CHECK(mi[sim::microbe(sim::MicrobeGroup::Phytophthora)] == 0.25);
+
+    SECTION("missing section") {
+        auto bad = simdata::parse_scenario_toml(replaced(kValidScenario, "[microbes]", "[microbez]"), "s.toml");
+        REQUIRE_FALSE(bad.has_value());
+    }
+    SECTION("missing id") {
+        auto bad = simdata::parse_scenario_toml(replaced(kValidScenario, "fusarium = 0.0\n", ""), "s.toml");
+        REQUIRE_FALSE(bad.has_value());
+        CHECK_THAT(bad.error().message, ContainsSubstring("fusarium"));
+    }
+    SECTION("unknown id") {
+        auto bad = simdata::parse_scenario_toml(replaced(kValidScenario, "fusarium = 0.0\n", "fusarium = 0.0\nanthracnose = 0.1\n"),
+                                                "s.toml");
+        REQUIRE_FALSE(bad.has_value());
+    }
+    SECTION("schema 5 scenarios are rejected") {
+        auto bad = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 6", "schema_version = 5"),
+                                                "s.toml");
+        REQUIRE_FALSE(bad.has_value());
+        CHECK(bad.error().code == sim::ErrorCode::UnsupportedVersion);
+    }
+}
+
+TEST_CASE("M5a schedule actions set_mulch, apply_disinfectant, add_inoculant and plant parse", "[unit][loader][schedule][m5a]") {
+    auto doc = simdata::parse_scenario_toml(scenario_with(R"(
+[[schedule]]
+tick = 1
+action = "set_mulch"
+mulch = "clear_film"
+[[schedule]]
+tick = 2
+action = "set_mulch"
+area = [0, 0, 2, 3]
+mulch = "none"
+[[schedule]]
+tick = 3
+action = "apply_disinfectant"
+disinfectant = "dazomet"
+g_per_m2 = 30
+[[schedule]]
+tick = 4
+action = "add_inoculant"
+inoculant = "bacillus_product"
+g_per_m2 = 20.5
+repeat_every_ticks = 24
+repeat_count = 2
+[[schedule]]
+tick = 5
+action = "plant"
+seedling_grade = "B"
+plants_per_m2 = 8
+)"), "s.toml");
+    REQUIRE(doc.has_value());
+    REQUIRE(doc->schedule.size() == 6);
+    const auto& mulch = std::get<sim::SetMulchCommand>(doc->schedule[0].command);
+    CHECK(mulch.mulch_id == "clear_film");
+    CHECK(mulch.area == sim::whole_grid(2, 5));
+    const auto& partial = std::get<sim::SetMulchCommand>(doc->schedule[1].command);
+    CHECK(partial.mulch_id == "none");
+    CHECK(partial.area.cols == 3);
+    const auto& fumigant = std::get<sim::ApplyDisinfectantCommand>(doc->schedule[2].command);
+    CHECK(fumigant.disinfectant_id == "dazomet");
+    CHECK(fumigant.g_per_m2 == 30.0);
+    const auto& inoc = std::get<sim::AddInoculantCommand>(doc->schedule[3].command);
+    CHECK(inoc.inoculant_id == "bacillus_product");
+    CHECK(inoc.g_per_m2 == 20.5);
+    CHECK(doc->schedule[4].tick == 5);  // 정렬: 4, 5(plant), 28(반복)
+    const auto& plant = std::get<sim::PlantCommand>(doc->schedule[4].command);
+    CHECK(plant.seedling_grade == "B");
+    CHECK(plant.plants_per_m2 == 8.0);
+    CHECK(doc->schedule[5].tick == 28);
+
+    SECTION("plant is a whole-house command and rejects area") {
+        auto bad = simdata::parse_scenario_toml(scenario_with(R"(
+[[schedule]]
+tick = 0
+action = "plant"
+area = [0, 0, 1, 1]
+seedling_grade = "B"
+plants_per_m2 = 8
+)"), "s.toml");
+        REQUIRE_FALSE(bad.has_value());
+    }
+    SECTION("missing fields are rejected") {
+        CHECK_FALSE(simdata::parse_scenario_toml(scenario_with("[[schedule]]\ntick = 0\naction = \"set_mulch\"\n"),
+                                                 "s.toml").has_value());
+        CHECK_FALSE(simdata::parse_scenario_toml(
+                        scenario_with("[[schedule]]\ntick = 0\naction = \"apply_disinfectant\"\ndisinfectant = \"dazomet\"\n"),
+                        "s.toml").has_value());
+        CHECK_FALSE(simdata::parse_scenario_toml(
+                        scenario_with("[[schedule]]\ntick = 0\naction = \"plant\"\nseedling_grade = \"B\"\n"),
+                        "s.toml").has_value());
+    }
+}
+
+TEST_CASE("Repository params and M5a scenarios load", "[unit][loader][data][m5a]") {
+    auto params = simdata::load_params(test::repo_path("data/params.toml"));
+    REQUIRE(params.has_value());
+    CHECK(params->schema_version == 6);
+    CHECK(params->mulches.size() == 3);
+    CHECK(params->disinfectants.size() == 2);
+    CHECK(params->inoculants.size() == 3);
+    CHECK(params->disinfectants[0].residue_index_per_g_per_m2 == 1.0 / 30.0);
+    CHECK(params->disinfectants[1].residue_index_per_g_per_m2 == 1.0 / 4.0);
+
+    // 모든 시나리오(M1~M5a)가 schema 6으로 읽히고, 세계를 만들 수 있어요.
+    const auto root = test::repo_path("data/scenarios");
+    std::size_t loaded = 0;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+        if (entry.path().extension() != ".toml") {
+            continue;
+        }
+        auto bundle = simdata::load_scenario_bundle(entry.path());
+        INFO(entry.path().string());
+        REQUIRE(bundle.has_value());
+        if (!bundle.has_value()) {
+            continue;
+        }
+        auto world = sim::World::create(*params, std::move(bundle->scenario));
+        REQUIRE(world.has_value());
+        ++loaded;
+    }
+    CHECK(loaded >= 70);
+
+    auto s19 = simdata::load_scenario_bundle(test::repo_path("data/scenarios/m5a/s19_solar_4w.toml"));
+    REQUIRE(s19.has_value());
+    CHECK(s19->scenario.seed == 20261119);
+    CHECK(s19->scenario.soil.microbe_index[sim::microbe(sim::MicrobeGroup::Fusarium)] == 0.5);
+    CHECK_FALSE(s19->scenario.crop.has_value());
+    bool has_mulch = false;
+    for (const auto& c : s19->schedule) {
+        has_mulch = has_mulch || std::holds_alternative<sim::SetMulchCommand>(c.command);
+    }
+    CHECK(has_mulch);
 }

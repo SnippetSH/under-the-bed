@@ -175,6 +175,8 @@ TEST_CASE("Snapshot starts from the scenario soil", "[unit][world]") {
     sim::SoilCell expected = test::test_cell();
     expected.aeration_index = sim::process::aeration_index(expected, world.params().aeration);
     expected.ec_dS_per_m = sim::process::soil_ec_dS_per_m(expected, world.params());
+    // M5a (2026-11-19 디렉터 승인): 시나리오 [microbes] 시작값이 셀에 들어가요
+    expected.microbe_index = test::test_soil().microbe_index;
     for (const sim::SoilCell& cell : s.soil) {
         CHECK(cell == expected);
     }

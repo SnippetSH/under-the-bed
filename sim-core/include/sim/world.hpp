@@ -3,7 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "sim/command.hpp"
@@ -78,12 +80,22 @@ private:
     void apply_command(const SetHeaterCommand& command);
     void apply_command(const SetCoverLayersCommand& command);
     void apply_command(const ThinFlowersCommand& command);
+    // M5a (disinfection, soil-microbes)
+    void apply_command(const SetMulchCommand& command);
+    void apply_command(const ApplyDisinfectantCommand& command);
+    void apply_command(const AddInoculantCommand& command);
+    void apply_command(const PlantCommand& command);
 
     [[nodiscard]] std::expected<void, Error> validate_command(const Command& command) const;
     [[nodiscard]] std::expected<void, Error> validate_area(const TileArea& area) const;
     [[nodiscard]] const CompostDef* find_compost(std::string_view id) const;
     [[nodiscard]] const FertilizerDef* find_fertilizer(std::string_view id) const;
     [[nodiscard]] const LimeDef* find_lime(std::string_view id) const;
+    // M5a
+    [[nodiscard]] std::optional<std::size_t> find_mulch_index(std::string_view id) const;
+    [[nodiscard]] std::optional<std::size_t> find_disinfectant_index(std::string_view id) const;
+    [[nodiscard]] const InoculantDef* find_inoculant(std::string_view id) const;
+    [[nodiscard]] bool any_live_crop() const;
     void refresh_derived_cell_values();  // 생성·역직렬화 직후 통기 지수·EC 계산
 
     template <typename Fn>
@@ -103,6 +115,7 @@ private:
     std::vector<Tile> tiles_;  // 행 우선 순서, bed_rows × bed_cols
     HouseState house_;         // M4 하우스 기후 (house-climate)
     Pcg32 biology_rng_;        // M4 생물 변이 스트림 (RngStream::Biology)
+    Pcg32 disease_rng_;        // M5a 토양 병해 차이 스트림 (RngStream::Disease)
     Ledger ledger_;
 
     // 일시적 출력

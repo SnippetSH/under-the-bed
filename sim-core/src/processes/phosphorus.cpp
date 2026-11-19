@@ -17,13 +17,14 @@ namespace {
 
 }  // namespace
 
-void fix_phosphorus(SoilCell& cell, const PhosphorusParams& params) {
+void fix_phosphorus(SoilCell& cell, const PhosphorusParams& params, double release_factor) {
     // 두 이동량은 같은 틱 시작 값으로 계산해요(순서 의존 없음). 각자 원천 풀로 제한돼서 음수가 안 돼요.
     const double p0_g_per_m2 = std::max(0.0, cell.p_g_per_m2);
     const double fixed0_g_per_m2 = std::max(0.0, cell.p_fixed_g_per_m2);
     const double fixed_g_per_m2 =
         p0_g_per_m2 * transfer_fraction(params.fixation_rate_per_hour * params.fixation_ph_curve(cell.ph));
-    const double released_g_per_m2 = fixed0_g_per_m2 * transfer_fraction(params.release_rate_per_hour);
+    // M5a: 균근균 가용화 배율 (soil-microbes 2번)
+    const double released_g_per_m2 = fixed0_g_per_m2 * transfer_fraction(params.release_rate_per_hour * release_factor);
     cell.p_g_per_m2 = (p0_g_per_m2 - fixed_g_per_m2) + released_g_per_m2;
     cell.p_fixed_g_per_m2 = (fixed0_g_per_m2 - released_g_per_m2) + fixed_g_per_m2;
 }

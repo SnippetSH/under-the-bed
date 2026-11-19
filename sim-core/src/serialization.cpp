@@ -2,7 +2,7 @@
 //
 //   magic "FGSV" | format_version u32
 //   [정적 입력] params, scenario (토양 초기값, 기상 표 포함)
-//   [동적 상태] tick, next_command_seq, house(하우스 상태), biology_rng, pending_commands,
+//   [동적 상태] tick, next_command_seq, house(하우스 상태), biology_rng, disease_rng(M5a), pending_commands,
 //               tiles(토양 셀 + 작물 + 화방·과실·수확 기록), ledger
 //
 // state_hash()는 동적 상태 부분만 해시해요. 이벤트는 저장하지 않아요.
@@ -79,6 +79,18 @@ void read_f64_list(detail::ByteReader& r, std::vector<double>& v) {
     }
 }
 
+void write_indices(detail::ByteWriter& w, const MicrobeIndices& v) {
+    for (const double x : v) {
+        w.f64(x);
+    }
+}
+
+void read_indices(detail::ByteReader& r, MicrobeIndices& v) {
+    for (double& x : v) {
+        x = r.f64();
+    }
+}
+
 void write_area(detail::ByteWriter& w, const TileArea& a) {
     w.i32(a.row);
     w.i32(a.col);
@@ -135,6 +147,12 @@ void write_cell(detail::ByteWriter& w, const SoilCell& c) {
     w.f64(c.cec_eq_per_m2);
     w.f64(c.exchange_free_site_index);
     w.u8(c.nitrite_alarm ? 1 : 0);
+    // M5a
+    write_indices(w, c.microbe_index);
+    w.i32(c.mulch_def_index);
+    write_f64_list(w, c.fumigant_residue_index);
+    write_indices(w, c.disinfection_kill_index);
+    w.f64(c.deep_soil_temp_degC);  // M5a 프로토타입 3차
 }
 
 void read_cell(detail::ByteReader& r, SoilCell& c) {
@@ -181,6 +199,12 @@ void read_cell(detail::ByteReader& r, SoilCell& c) {
         r.fail();
     }
     c.nitrite_alarm = alarm == 1;
+    // M5a (멀칭 인덱스·잔류 개수는 read_dynamic이 params와 맞춰 검사)
+    read_indices(r, c.microbe_index);
+    c.mulch_def_index = r.i32();
+    read_f64_list(r, c.fumigant_residue_index);
+    read_indices(r, c.disinfection_kill_index);
+    c.deep_soil_temp_degC = r.f64();  // M5a 프로토타입 3차
 }
 
 void write_crop(detail::ByteWriter& w, const Crop& c) {
@@ -263,6 +287,14 @@ void write_crop(detail::ByteWriter& w, const Crop& c) {
     w.f64(h.harvested_day_score_weighted);
     w.f64(h.harvested_night_score_weighted);
     w.f64(h.harvested_temp_score_weighted);
+    // M5a
+    for (const double x : c.infection_index) {
+        w.f64(x);
+    }
+    for (const bool reported : c.disease_onset_reported) {
+        w.u8(reported ? 1 : 0);
+    }
+    w.f64(c.disease_susceptibility_factor);  // M5a 프로토타입 3차
 }
 
 void read_crop(detail::ByteReader& r, Crop& c) {
@@ -381,6 +413,18 @@ void read_crop(detail::ByteReader& r, Crop& c) {
     h.harvested_day_score_weighted = r.f64();
     h.harvested_night_score_weighted = r.f64();
     h.harvested_temp_score_weighted = r.f64();
+    // M5a
+    for (double& x : c.infection_index) {
+        x = r.f64();
+    }
+    for (bool& reported : c.disease_onset_reported) {
+        const std::uint8_t flag = r.u8();
+        if (flag > 1) {
+            r.fail();
+        }
+        reported = flag == 1;
+    }
+    c.disease_susceptibility_factor = r.f64();  // M5a 프로토타입 3차
 }
 
 // 세이브의 작물 구조 검사: 과위·화방 인덱스가 범위 안이고, 꽃(set = false)은 건물이 0이고,
@@ -425,6 +469,8 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.soil_temperature.relax_rate_per_hour);
     w.f64(p.soil_temperature.heat_degC_per_g_C);
     w.f64(p.soil_temperature.evap_cooling_degC_per_mm);
+    w.f64(p.soil_temperature.deep_coupling_fraction);
+    w.f64(p.soil_temperature.deep_relax_rate_per_hour);
     w.f64(p.organic_matter.labile_decay_rate_per_hour);
     w.f64(p.organic_matter.stable_decay_rate_per_hour);
     w.f64(p.organic_matter.humification_fraction);
@@ -691,6 +737,78 @@ void write_params(detail::ByteWriter& w, const Params& p) {
         w.f64(g.root_g_per_plant);
         w.f64(g.initial_induction_index);
     }
+
+    // ---- M5a (append) ----
+    write_curve(w, p.root_damage.fusarium_curve);
+    write_curve(w, p.root_damage.phytophthora_curve);
+    write_curve(w, p.root_damage.fumigant_curve);
+    const MicrobesParams& m = p.microbes;
+    w.f64(m.capacity_floor_index);
+    write_curve(w, m.decomposer_activity_curve);
+    write_curve(w, m.aob_activity_curve);
+    write_curve(w, m.nob_activity_curve);
+    w.f64(m.antagonist_protection_factor);
+    w.f64(m.mycorrhiza_p_release_factor);
+    w.f64(m.mycorrhiza_water_relief_factor);
+    w.f64(m.mycorrhiza_salt_relief_factor);
+    w.f64(m.pathogen_spread_index);
+    w.f64(m.susceptibility_spread_index);
+    write_curve(w, m.moist_heat_curve);
+    write_curve(w, m.decomposer_food_curve);
+    write_curve(w, m.antagonist_food_curve);
+    write_curve(w, m.mycorrhiza_host_curve);
+    write_curve(w, m.mycorrhiza_p_curve);
+    for (const MicrobeGroupParams& gp : m.groups) {
+        w.f64(gp.growth_rate_per_hour);
+        write_curve(w, gp.temp_curve);
+        write_curve(w, gp.moisture_curve);
+        write_curve(w, gp.ph_curve);
+        write_curve(w, gp.o2_curve);
+        w.f64(gp.base_death_rate_per_hour);
+        write_curve(w, gp.heat_kill_curve);
+        w.f64(gp.immigration_rate_per_hour);
+        write_indices(w, gp.competition);
+        w.f64(gp.saprophytic_capacity_index);
+        w.f64(gp.host_capacity_index);
+    }
+    for (const SoilDiseaseParams& dp : p.soil_disease) {
+        w.f64(dp.infection_rate_per_hour);
+        write_curve(w, dp.infection_env_curve_temp);
+        write_curve(w, dp.infection_env_curve_o2);
+        write_curve(w, dp.infection_env_curve_ph);
+        w.f64(dp.onset_infection_index);
+    }
+    w.f64(p.disinfection.flush_N_g_per_m2_per_index);
+    w.f64(p.disinfection.flush_C_to_N_ratio);
+    w.f64(p.disinfection.mn_reduction_per_index);
+    w.f64(p.disinfection.till_residue_release_fraction);
+    w.u64(p.mulches.size());
+    for (const MulchDef& d : p.mulches) {
+        w.str(d.id);
+        w.str(d.name);
+        w.f64(d.soil_solar_gain_degC_per_W_per_m2);
+        w.f64(d.evaporation_factor);
+        w.f64(d.fumigant_retention_factor);
+        w.f64(d.canopy_reflect_factor);
+    }
+    w.u64(p.disinfectants.size());
+    for (const DisinfectantDef& d : p.disinfectants) {
+        w.str(d.id);
+        w.str(d.name);
+        w.f64(d.residue_index_per_g_per_m2);
+        write_indices(w, d.kill_rate_per_hour);
+        w.f64(d.decay_rate_per_hour);
+        write_curve(w, d.decay_temp_curve);
+        write_curve(w, d.activation_moisture_curve);
+    }
+    w.u64(p.inoculants.size());
+    for (const InoculantDef& d : p.inoculants) {
+        w.str(d.id);
+        w.str(d.name);
+        write_indices(w, d.index_gain_per_g_per_m2);
+        w.f64(d.C_g_per_kg);
+        w.f64(d.N_g_per_kg);
+    }
 }
 
 void read_params(detail::ByteReader& r, Params& p) {
@@ -703,6 +821,8 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.soil_temperature.relax_rate_per_hour = r.f64();
     p.soil_temperature.heat_degC_per_g_C = r.f64();
     p.soil_temperature.evap_cooling_degC_per_mm = r.f64();
+    p.soil_temperature.deep_coupling_fraction = r.f64();
+    p.soil_temperature.deep_relax_rate_per_hour = r.f64();
     p.organic_matter.labile_decay_rate_per_hour = r.f64();
     p.organic_matter.stable_decay_rate_per_hour = r.f64();
     p.organic_matter.humification_fraction = r.f64();
@@ -989,6 +1109,93 @@ void read_params(detail::ByteReader& r, Params& p) {
         g.root_g_per_plant = r.f64();
         g.initial_induction_index = r.f64();
     }
+
+    // ---- M5a (append) ----
+    read_curve(r, p.root_damage.fusarium_curve);
+    read_curve(r, p.root_damage.phytophthora_curve);
+    read_curve(r, p.root_damage.fumigant_curve);
+    MicrobesParams& m = p.microbes;
+    m.capacity_floor_index = r.f64();
+    read_curve(r, m.decomposer_activity_curve);
+    read_curve(r, m.aob_activity_curve);
+    read_curve(r, m.nob_activity_curve);
+    m.antagonist_protection_factor = r.f64();
+    m.mycorrhiza_p_release_factor = r.f64();
+    m.mycorrhiza_water_relief_factor = r.f64();
+    m.mycorrhiza_salt_relief_factor = r.f64();
+    m.pathogen_spread_index = r.f64();
+    m.susceptibility_spread_index = r.f64();
+    read_curve(r, m.moist_heat_curve);
+    read_curve(r, m.decomposer_food_curve);
+    read_curve(r, m.antagonist_food_curve);
+    read_curve(r, m.mycorrhiza_host_curve);
+    read_curve(r, m.mycorrhiza_p_curve);
+    for (MicrobeGroupParams& gp : m.groups) {
+        gp.growth_rate_per_hour = r.f64();
+        read_curve(r, gp.temp_curve);
+        read_curve(r, gp.moisture_curve);
+        read_curve(r, gp.ph_curve);
+        read_curve(r, gp.o2_curve);
+        gp.base_death_rate_per_hour = r.f64();
+        read_curve(r, gp.heat_kill_curve);
+        gp.immigration_rate_per_hour = r.f64();
+        read_indices(r, gp.competition);
+        gp.saprophytic_capacity_index = r.f64();
+        gp.host_capacity_index = r.f64();
+    }
+    for (SoilDiseaseParams& dp : p.soil_disease) {
+        dp.infection_rate_per_hour = r.f64();
+        read_curve(r, dp.infection_env_curve_temp);
+        read_curve(r, dp.infection_env_curve_o2);
+        read_curve(r, dp.infection_env_curve_ph);
+        dp.onset_infection_index = r.f64();
+    }
+    p.disinfection.flush_N_g_per_m2_per_index = r.f64();
+    p.disinfection.flush_C_to_N_ratio = r.f64();
+    p.disinfection.mn_reduction_per_index = r.f64();
+    p.disinfection.till_residue_release_fraction = r.f64();
+    const std::uint64_t mulch_count = r.u64();
+    if (!r.ok() || mulch_count > r.remaining() / (2 * kMinStringBytes + 4 * kF64Bytes)) {
+        r.fail();
+        return;
+    }
+    p.mulches.resize(static_cast<std::size_t>(mulch_count));
+    for (MulchDef& d : p.mulches) {
+        d.id = r.str();
+        d.name = r.str();
+        d.soil_solar_gain_degC_per_W_per_m2 = r.f64();
+        d.evaporation_factor = r.f64();
+        d.fumigant_retention_factor = r.f64();
+        d.canopy_reflect_factor = r.f64();
+    }
+    const std::uint64_t disinfectant_count = r.u64();
+    if (!r.ok() || disinfectant_count > r.remaining() / (2 * kMinStringBytes + (kMicrobeGroupCount + 2) * kF64Bytes)) {
+        r.fail();
+        return;
+    }
+    p.disinfectants.resize(static_cast<std::size_t>(disinfectant_count));
+    for (DisinfectantDef& d : p.disinfectants) {
+        d.id = r.str();
+        d.name = r.str();
+        d.residue_index_per_g_per_m2 = r.f64();
+        read_indices(r, d.kill_rate_per_hour);
+        d.decay_rate_per_hour = r.f64();
+        read_curve(r, d.decay_temp_curve);
+        read_curve(r, d.activation_moisture_curve);
+    }
+    const std::uint64_t inoculant_count = r.u64();
+    if (!r.ok() || inoculant_count > r.remaining() / (2 * kMinStringBytes + (kMicrobeGroupCount + 2) * kF64Bytes)) {
+        r.fail();
+        return;
+    }
+    p.inoculants.resize(static_cast<std::size_t>(inoculant_count));
+    for (InoculantDef& d : p.inoculants) {
+        d.id = r.str();
+        d.name = r.str();
+        read_indices(r, d.index_gain_per_g_per_m2);
+        d.C_g_per_kg = r.f64();
+        d.N_g_per_kg = r.f64();
+    }
 }
 
 void write_scenario(detail::ByteWriter& w, const Scenario& s) {
@@ -1023,6 +1230,7 @@ void write_scenario(detail::ByteWriter& w, const Scenario& s) {
     w.f64(soil.mn_g_per_m2);
     w.f64(soil.mn_oxide_g_per_m2);
     w.f64(soil.p_fixed_g_per_m2);
+    write_indices(w, soil.microbe_index);  // M5a
 
     w.u8(s.crop.has_value() ? 1 : 0);
     if (s.crop) {
@@ -1072,6 +1280,7 @@ void read_scenario(detail::ByteReader& r, Scenario& s) {
     soil.mn_g_per_m2 = r.f64();
     soil.mn_oxide_g_per_m2 = r.f64();
     soil.p_fixed_g_per_m2 = r.f64();
+    read_indices(r, soil.microbe_index);  // M5a
 
     const std::uint8_t has_crop = r.u8();
     if (has_crop > 1) {
@@ -1143,6 +1352,25 @@ void write_command(detail::ByteWriter& w, const Command& command) {
         void operator()(const ThinFlowersCommand& c) const {
             write_area(w, c.area);
             w.f64(c.per_plant);
+        }
+        // M5a
+        void operator()(const SetMulchCommand& c) const {
+            write_area(w, c.area);
+            w.str(c.mulch_id);
+        }
+        void operator()(const ApplyDisinfectantCommand& c) const {
+            write_area(w, c.area);
+            w.str(c.disinfectant_id);
+            w.f64(c.g_per_m2);
+        }
+        void operator()(const AddInoculantCommand& c) const {
+            write_area(w, c.area);
+            w.str(c.inoculant_id);
+            w.f64(c.g_per_m2);
+        }
+        void operator()(const PlantCommand& c) const {
+            w.str(c.seedling_grade);
+            w.f64(c.plants_per_m2);
         }
     };
     std::visit(Visitor{w}, command);
@@ -1217,6 +1445,33 @@ std::expected<Command, Error> read_command(detail::ByteReader& r) {
             c.per_plant = r.f64();
             return c;
         }
+        // M5a
+        case 10: {
+            SetMulchCommand c;
+            c.area = read_area(r);
+            c.mulch_id = r.str();
+            return c;
+        }
+        case 11: {
+            ApplyDisinfectantCommand c;
+            c.area = read_area(r);
+            c.disinfectant_id = r.str();
+            c.g_per_m2 = r.f64();
+            return c;
+        }
+        case 12: {
+            AddInoculantCommand c;
+            c.area = read_area(r);
+            c.inoculant_id = r.str();
+            c.g_per_m2 = r.f64();
+            return c;
+        }
+        case 13: {
+            PlantCommand c;
+            c.seedling_grade = r.str();
+            c.plants_per_m2 = r.f64();
+            return c;
+        }
         default:
             if (!r.ok()) {
                 return fail(ErrorCode::Truncated, "save data ends inside the command queue");
@@ -1251,6 +1506,8 @@ void World::write_dynamic(detail::ByteWriter& w) const {
 
     w.u64(biology_rng_.raw_state());
     w.u64(biology_rng_.raw_increment());
+    w.u64(disease_rng_.raw_state());
+    w.u64(disease_rng_.raw_increment());
 
     w.u64(pending_commands_.size());
     for (const QueuedCommand& queued : pending_commands_) {
@@ -1300,6 +1557,11 @@ void World::write_dynamic(detail::ByteWriter& w) const {
     w.f64(ledger_.Mg_harvested_g);
     w.f64(ledger_.Mn_harvested_g);
     w.f64(ledger_.C_leaf_litter_g);
+    // M5a
+    w.f64(ledger_.N_flush_g);
+    w.f64(ledger_.Mn_flush_g);
+    write_f64_list(w, ledger_.disinfectant_applied_g);
+    w.f64(ledger_.inoculant_applied_g);
 }
 
 std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
@@ -1346,6 +1608,14 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
         return fail(ErrorCode::Truncated, "save data ends inside the house state");
     }
     biology_rng_ = Pcg32::from_raw(rng_state, rng_increment);
+    {
+        const std::uint64_t disease_state = r.u64();
+        const std::uint64_t disease_increment = r.u64();
+        if (!r.ok()) {
+            return fail(ErrorCode::Truncated, "save data ends inside the disease rng");
+        }
+        disease_rng_ = Pcg32::from_raw(disease_state, disease_increment);
+    }
 
     const std::uint64_t pending_count = r.u64();
     if (!r.ok() || pending_count > r.remaining() / kQueuedCommandMinBytes) {
@@ -1366,9 +1636,7 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
         if (!ordered || seq >= next_command_seq_) {
             return fail(ErrorCode::InvalidData, "command sequence numbers are inconsistent");
         }
-        if (auto valid = validate_command(*command); !valid) {
-            return fail(ErrorCode::InvalidData, std::format("saved command is invalid: {}", valid.error().message));
-        }
+        // 명령 검증은 타일을 읽은 뒤에 해요 (M5a Plant는 저장된 작물 상태로 검증)
         pending_commands_.push_back(QueuedCommand{seq, std::move(*command)});
     }
 
@@ -1382,6 +1650,21 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
         read_crop(r, tile.crop);
         if (r.ok() && !crop_structure_is_valid(tile.crop, params_)) {
             return fail(ErrorCode::InvalidData, "saved crop has inconsistent trusses, fruits or harvest record");
+        }
+        // M5a: 멀칭 인덱스는 kNoMulch 또는 params.mulches 범위, 약제 잔류 개수는 params.disinfectants와 같아야 해요
+        if (r.ok() && (tile.soil.mulch_def_index < kNoMulch ||
+                       (tile.soil.mulch_def_index >= 0 &&
+                        static_cast<std::size_t>(tile.soil.mulch_def_index) >= params_.mulches.size()) ||
+                       tile.soil.fumigant_residue_index.size() != params_.disinfectants.size())) {
+            return fail(ErrorCode::InvalidData, "saved soil cell mulch or fumigant residue does not match params");
+        }
+    }
+    if (r.ok()) {
+        for (const QueuedCommand& queued : pending_commands_) {
+            if (auto valid = validate_command(queued.command); !valid) {
+                return fail(ErrorCode::InvalidData,
+                            std::format("saved command is invalid: {}", valid.error().message));
+            }
         }
     }
 
@@ -1421,6 +1704,15 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     ledger_.Mg_harvested_g = r.f64();
     ledger_.Mn_harvested_g = r.f64();
     ledger_.C_leaf_litter_g = r.f64();
+    // M5a
+    ledger_.N_flush_g = r.f64();
+    ledger_.Mn_flush_g = r.f64();
+    read_f64_list(r, ledger_.disinfectant_applied_g);
+    ledger_.inoculant_applied_g = r.f64();
+    if (r.ok() && !ledger_.disinfectant_applied_g.empty() &&
+        ledger_.disinfectant_applied_g.size() != params_.disinfectants.size()) {
+        return fail(ErrorCode::InvalidData, "saved disinfectant ledger does not match params disinfectants");
+    }
 
     if (!r.ok()) {
         return fail(ErrorCode::Truncated, "save data ends inside the dynamic state");

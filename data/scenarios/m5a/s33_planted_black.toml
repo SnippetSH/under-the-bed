@@ -1,0 +1,82 @@
+# S33 정식 후 필름 비교 (흑색): 11/15 시작, [crop] B 8 (활착 1.0), 창 닫음, 난방 없음, 60일.
+# 기대: 지온 투명 > 흑색 > 없음 > 백색, 증발 감소(없음 제외). 백색은 반사광으로 총생산(harvest_fresh_g_per_m2, last_gross_g_per_m2)이 조금 커요.
+# 길이는 sim-cli의 --ticks로 정해요: 60일 = 1440틱. 시작: day 319, 틱 0 = 그날 0시.
+# 값은 전부 게임용 임의값이에요. 이 파일은 tools/gen_m5a_scenarios.py가 만들어요(고치려면 스크립트를 고쳐요).
+
+schema_version = 6
+
+[scenario]
+name = "m5a/s33_planted_black"
+seed = 20261119
+start_day_of_year = 319
+weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+cover_layers = 3
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 50.0
+soil_temp_degC = 20.0
+ph = 6.2
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 4.0
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 1.0
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 200.0
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.3
+base_buffer_eq_per_m2_per_pH = 1.25
+# M3 항목: 전부 게임용 임의값 (기준 토양 = M4 season_standard, docs/spec/m3-overview.md)
+cec_mineral_eq_per_m2 = 25.0
+mn_g_per_m2 = 5.0
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[crop]
+seedling_grade = "B"
+plants_per_m2 = 8.0
+initial_establishment_index = 1.0
+
+[microbes]  # M5a 필수: 모든 셀의 무리별 시작 지수 (기본값은 m5-overview 11장)
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 1.0
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.0
+phytophthora = 0.0
+
+[difficulty]
+stress_combination = "minimum"
+
+# 기비 숙성 퇴비 2 kg/m2
+[[schedule]]
+tick = 0
+action = "add_compost"
+compost = "mature_manure"
+kg_per_m2 = 2.0
+
+# 흑색 필름 멀칭 (정식 후)
+[[schedule]]
+tick = 0
+action = "set_mulch"
+mulch = "black_film"
+
+# 매일 08시 3 mm
+[[schedule]]
+tick = 8
+action = "irrigate"
+amount_mm = 3.0
+repeat_every_ticks = 24
+repeat_count = 60

@@ -30,7 +30,7 @@ namespace {
 }  // namespace
 
 void nitrify(SoilCell& cell, const NitrificationParams& params, const SoilChemistryParams& chemistry,
-             const IonParams& ions) {
+             const IonParams& ions, double aob_activity_factor, double nob_activity_factor) {
     // 공통 환경 계수. 산소 계수는 단계별로 따로 곱해요(2단계가 더 민감).
     const double env_factor =
         params.temp_curve(cell.soil_temp_degC) * params.moisture_curve(cell.relative_water());
@@ -40,7 +40,7 @@ void nitrify(SoilCell& cell, const NitrificationParams& params, const SoilChemis
     // 1단계: NH4+ → NO2-
     const double step1_fraction =
         transfer_fraction(params.step1_rate_per_hour * env_factor * params.step1_ph_curve(ph) *
-                          params.step1_o2_curve(cell.aeration_index));
+                          params.step1_o2_curve(cell.aeration_index) * aob_activity_factor);
     const double n1_g_per_m2 = transfer_amount(cell.nh4_N_g_per_m2, step1_fraction);
     const double nh4_before = cell.nh4_N_g_per_m2;
     cell.nh4_N_g_per_m2 -= n1_g_per_m2;
@@ -54,7 +54,7 @@ void nitrify(SoilCell& cell, const NitrificationParams& params, const SoilChemis
     const double step2_fraction =
         transfer_fraction(params.step2_rate_per_hour * env_factor * params.step2_ph_curve(ph) *
                           params.step2_o2_curve(cell.aeration_index) *
-                          params.free_ammonia_inhibition_curve(free_ammonia_g_N_per_m2));
+                          params.free_ammonia_inhibition_curve(free_ammonia_g_N_per_m2) * nob_activity_factor);
     const double n2_g_per_m2 = transfer_amount(cell.no2_N_g_per_m2, step2_fraction);
     cell.no2_N_g_per_m2 -= n2_g_per_m2;
     cell.no3_N_g_per_m2 += n2_g_per_m2;

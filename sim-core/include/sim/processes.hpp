@@ -23,9 +23,15 @@
 //                           흡수(길항, Mn, N 전용 속도)·뿌리 건강도·낙엽 (M4)
 //     phenology.cpp         활착, 화아분화, 화방 발달·개화 (M4)
 //     fruit.cpp             꽃 만들기, 개화 판정, 과실 진행 증가분, 크기 구간 (M4)
+//     microbes.cpp          개체군 갱신(d2), 활동 계수, 균근균 완화, 유익균 투입 (M5a)
+//     disinfection.cpp      멀칭 증발·지온·반사광, 약제 잔류(d1)·활성, 경운 방출, 소독 무기화·망간(d3) (M5a)
+//     soil_disease.cpp      작물 감염(h6, 뿌리 건강도 앞), DiseaseOnset (M5a)
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <vector>
 #include <string_view>
 
 #include "sim/event.hpp"
@@ -39,6 +45,12 @@ namespace sim::process {
 
 // ---- temperature.cpp (docs/spec/soil-temperature.md) ----
 
+// 완화 목표 (M5a 프로토타입 3차): (1 − deep_coupling_fraction) × air_target_degC + deep_coupling_fraction × 깊은 흙 온도.
+// air_target_degC는 하우스 기온 + 멀칭 지온 이득(soil_relax_target_degC)이에요.
+[[nodiscard]] double soil_relax_blend_target_degC(const SoilCell& cell, const SoilTemperatureParams& params,
+                                                  double air_target_degC);
+// house_air_temp_degC = 하우스 기온 + 멀칭 지온 이득(soil_relax_target_degC). 깊은 흙 혼합은 안에서 해요.
+// 순서: 목표 혼합 → 근권 완화 → 증발 냉각 → 깊은 흙 온도가 근권 온도를 따라감
 void relax_soil_temperature(SoilCell& cell, const SoilTemperatureParams& params, double house_air_temp_degC,
                             double evaporated_mm = 0.0);
 
@@ -82,8 +94,10 @@ void apply_irrigation(SoilCell& cell, double amount_mm, const AerationParams& ae
 // 셀 단계 a: 증발(× (1 − canopy_interception)) → 증산(min(water, transpiration_demand_mm)) →
 //   포화 초과분 즉시 배수 → 포장용수량 초과분 배수(× drainage_compaction_curve(compaction)).
 // drained_mm_this_tick 설정, 이번 틱 증발량(mm)을 돌려줘요. 장부 water_evaporated_mm / water_transpired_mm / water_drained_mm 기록.
+// M5a: evaporation_factor = 멀칭 증발 배율 (disinfection 1번, 멀칭 없음 = 1)
 double update_soil_water(SoilCell& cell, const SoilWaterParams& params, double inside_solar_W_per_m2,
-                         double canopy_interception, double transpiration_demand_mm, Ledger& ledger);
+                         double canopy_interception, double transpiration_demand_mm, Ledger& ledger,
+                         double evaporation_factor = 1.0);
 
 // ---- aeration.cpp (docs/spec/aeration.md) ----
 
@@ -99,15 +113,18 @@ void apply_till(SoilCell& cell, Crop& crop, const AerationParams& params);
 void apply_compost(SoilCell& cell, const CompostDef& compost, double kg_per_m2, Ledger& ledger);
 
 // 셀 단계 e: 분해. 환경 계수에 organic_matter.o2_curve(cell.aeration_index)를 곱함 (M2)
+// M5a: decomposer_activity_factor = 분해균계수 decomposer_activity_curve(분해균 지수) (soil-microbes 2번)
 void decompose_organic_matter(SoilCell& cell, const OrganicMatterParams& params,
-                              const SoilTemperatureParams& temperature_params, Ledger& ledger);
+                              const SoilTemperatureParams& temperature_params, Ledger& ledger,
+                              double decomposer_activity_factor = 1.0);
 
 // ---- nitrification.cpp (docs/spec/nitrogen.md + M2 변경) ----
 
 // 셀 단계 f: 2단계 질산화. 1·2단계에 산소 곡선(cell.aeration_index)을 곱하고,
 // 1단계로 질산화된 N(eq = g / ions.nh4_N_g_per_eq) × nitrification_H_eq_per_eq_N을 cell.acid_H_eq_this_tick에 더함
+// M5a: 1·2단계 속도에 aob/nob_activity_factor(개체군 활동 곡선)를 곱해요 (soil-microbes 2번)
 void nitrify(SoilCell& cell, const NitrificationParams& params, const SoilChemistryParams& chemistry,
-             const IonParams& ions);
+             const IonParams& ions, double aob_activity_factor = 1.0, double nob_activity_factor = 1.0);
 
 // 유효 아질산 = no2 × nitrite_toxicity_ph_curve(pH) (M2). 경보와 뿌리 손상이 같이 써요.
 [[nodiscard]] double effective_nitrite_g_N_per_m2(const SoilCell& cell, const NitrificationParams& params);
@@ -197,7 +214,8 @@ void sync_nh4_solution(SoilCell& cell, double old_nh4_N_g_per_m2);
 // ---- phosphorus.cpp (docs/spec/phosphorus.md, M3) ----
 
 // 셀 단계 f3: 유효 ↔ 고정 인산. 두 이동량은 틱 시작 값으로 계산하고 각자 원천 풀로 제한
-void fix_phosphorus(SoilCell& cell, const PhosphorusParams& params);
+// M5a: 방출 속도 × release_factor (= 1 + mycorrhiza_p_release_factor × 균근균 지수, soil-microbes 2번)
+void fix_phosphorus(SoilCell& cell, const PhosphorusParams& params, double release_factor = 1.0);
 
 // ---- crop.cpp (docs/spec/strawberry-minimal.md + M4 strawberry-fruit.md) ----
 
@@ -253,11 +271,14 @@ struct CropEnvironment {
     std::uint64_t tick = 0;
     StressCombination mode = StressCombination::Minimum;
     std::uint32_t tile_index = 0;
+    // M5a 백색 필름 반사광 (disinfection 1번): h3 광합성 광량만 inside_solar × (1 + 이 값 × (1 − interception))
+    double canopy_reflect_factor = 0.0;
 };
 
 struct CropTickResult {
     std::optional<PlantDiedEvent> died;
     std::optional<FruitHarvestedEvent> harvested;
+    std::array<std::optional<DiseaseOnsetEvent>, kSoilDiseaseCount> disease_onsets{};  // M5a h6 (SoilDisease 순서)
 };
 
 // M4 셀 단계 h (살아 있는 작물만): h0 저온 피해 → h1 생물계절(활착·화아분화·화방·꽃 만들기·개화 판정) →
@@ -265,9 +286,15 @@ struct CropTickResult {
 //   h4 과실 진행·품질 → 수확(반출) → 낙과 → h5 흡수(토양 풀에서 빼고 체내·장부 *_uptake_g, pending_H) →
 //   h6 뿌리 건강도·고사 → 낙엽 → 고사 판정. 고사하면 PlantDied, 수확하면 FruitHarvested 이벤트를 돌려줘요.
 //   난수는 biology_rng에서 목록 순서로 (저온 손실 → 꽃 만들기(화방 순) → 개화 판정 → 낙과)
+// M5a: h2·h5의 물·염류 계수에 균근균 완화(cell.microbe_index), h3 광량에 env.canopy_reflect_factor,
+//   h6 앞에 감염 진행(update_soil_infection), 뿌리 손상 합에 fusarium·phytophthora·fumigant 곡선
 [[nodiscard]] CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params,
                                          const NutrientAvailability& available, const CropEnvironment& env,
                                          Pcg32& biology_rng, Ledger& ledger);
+
+// M5a Plant 명령 (disinfection 6번): 죽은 작물의 체내 원소·건물(+ 남은 저장)을 낙엽 규칙으로 토양에 돌려주고
+// 작물을 비워요(Crop{}). 잎·과실 C는 C_leaf_litter_g, 관부·뿌리·저장 C는 C_root_litter_g.
+void return_dead_crop_to_soil(Crop& crop, SoilCell& cell, const CropParams& params, Ledger& ledger);
 
 // ---- phenology.cpp (docs/spec/strawberry-phenology.md, M4) ----
 
@@ -293,5 +320,77 @@ std::uint64_t thin_flowers(Crop& crop, SoilCell& cell, const Params& params, dou
                            Ledger& ledger);
 // 크기 구간 인덱스 (경계 이상이면 다음 구간)
 [[nodiscard]] std::size_t size_class_index(const FruitParams& params, double fresh_g);
+
+// ---- microbes.cpp (docs/spec/soil-microbes.md, M5a) ----
+
+// 수용력 계산에 쓰는 셀의 작물 정보 (살아 있는 작물이 없으면 모두 0)
+struct MicrobeHost {
+    double root_g_per_m2 = 0.0;
+    std::array<double, kSoilDiseaseCount> infection_index{};  // SoilDisease 순서
+};
+// 무리별 적합도 = temp × moisture × ph × o2 곡선 (토양 온도, relative_water, pH, aeration_index)
+[[nodiscard]] MicrobeIndices microbe_suitability(const SoilCell& cell, const MicrobesParams& params);
+// 무리별 수용력 (명세 표의 규칙, capacity_floor_index 하한)
+[[nodiscard]] MicrobeIndices microbe_capacity(const SoilCell& cell, const MicrobesParams& params,
+                                              const MicrobeHost& host);
+// 무리별 약제 사멸 비율 /h = Σ_약제 kill_rate × 잔류 × 활성
+[[nodiscard]] MicrobeIndices fumigant_kill_per_hour(const SoilCell& cell,
+                                                    const std::vector<DisinfectantDef>& disinfectants);
+struct MicrobeGroupStep {
+    double next_index = 0.0;
+    double disinfection_kill_index = 0.0;  // 이번 틱 소독(열 + 약제) 사멸분
+};
+// 무리 g 하나의 다음 지수. 모든 입력이 단계 시작 값이라 호출 순서와 무관해요.
+[[nodiscard]] MicrobeGroupStep microbe_group_step(std::size_t g, const MicrobeIndices& start,
+                                                  const MicrobeIndices& suitability, const MicrobeIndices& capacity,
+                                                  const MicrobeIndices& fumigant_kill, const SoilCell& cell,
+                                                  const MicrobesParams& params);
+// 셀 단계 d2: 모든 무리를 단계 시작 값으로 계산해 한꺼번에 갱신하고 disinfection_kill_index를 기록
+void update_microbes(SoilCell& cell, const Params& params, const MicrobeHost& host);
+
+// 활동 계수 (soil-microbes 2번). 개체군 지수만 입력으로 받아요.
+[[nodiscard]] double decomposer_activity_factor(const SoilCell& cell, const MicrobesParams& params);
+[[nodiscard]] double aob_activity_factor(const SoilCell& cell, const MicrobesParams& params);
+[[nodiscard]] double nob_activity_factor(const SoilCell& cell, const MicrobesParams& params);
+// 인산 방출 배율 = 1 + mycorrhiza_p_release_factor × 균근균 지수
+[[nodiscard]] double mycorrhiza_p_release_factor(const SoilCell& cell, const MicrobesParams& params);
+// water' = water + (1 − water) × water_relief × 균근균 지수, salt'도 같은 식
+[[nodiscard]] WaterSaltFactors mycorrhiza_relieved(const WaterSaltFactors& factors, const SoilCell& cell,
+                                                   const MicrobesParams& params);
+// 명령 단계 AddInoculant: P += (1 − P) × min(1, g × gain), 담체 C·N → 이분해성 풀, 장부 C_in·N_in·inoculant_applied
+void apply_inoculant(SoilCell& cell, const InoculantDef& inoculant, double g_per_m2, Ledger& ledger);
+
+// ---- disinfection.cpp (docs/spec/disinfection.md, M5a) ----
+
+// 셀의 멀칭 정의 (덮지 않았거나 인덱스가 범위 밖이면 nullptr)
+[[nodiscard]] const MulchDef* mulch_of(const SoilCell& cell, const Params& params);
+// 셀 단계 a 증발 배율 (멀칭 없음 = 1)
+[[nodiscard]] double mulch_evaporation_factor(const SoilCell& cell, const Params& params);
+// 셀 단계 b 완화 목표 = 하우스 기온 + soil_solar_gain × inside_solar × (1 − interception) (멀칭 없음 = 하우스 기온)
+[[nodiscard]] double soil_relax_target_degC(const SoilCell& cell, const Params& params, double house_air_temp_degC,
+                                            double inside_solar_W_per_m2, double canopy_interception);
+// h3 반사광 배율 (멀칭 없음 = 0)
+[[nodiscard]] double mulch_canopy_reflect_factor(const SoilCell& cell, const Params& params);
+// 약제 활성 = activation_moisture_curve(relative_water)
+[[nodiscard]] double fumigant_activation(const DisinfectantDef& disinfectant, const SoilCell& cell);
+// Σ_약제 잔류 × 활성 (뿌리 손상 fumigant_curve의 x)
+[[nodiscard]] double fumigant_exposure_index(const SoilCell& cell, const Params& params);
+// 셀 단계 d1: 잔류 −= 잔류 × min(1, decay × decay_temp_curve(지온) × 필름 보존)
+void decay_fumigant(SoilCell& cell, const Params& params);
+// 경운: 잔류 ×= (1 − till_residue_release_fraction)
+void release_fumigant_on_till(SoilCell& cell, const DisinfectionParams& params);
+// 명령 단계 ApplyDisinfectant: 잔류 += g × residue_index_per_g, 장부 disinfectant_applied_g
+void apply_disinfectant(SoilCell& cell, std::size_t disinfectant_index, const DisinfectantDef& disinfectant,
+                        double g_per_m2, Ledger& ledger);
+// 셀 단계 d3: 분해균 소독 사멸분으로 난분해성 N → NH4+(용액), C → 이분해성, 망간 산화물 → 유효태(용액)
+void apply_disinfection_flush(SoilCell& cell, const DisinfectionParams& params, Ledger& ledger);
+
+// ---- soil_disease.cpp (docs/spec/soil-microbes.md 3번, M5a) ----
+
+// 감염 압력 = 병원균 × env_temp × env_o2 × env_ph × (1 − antagonist_protection × 길항균)
+[[nodiscard]] double infection_pressure(SoilDisease disease, const SoilCell& cell, const Params& params);
+// 작물 단계 h6 앞: infection += rate × pressure × (1 − infection) (줄지 않음). 처음 onset 이상이면 이벤트
+[[nodiscard]] std::array<std::optional<DiseaseOnsetEvent>, kSoilDiseaseCount> update_soil_infection(
+    Crop& crop, const SoilCell& cell, const Params& params, std::uint32_t tile_index);
 
 }  // namespace sim::process
