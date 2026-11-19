@@ -2,7 +2,7 @@
 
 - 상태: 승인 (2026-11-19, M5a 범위와 13장 사전 작업. M5b 부분은 방향 초안이라 M5a 승인 뒤 다시 승인). 디렉터 결정 반영(분할, 분해균·흰가루병 추가, Plant 명령, 필름 3종, 약제 2종, 진짜 값 비공개, 점적은 설치 장비)
 - M5a 최종안 승인 (2026-11-19, 프로토타입 1~4차 반영): 5장 "프로토타입 4차 값", 11장 데이터, 12장 결정 16~24, 14.1 진행 기록, **14.2 최종 승인 요청 목록**, [ADR-0013](../decisions/0013-m5a-deep-soil-and-cell-variation.md). **M5a 마일스톤 2026-11-19 승인** (결정 24)
-- **M5b 명세 다듬기 (2026-11-19)**: 디렉터 결정 25~32(12장)를 [house-humidity](house-humidity.md)·[foliar-disease](foliar-disease.md)에 반영했어요. 두 명세는 초안 상태로 **승인 대기**이고, 이 문서의 M5b 부분(5장 M5b 목표값 표, 9장 M5b 표)보다 두 명세가 우선이에요. 증산의 습도 되먹임은 [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(제안됨)
+- **M5b 명세 다듬기 (2026-11-19)**: 디렉터 결정 25~32(12장)를 [house-humidity](house-humidity.md)·[foliar-disease](foliar-disease.md)에 반영했어요. 두 명세는 **2026-11-19 승인**(결정 33~36)이고, 이 문서의 M5b 부분(5장 M5b 목표값 표, 9장 M5b 표)보다 두 명세가 우선이에요. 증산의 습도 되먹임은 [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(승인 2026-11-19)
 - 마일스톤: M5 (분할 제안: M5a, M5b — [ADR-0012](../decisions/0012-m5-split-and-population-index.md))
 - 관련 명세: [soil-microbes](soil-microbes.md), [disinfection](disinfection.md) (M5a), [house-humidity](house-humidity.md), [foliar-disease](foliar-disease.md) (M5b), M1~M4 명세 전체
 - 관련 ADR: [ADR-0006](../decisions/0006-off-season-and-disinfection.md)(태양열 소독), [ADR-0010](../decisions/0010-manganese-oxide-pool.md)(소독 → 망간 환원), [ADR-0011](../decisions/0011-house-climate-in-m4.md) 결정 6(습도·공기 흐름은 M5), [ADR-0012](../decisions/0012-m5-split-and-population-index.md)(분할, 상대 지수)
@@ -330,13 +330,17 @@ phytophthora = 0.0
 | 23 | S33 정식 후 겨울 백색 필름 지온 (정식 구현 뒤) | **기록만 하고 보류**. 겨울엔 백색 ≥ 없음(증발 억제가 반사 손실보다 큼). M5b·밸런싱 때 다시 봐요 |
 | 24 | M5a 마일스톤 | **2026-11-19 승인** (`ctest --preset ci` 472개 통과, `main` d16ef9a 이후) |
 | 25 | M5b 밤 습도 (house-humidity 결정 1) | **틈새 환기를 먼저 낮추고, 모자랄 때만 밤 기본 증산.** `house.infiltration_air_changes_per_hour` 0.3 → 0.1(국내 실측). CO2와 공유하는 M4 승인 키라 **별도 파라미터 변경**(1작기 회귀 확인 + 새 기준값). 프로토타입 0차에서 (가) 틈새만, (나) 기본 증산만, (다) 둘 다를 스윕해 B1과 1작기 회귀를 함께 보고 |
-| 26 | M5b 증산의 습도 되먹임 (house-humidity 결정 2) | **M5b로 당기고 회귀를 먼저 확인.** `crop.transpiration_humidity_curve`, 작물이 있는 모든 시나리오의 토양 물이 바뀜. [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(제안됨)가 ADR-0011 결정 6의 이 부분을 대체. 0차에서 회귀가 크게 깨지면 받아들이지 않고 B2는 방향만 |
+| 26 | M5b 증산의 습도 되먹임 (house-humidity 결정 2) | **M5b로 당기고 회귀를 먼저 확인.** `crop.transpiration_humidity_curve`, 작물이 있는 모든 시나리오의 토양 물이 바뀜. [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(승인 2026-11-19)가 ADR-0011 결정 6의 이 부분을 대체. 0차에서 회귀가 크게 깨지면 받아들이지 않고 B2는 방향만 |
 | 27 | 필름과 탄저병 물 튐 (foliar-disease 결정 3) | **두 경로.** 흙 → 포기는 필름이 막고(0.1), 포기 → 포기는 필름이 키움(2.5) |
 | 28 | 탄저병 피해 (foliar-disease 결정 4) | **관부탄저만**(시듦·고사). 과실 반점 없음 |
 | 29 | 흰가루병 약광 (foliar-disease 결정 5) | **약하게 유지**, 최대 1.3배(게임용 가정). S32 기대 "4겹 ≥ 2겹, 차이는 작게" |
 | 30 | 응애 (foliar-disease 결정 6) | 습도는 **약한 곡선**(건조 쪽 최대 1.15배). 피해는 **2주 평균 밀도**의 함수 |
 | 31 | 뽑은 자리 보식 (foliar-disease 결정 7) | M5b에서는 **빈 칸**. 보식은 M7·M8 |
-| 32 | 기존 시나리오와 새 구조 (foliar-disease 결정 8) | **등급 B·C에 잠복 감염을 바로 적용**(시나리오 인자 `seedling_disease_factor` 없음). 등급 B·C를 쓰는 기존 시나리오 59개의 결과가 바뀌고 1작기 기준값은 구현 때 다시 씀. 새 상태(연속 젖음 시간, 이동 평균 3개)와 새 난수 스트림 `RngStream::Foliar` 승인 |
+| 32 | 기존 시나리오와 새 구조 (foliar-disease 결정 8) | **등급 B·C에 잠복 감염을 바로 적용**(시나리오 인자 `seedling_disease_factor` 없음). 등급 B·C를 쓰는 기존 시나리오 59개의 결과가 바뀌고 1작기 기준값은 구현 때 다시 씀. 새 상태(연속 젖음 시간, 이동 평균 3개: 습도 약 3일·응애 2주·하우스 안 일사 1일)와 새 난수 스트림 `RngStream::Foliar` 승인 |
+| 33 | 증산 습도 되먹임 되돌림 기준 (ADR-0014) | M4 방향 테스트가 하나라도 깨지거나, 되먹임만으로 `season_*` 누적 수확이 ±10%를 넘게 움직이면 되돌림 |
+| 34 | 등급 B 모종 병해 값 | 지금 값 그대로, 프로토타입 0차에서 모종 병해 효과를 따로 보고해 판단 |
+| 35 | 기존 시나리오 배경 포자 | 0 (잿빛곰팡이·흰가루병). 회귀 변화의 원인을 결정 8로 한정 |
+| 36 | M5b 명세 | **2026-11-19 승인** (house-humidity, foliar-disease, 이 문서 M5b 부분, ADR-0014). 틈새 환기 0.3 → 0.1은 별도 파라미터 변경으로 진행 |
 
 ### 진짜 값과 플레이어 (결정 7)
 

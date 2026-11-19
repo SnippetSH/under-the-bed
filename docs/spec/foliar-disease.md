@@ -1,6 +1,6 @@
 # 지상부 병해충: 탄저병, 잿빛곰팡이병, 흰가루병, 점박이응애·칠레이리응애, 질소 과다 감수성, 병든 포기 제거
 
-- 상태: 초안 (2026-11-19, 디렉터 결정 1~8 반영, 승인 대기). M5b는 승인 전이라 코드를 쓰지 않아요
+- 상태: 승인 (2026-11-19, 디렉터 결정 1~8·33~35 반영). M5b는 승인 전이라 코드를 쓰지 않아요
 - 마일스톤: M5b ([m5-overview](m5-overview.md))
 - 관련: [house-humidity](house-humidity.md)(잎 젖음·연속 젖음 시간·잎 사이 습도·공기 흐름), [soil-microbes](soil-microbes.md)(토양 병원균 틀, 길항균, 포기 감수성), [disinfection](disinfection.md)(멀칭, 소독 사멸), [strawberry-fruit](strawberry-fruit.md)(과실, RGR 이동 평균), [strawberry-minimal](strawberry-minimal.md)(뿌리 건강도), [ADR-0012](../decisions/0012-m5-split-and-population-index.md), [ADR-0013](../decisions/0013-m5a-deep-soil-and-cell-variation.md)
 - 참고 자료: [references/m5b-research.md](../../references/m5b-research.md)(3차, **[S번호]**), [references/m5b-research-supplement.md](../../references/m5b-research-supplement.md)(3차 보충, **[R번호]**), [references/m5-foliar-humidity.md](../../references/m5-foliar-humidity.md)(2차, [H1]·[A1]·[G1]·[P1]·[M1]·[N1]~)
@@ -373,7 +373,7 @@ powdery_mildew_background_index = 0.0
 ```
 
 - **기존 M1~M5a 시나리오는 위 값(점적 설치, 흙 접종원 0, 배경 포자 0)으로 올려요.** 팬은 꺼진 채 시작해요.
-- 모종 병해는 시나리오에서 끄지 않아요(디렉터 결정 8). 그래서 **모종 등급 B·C를 쓰는 기존 시나리오는 결과가 바뀌어요**: 정식 때 잠복 탄저병(B 5%, C 25% 포기), 응애(B 5%, C 15% 포기), 흰가루병 시작 병반(B 0.005, C 0.02)이 붙어요. 잿빛곰팡이는 배경 포자 0이라 생기지 않아요. 1작기 기준값(`tests/baselines/m4_season_summary.json`)은 구현 때 디렉터 승인으로 다시 써요([house-humidity](house-humidity.md) 8장 "1작기 회귀").
+- 모종 병해는 시나리오에서 끄지 않아요(디렉터 결정 8). 그래서 **모종 등급 B·C를 쓰는 기존 시나리오는 결과가 바뀌어요**: 정식 때 잠복 탄저병(B 5%, C 25% 포기), 응애(B 5%, C 15% 포기), 흰가루병 시작 병반(B 0.005, C 0.02)이 붙어요. 잿빛곰팡이는 배경 포자 0이라 생기지 않아요(디렉터 결정 35: 기존 시나리오 배경 포자 0, 회귀 변화의 원인을 모종 병해로 한정). 등급 B·C 값은 지금 그대로 두고 프로토타입 0차에서 모종 병해 효과를 따로 보고해 판단해요(디렉터 결정 34). 1작기 기준값(`tests/baselines/m4_season_summary.json`)은 구현 때 디렉터 승인으로 다시 써요([house-humidity](house-humidity.md) 8장 "1작기 회귀").
 - 영향 받는 시나리오(2026-11-19 `data/scenarios/**`의 `seedling_grade` 기준, 86개 중 59개):
   - 등급 B (58개)
     - M2 (10): `s4_acid`, `s4_alkaline`, `s4_optimal`, `s8_proper`, `s8_waterlogged`, `s9_lime`, `s9_none`, `s10_dry`, `s10_excess`, `s10_standard`

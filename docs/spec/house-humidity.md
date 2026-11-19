@@ -1,8 +1,8 @@
 # 하우스 습도: 수증기 수지, 결로, 잎 젖음, 공기 흐름, 유동팬, 점적 설치
 
-- 상태: 초안 (2026-11-19, 디렉터 결정 1~8 반영, 승인 대기). M5b는 승인 전이라 코드를 쓰지 않아요
+- 상태: 승인 (2026-11-19, 디렉터 결정 1~8·33~35 반영). M5b는 승인 전이라 코드를 쓰지 않아요
 - 마일스톤: M5b ([m5-overview](m5-overview.md))
-- 관련: [house-climate](house-climate.md)(창·환기 경로·CO2와 같은 틀), [strawberry-minimal](strawberry-minimal.md)(증산), [soil-water](soil-water.md)(증발), [disinfection](disinfection.md)(멀칭 증발 계수), [foliar-disease](foliar-disease.md), [ADR-0011](../decisions/0011-house-climate-in-m4.md) 결정 6, [ADR-0012](../decisions/0012-m5-split-and-population-index.md), [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(제안됨, 증산의 습도 되먹임)
+- 관련: [house-climate](house-climate.md)(창·환기 경로·CO2와 같은 틀), [strawberry-minimal](strawberry-minimal.md)(증산), [soil-water](soil-water.md)(증발), [disinfection](disinfection.md)(멀칭 증발 계수), [foliar-disease](foliar-disease.md), [ADR-0011](../decisions/0011-house-climate-in-m4.md) 결정 6, [ADR-0012](../decisions/0012-m5-split-and-population-index.md), [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(승인, 증산의 습도 되먹임)
 - 참고 자료: [references/m5b-research.md](../../references/m5b-research.md)(3차, 출처 번호 **[S번호]**), [references/m5b-research-supplement.md](../../references/m5b-research-supplement.md)(3차 보충, **[R번호]**), [references/m5-foliar-humidity.md](../../references/m5-foliar-humidity.md)(2차, [H1]~)
 - 2026-11-19 디렉터 결정(이전): 점적은 설치 장비, 설치 전 관수는 두상 관수
 - 3차 근거 조사로 바뀐 점: 결로를 틱 안 음해법으로(값 0.5 → 4), 피복 면 온도를 M4 피복 저항에서 계산, 이슬 문턱 0.95 → 0.92, 낮에는 이슬이 맺히지 않음, **연속 젖음 시간** 상태 추가, 수증기 장부와 보존식, 목표값 표(B1~B3, B11~B15)
@@ -281,7 +281,7 @@ transpired = min(water_mm, demand_mm × min(수분 계수, 염류 계수) × tra
 | (가′)·(다′) 되먹임 비교용 | (가)·(다)와 같음 | (가)·(다)와 같음 | 끔(평탄 곡선 1) |
 
 - **채택 규칙(결정 1)**: (가)로 B1 밤 평균이 85% 이상이면 (가)만 채택하고 밤 기본 증산 키는 두지 않아요. 모자라면 (다)를 채택해요. (나)는 비교용이에요. 손 계산으로는 (가)가 밤 평균 약 83%라 경계예요(m5b-research 1.6절, 되먹임 없이 계산한 값).
-- **되먹임 판정(결정 2)**: (가)와 (가′)(또는 (다)와 (다′))의 1작기 차이가 되먹임만의 효과예요. 이것이 크게 깨지면 되먹임을 받아들이지 않는 쪽으로 돌아가요(4.5 "되돌림", ADR-0014). 판정 기준은 0차 보고 때 디렉터가 정해요.
+- **되먹임 판정(결정 2)**: (가)와 (가′)(또는 (다)와 (다′))의 1작기 차이가 되먹임만의 효과예요. M4 방향 테스트가 하나라도 깨지거나, 되먹임만으로 `season_*` 누적 수확이 ±10%를 넘게 움직이면 되먹임을 받아들이지 않는 쪽으로 돌아가요(4.5 "되돌림", ADR-0014, 2026-11-19 디렉터 결정 33).
 - 병해충을 섞지 않으려고, 0차의 1작기 회귀는 모종 등급 B·C의 지상부 병해충 값([foliar-disease](foliar-disease.md) 3.6)을 0으로 둔 스윕용 params로 돌려요. 결정 8(모종 잠복 감염)의 효과는 그 다음 행으로 따로 보고해요. 시나리오에는 손대지 않아요.
 
 ### 1작기 회귀 (M5a와 같은 허용 오차, M5b에서 기준값을 다시 씀)
@@ -303,7 +303,7 @@ transpired = min(water_mm, demand_mm × min(수분 계수, 염류 계수) × tra
 | # | 문제 | 결정 | 이 명세에 반영한 곳 |
 | --- | --- | --- | --- |
 | 1 | **밤 수증기 (B1)**: 증산이 일사에 비례해서 밤에는 0이에요. 밤 원천은 토양 증발뿐이라(시간당 약 1 g/m², 필름 멀칭이면 그 0.1~0.2배) 틈새 환기 0.3 회/h가 빼가는 양(약 2.7 g/m²)보다 작아요. 초안 식으로 밤 평균 약 56%(m5b-research 1.6절) | **틈새 환기를 먼저 낮추고, 모자랄 때만 밤 기본 증산을 더해요.** `house.infiltration_air_changes_per_hour` 0.3 → 0.1(국내 실측 [S101]). CO2와 공유하는 M4 승인 키라 **별도 파라미터 변경**이고 1작기 회귀 확인과 새 기준값이 필요해요. 0차에서 (가) 틈새만, (나) 기본 증산만, (다) 둘 다를 스윕해 B1과 1작기 회귀를 함께 보고해요 | 3장 키 표, 4.5, 8장 "프로토타입 0차"·"1작기 회귀" |
-| 2 | **증산의 습도 되먹임 (B2, 천적 축)**: 증산이 습도와 무관해서 맑은 한낮 원천(시간당 약 200 g/m²)이 하우스를 포화로 밀어요. 낮 55~75%(B2)도, 밤까지 건조해 천적이 약해지는 경우(S31 건조 변형)도 관리로는 나오지 않아요 | **M5b로 당기고, 0차에서 1작기 회귀를 먼저 확인해요.** `crop.transpiration_humidity_curve`로 모든 작물 시나리오의 토양 물이 바뀌어요. [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(제안됨)가 [ADR-0011](../decisions/0011-house-climate-in-m4.md) 결정 6의 이 부분(M7로 미룸)을 대체해요. 0차에서 회귀가 크게 깨지면 받아들이지 않는 쪽으로 돌아가고 B2는 방향만 확인해요 | 1장, 3장 키 표, 4.5, 6장 B2, 8장 |
+| 2 | **증산의 습도 되먹임 (B2, 천적 축)**: 증산이 습도와 무관해서 맑은 한낮 원천(시간당 약 200 g/m²)이 하우스를 포화로 밀어요. 낮 55~75%(B2)도, 밤까지 건조해 천적이 약해지는 경우(S31 건조 변형)도 관리로는 나오지 않아요 | **M5b로 당기고, 0차에서 1작기 회귀를 먼저 확인해요.** `crop.transpiration_humidity_curve`로 모든 작물 시나리오의 토양 물이 바뀌어요. [ADR-0014](../decisions/0014-m5b-transpiration-humidity-feedback.md)(승인 2026-11-19)가 [ADR-0011](../decisions/0011-house-climate-in-m4.md) 결정 6의 이 부분(M7로 미룸)을 대체해요. 0차에서 회귀가 크게 깨지면 받아들이지 않는 쪽으로 돌아가고 B2는 방향만 확인해요 | 1장, 3장 키 표, 4.5, 6장 B2, 8장 |
 
 ## 10. 단순화와 비목표
 
