@@ -21,6 +21,9 @@
 | [0009](0009-no-fixed-recipe-variation.md) | "항상 같은 정답"을 막는 변동 설계 | 승인 |
 | [0010](0010-manganese-oxide-pool.md) | 망간에 산화물 풀과 pH 의존 흡착력 추가 (ADR-0007 2번 보완) | 승인 |
 | [0011](0011-house-climate-in-m4.md) | 하우스 기후 관리(다중 피복·측창·난방·CO2)를 M4로 당김 | 승인 |
+| [0012](0012-m5-split-and-population-index.md) | M5를 M5a·M5b로 나누고 개체군을 0~1 상대 지수로 | 승인 |
+| [0013](0013-m5a-deep-soil-and-cell-variation.md) | M5a 깊은 흙 온도 항과 셀 간 병해 차이 | 승인 |
+| [0014](0014-m5b-transpiration-humidity-feedback.md) | 증산의 습도 되먹임을 M5b로 당김 (ADR-0011 결정 6 일부 대체) | 제안 |
 
 ## 템플릿
 
