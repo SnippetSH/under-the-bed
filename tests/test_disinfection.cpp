@@ -280,6 +280,70 @@ TEST_CASE("Dry soil weakens dazomet more than chloropicrin", "[unit][m5a][disinf
           process::fumigant_kill_per_hour(daz_wet, p.disinfectants)[idx(G::Fusarium)] * 0.5);
 }
 
+// 두 약제를 함께: 약제별 잔류가 따로(각자의 분해 속도로) 분해되고, 사멸·뿌리 손상(노출 지수)은 합이에요
+TEST_CASE("Two disinfectants decay separately and their kill and root exposure add up", "[unit][m5a][disinfection]") {
+    const sim::Params p = test::quiet_params();
+    sim::SoilCell both = disinfection_cell();
+    both.soil_temp_degC = 25.0;
+    both.mulch_def_index = kBlack;
+    both.fumigant_residue_index = {0.15, 0.15};
+    sim::SoilCell daz = both;
+    daz.fumigant_residue_index = {0.15, 0.0};
+    sim::SoilCell chl = both;
+    chl.fumigant_residue_index = {0.0, 0.15};
+
+    // 사멸률과 노출 지수는 약제별 값의 합
+    const sim::MicrobeIndices k_both = process::fumigant_kill_per_hour(both, p.disinfectants);
+    const sim::MicrobeIndices k_daz = process::fumigant_kill_per_hour(daz, p.disinfectants);
+    const sim::MicrobeIndices k_chl = process::fumigant_kill_per_hour(chl, p.disinfectants);
+    for (std::size_t g = 0; g < sim::kMicrobeGroupCount; ++g) {
+        CHECK(k_both[g] == Approx(k_daz[g] + k_chl[g]).epsilon(1e-12));
+    }
+    REQUIRE(process::fumigant_exposure_index(daz, p) > 0.0);
+    CHECK(process::fumigant_exposure_index(both, p) ==
+          Approx(process::fumigant_exposure_index(daz, p) + process::fumigant_exposure_index(chl, p)).epsilon(1e-12));
+
+    // 분해: 약제마다 자기 속도로, 다른 약제가 있어도 같은 값
+    sim::SoilCell decayed_both = both;
+    sim::SoilCell decayed_daz = daz;
+    sim::SoilCell decayed_chl = chl;
+    for (int h = 0; h < 24 * 3; ++h) {
+        process::decay_fumigant(decayed_both, p);
+        process::decay_fumigant(decayed_daz, p);
+        process::decay_fumigant(decayed_chl, p);
+    }
+    CHECK(decayed_both.fumigant_residue_index[kDazomet] == decayed_daz.fumigant_residue_index[kDazomet]);
+    CHECK(decayed_both.fumigant_residue_index[kChloropicrin] == decayed_chl.fumigant_residue_index[kChloropicrin]);
+    CHECK(decayed_daz.fumigant_residue_index[kChloropicrin] == 0.0);
+    // 한 틱 분해 = 잔류 × decay × decay_temp_curve(지온) × 필름 보존 (약제별 계수)
+    sim::SoilCell one = both;
+    process::decay_fumigant(one, p);
+    const double retention = p.mulches[kBlack].fumigant_retention_factor;
+    for (const std::size_t d : {kDazomet, kChloropicrin}) {
+        const sim::DisinfectantDef& def = p.disinfectants[d];
+        CHECK(one.fumigant_residue_index[d] ==
+              Approx(0.15 * (1.0 - def.decay_rate_per_hour * def.decay_temp_curve(25.0) * retention)));
+    }
+    // 두 약제의 분해 속도가 달라서 잔류가 갈라져요 (클로로피크린이 오래 남음)
+    CHECK(decayed_both.fumigant_residue_index[kChloropicrin] > decayed_both.fumigant_residue_index[kDazomet]);
+
+    // 뿌리 손상: 두 약제 노출의 합이 곡선에 들어가서 함께 쓴 쪽 뿌리 건강도가 더 줄어요
+    const auto root_health_after_tick = [&p](sim::SoilCell cell) {
+        sim::Crop crop = process::plant_crop(test::test_crop_init(), p.crop);
+        sim::Ledger ledger;
+        sim::Pcg32 rng = test::biology_rng(5);
+        (void)process::update_crop(crop, cell, p, process::available_nutrients(cell, p), test::crop_env(0.0, 20.0), rng,
+                                   ledger);
+        return crop.root_health;
+    };
+    const double h_both = root_health_after_tick(both);
+    const double h_daz = root_health_after_tick(daz);
+    const double h_chl = root_health_after_tick(chl);
+    CHECK(h_daz < 1.0);
+    CHECK(h_both < h_daz);
+    CHECK(h_both < h_chl);
+}
+
 // 경운: 잔류 절반
 TEST_CASE("Tillage releases half the fumigant residue", "[unit][m5a][disinfection]") {
     sim::World world = test::make_world();
