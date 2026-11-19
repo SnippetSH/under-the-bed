@@ -396,7 +396,7 @@ onset_infection_index = 0.1
 
 # 소독 공통 [disinfection] (disinfection "[disinfection]")
 [disinfection]
-flush_N_g_per_m2_per_index = 18  # 분해균 소독 사멸 지수 1당 유기 N -> NH4+ (약 30 mg N/kg). 근거 방향 [S13, S19], 크기는 게임용 임의값
+flush_N_g_per_m2_per_index = 21  # 분해균 소독 사멸 지수 1당 유기 N -> NH4+ (약 30 mg N/kg). 근거 방향 [S13, S19], 크기는 게임용 임의값
 flush_C_to_N_ratio = 6.0                                       # 죽은 미생물 몸 C:N. 게임용 임의값
 mn_reduction_per_index = 0.12  # 분해균 소독 사멸 지수 1당 산화물 -> 유효태 Mn 비율. 방향만 근거 [S21], 크기는 게임용 임의값
 till_residue_release_fraction = 0.5                            # 경운 1회가 날려 보내는 약제 잔류 비율. 게임용 임의값
@@ -581,7 +581,7 @@ mg_fraction = 0.4
 [[mulch]]
 id = "clear_film"
 name = "투명 필름"
-soil_solar_gain_degC_per_W_per_m2 = 0.022
+soil_solar_gain_degC_per_W_per_m2 = 0.021
 evaporation_factor = 0.1
 fumigant_retention_factor = 0.3
 canopy_reflect_factor = 0.0
