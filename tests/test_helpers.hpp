@@ -479,11 +479,56 @@ inline sim::Params repo_params() {
     p.phenology.induction_nitrogen_curve = {{{{0, 1}}, {{1.05, 1}}, {{1.15, 0.7}}, {{1.5, 0.5}}}};
     p.phenology.induction_spread_index = 0.4;
     p.soil_temperature.evap_cooling_degC_per_mm = 2.5;
-    // M5a 프로토타입 3차 (2026-11-19 디렉터 결정): 깊은 흙 온도 항, 병원균 시작·포기 감수성 셀 간 차이
-    p.soil_temperature.deep_coupling_fraction = 0.4;
-    p.soil_temperature.deep_relax_rate_per_hour = 0.004;
-    p.microbes.pathogen_spread_index = 0.5;
-    p.microbes.susceptibility_spread_index = 0.5;
+    // ---- M5a 최종안 (2026-11-19 승인, m5-overview 14.2): 프로토타입 1~4차로 조정한 값 ----
+    // M1~M4 값 변경 (14.2 결정 8·9)
+    p.soil_temperature.relax_rate_per_hour = 0.08;
+    p.nitrification.step2_rate_per_hour = 0.2;
+    // 깊은 흙 온도 항 (ADR-0013)
+    p.soil_temperature.deep_coupling_fraction = 0.65;
+    p.soil_temperature.deep_relax_rate_per_hour = 0.01;
+    {
+        using G = sim::MicrobeGroup;
+        const auto idx = [](G g) { return sim::microbe(g); };
+        sim::MicrobesParams& m = p.microbes;
+        // 활동 곡선 평탄화 (지수 0.8 이상에서 활동 1), 길항균 보호, 균근균 완화, 셀 간 차이
+        m.decomposer_activity_curve = {{{{0, 0.15}}, {{0.5, 0.7}}, {{0.8, 1}}, {{1, 1}}}};
+        m.aob_activity_curve = {{{{0, 0}}, {{0.2, 0.4}}, {{0.8, 1}}, {{1, 1}}}};
+        m.nob_activity_curve = {{{{0, 0}}, {{0.2, 0.4}}, {{0.8, 1}}, {{1, 1}}}};
+        m.antagonist_protection_factor = 0.8;
+        m.mycorrhiza_water_relief_factor = 0.1;
+        m.mycorrhiza_salt_relief_factor = 0.1;
+        m.pathogen_spread_index = 0.5;
+        m.susceptibility_spread_index = 0.5;
+        auto& g = m.groups;
+        g[idx(G::Decomposer)].growth_rate_per_hour = 0.0015;
+        g[idx(G::Decomposer)].base_death_rate_per_hour = 0.00003;
+        g[idx(G::Decomposer)].heat_kill_curve = {{{{38, 0}}, {{42, 0.004}}, {{45, 0.01}}, {{50, 0.03}}, {{55, 0.1}}}};
+        g[idx(G::Decomposer)].immigration_rate_per_hour = 0.0002;
+        for (G n : {G::NitrifierAob, G::NitrifierNob}) {
+            g[idx(n)].growth_rate_per_hour = 0.003;
+            g[idx(n)].base_death_rate_per_hour = 0.00005;
+        }
+        g[idx(G::Antagonist)].growth_rate_per_hour = 0.0015;
+        g[idx(G::Antagonist)].temp_curve = {{{{5, 0.2}}, {{20, 1}}, {{35, 1}}, {{40, 0.3}}, {{44, 0}}}};
+        g[idx(G::Antagonist)].base_death_rate_per_hour = 0.00003;
+        g[idx(G::Antagonist)].heat_kill_curve = {{{{40, 0}}, {{43, 0.004}}, {{45, 0.008}}, {{50, 0.02}}, {{55, 0.05}}}};
+        g[idx(G::Antagonist)].immigration_rate_per_hour = 0.0001;
+        g[idx(G::Fusarium)].growth_rate_per_hour = 0.002;
+        g[idx(G::Fusarium)].saprophytic_capacity_index = 0.6;
+        g[idx(G::Fusarium)].competition[idx(G::Antagonist)] = 0.4;
+        g[idx(G::Phytophthora)].growth_rate_per_hour = 0.005;
+        g[idx(G::Phytophthora)].saprophytic_capacity_index = 0.5;
+        g[idx(G::Phytophthora)].competition[idx(G::Antagonist)] = 0.4;
+        p.soil_disease[static_cast<std::size_t>(sim::SoilDisease::Fusarium)].infection_rate_per_hour = 0.002;
+        // 소독 (disinfection 표)
+        p.disinfection.flush_N_g_per_m2_per_index = 21.0;
+        p.disinfection.mn_reduction_per_index = 0.12;
+        p.mulches[0].soil_solar_gain_degC_per_W_per_m2 = 0.021;   // clear_film
+        p.mulches[2].soil_solar_gain_degC_per_W_per_m2 = -0.02;   // white_film
+        // 약제 kill_rate 순서: decomposer, nitrifier_aob, nitrifier_nob, antagonist, mycorrhiza, fusarium, phytophthora
+        p.disinfectants[0].kill_rate_per_hour = {0.015, 0.002, 0.001, 0.015, 0.02, 0.02, 0.02};  // dazomet
+        p.disinfectants[1].kill_rate_per_hour = {0.01, 0.03, 0.03, 0.01, 0.02, 0.035, 0.03};     // chloropicrin
+    }
     sim::CropParams& c = p.crop;
     c.light_use_efficiency_g_per_MJ = 2.1;
     c.mn_uptake_rate_per_g_root_per_hour = 0.00002;

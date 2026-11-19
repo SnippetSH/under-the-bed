@@ -104,10 +104,10 @@ drainage_rate_per_hour = 0.3              # 포장용수량 초과분 중 시간
 drainage_compaction_curve = [[0, 1.0], [0.5, 0.6], [1.0, 0.1]]  # x = compaction_index, y = 배수 속도 배율. 게임용 임의값 (aeration.md)
 
 [soil_temperature]  # docs/spec/soil-temperature.md
-relax_rate_per_hour = 0.08  # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 1일)
+relax_rate_per_hour = 0.08  # 토양 온도가 하우스 기온을 따라가는 비율. 게임용 임의값 (시간 상수 약 12시간). M5a 최종안 2026-11-19 승인: 깊은 흙 항과 함께 0.04 -> 0.08 [이전 0.04]
 heat_degC_per_g_C = 0.4                   # 호흡 탄소 1 g/m²당 토양 온도 상승. 게임용 임의값
 deep_coupling_fraction = 0.65  # 근권 완화 목표 중 깊은 흙 온도의 비율 (0이면 하우스 기온만 따라감). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정: 깊은 흙 온도 항
-deep_relax_rate_per_hour = 0.01  # 깊은 흙 온도가 근권 온도를 따라가는 시간당 비율 (시간 상수 약 10일). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정: 깊은 흙 온도 항
+deep_relax_rate_per_hour = 0.01  # 깊은 흙 온도가 근권 온도를 따라가는 시간당 비율 (시간 상수 약 4일). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정: 깊은 흙 온도 항
 evap_cooling_degC_per_mm = 2.5  # 토양 증발 1 mm당 토양 온도 하강 °C. 7월 밀폐·무피복 지온 최고 38.6~39.7 °C(참고 35~40)에 맞춘 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 
 [organic_matter]  # docs/spec/organic-matter.md
@@ -121,7 +121,7 @@ o2_curve = [[0, 0.15], [0.3, 0.6], [0.6, 1.0], [1, 1.0]]  # x = aeration_index. 
 
 [nitrification]  # docs/spec/nitrogen.md
 step1_rate_per_hour = 0.01                # NH4+ -> NO2- 최대 속도. 게임용 임의값
-step2_rate_per_hour = 0.2  # NO2- -> NO3- 최대 속도. 게임용 임의값
+step2_rate_per_hour = 0.2  # NO2- -> NO3- 최대 속도. 게임용 임의값. M5a 최종안 2026-11-19 승인: 아질산 평형 ≈ NH4 × 1단계/2단계 속도라 중성 토양 아질산 방지 [이전 0.08]
 temp_curve = [[0, 0], [5, 0.1], [15, 0.5], [25, 0.9], [32, 1.0], [40, 0.6], [50, 0.1]]  # x = 토양 온도 °C. 게임용 임의값
 moisture_curve = [[0, 0], [0.3, 0.2], [0.6, 0.8], [0.9, 1.0], [2.0, 1.0]]  # x = relative_water. 게임용 임의값
 step1_ph_curve = [[4.5, 0.1], [5.5, 0.5], [6.5, 1.0], [8.0, 1.0], [9.0, 0.6]]  # x = pH. 게임용 임의값
@@ -285,8 +285,8 @@ antagonist_protection_factor = 0.8  # 길항균 지수 1일 때 감염 압력 �
 mycorrhiza_p_release_factor = 2.0                              # 균근균 지수 1일 때 고정 -> 유효 인산 속도 증가 배율. 게임용 임의값
 mycorrhiza_water_relief_factor = 0.1  # 균근균 지수 1일 때 수분 스트레스 결손분 완화 비율. 게임용 임의값
 mycorrhiza_salt_relief_factor = 0.1  # 〃 염류 스트레스. 게임용 임의값
-pathogen_spread_index = 0.5  # 월드 생성 때 셀마다 병원균 시작 지수 × (1 + 값 × (2U − 1)) (셀 간 오염 차이, biology 난수, 0이면 꺼짐). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정
-susceptibility_spread_index = 0.5  # 정식 때 셀마다 포기 감수성 1 + 값 × (2U − 1), 감염 증가분에 곱함 (biology 난수, 0이면 꺼짐). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정
+pathogen_spread_index = 0.5  # 월드 생성 때 셀마다 병원균 시작 지수 × (1 + 값 × (2U − 1)) (셀 간 오염 차이, disease 난수 스트림, 0이면 꺼짐). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정
+susceptibility_spread_index = 0.5  # 정식 때 셀마다 포기 감수성 1 + 값 × (2U − 1), 감염 증가분에 곱함 (disease 난수 스트림, 0이면 꺼짐). 게임용 임의값, M5a 프로토타입 3차, 2026-11-19 디렉터 결정
 moist_heat_curve = [[0.2, 0.3], [0.5, 0.7], [0.8, 1.0]]        # x = relative_water, y = 열 사멸 배율 (젖은 흙이 잘 죽음). 게임용 임의값
 # 수용력 곡선 (무리별 수용력 규칙은 코드가 정하고 곡선만 데이터)
 decomposer_food_curve = [[0, 0.4], [10, 0.8], [30, 1]]         # x = 이분해성 C g/m2. 게임용 임의값

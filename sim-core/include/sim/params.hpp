@@ -402,7 +402,7 @@ struct MicrobesParams {
     double mycorrhiza_p_release_factor = 0.0;
     double mycorrhiza_water_relief_factor = 0.0;
     double mycorrhiza_salt_relief_factor = 0.0;
-    // M5a 프로토타입 3차: 셀 간 차이 (biology 난수, 0이면 난수를 뽑지 않음)
+    // M5a 셀 간 차이 (disease 난수 스트림, 0이면 난수를 뽑지 않음, ADR-0013)
     double pathogen_spread_index = 0.0;        // 월드 생성 때 병원균 시작 지수 × (1 + 값 × (2U − 1)), 0~1
     double susceptibility_spread_index = 0.0;  // 정식 때 포기 감수성 1 + 값 × (2U − 1), 0~1
     PiecewiseLinear moist_heat_curve;       // x = relative_water, y = 열 사멸 배율
