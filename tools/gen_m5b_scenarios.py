@@ -270,7 +270,7 @@ def build(cfg: dict) -> dict[str, tuple[int, str]]:
     # 모두 season_standard 기반 가을 작기에서 표준 방사(틱 24)를 뺀 것. 창 시작(early_tick)부터 같은 관리: 난방 + 창 닫힘 (낮 15~28 도)
     e_t, l_t, s31_end = cfg["s31_early_tick"], cfg["s31_late_tick"], cfg["s31_end_tick"]
     six = 6 * 7 * HOURS
-    rel = cfg["s31_release_per_m2"]  # 천적 방사량 (마리/m2). 결정 46: 15는 보류, 구현 뒤 15/75/135 비교
+    rel = cfg["s31_release_per_m2"]  # 천적 방사량 (마리/m2). 결정 48: 15/75/135 비교 뒤 75로 확정
     s31_common = ["가을 작기(9/10 정식, day 253, 등급 B 모종)가 m4 season_standard와 같은 시작·토양·작물·비료·관수·창·피복(3겹)으로 가요. 단 표준 방사(틱 24)는 뺐어요 (S31이 천적을 직접 다뤄요).",
                   f"창 시작(틱 {e_t}, 11/25)부터 모든 S31 시나리오가 같은 관리: 난방 {cfg['s31_heater']} 도, 창 닫힘 (season_standard의 창·난방 일정은 지움). 길이는 모두 {s31_end}틱.",
                   f"시드 {SEED}, 배경 포자 잿빛곰팡이 0.05, 흰가루병 0.02"]
@@ -352,7 +352,7 @@ CFG = dict(
     s32_dark_vent=[(8, 16, 0.3)],
     s32_dry_vent=[(8, 17, 0.5)], s32_dry_heat=24.0,
     s31_early_tick=1800, s31_late_tick=3600, s31_end_tick=4608, s31_heater=10.0,
-    s31_release_per_m2=15.0,
+    s31_release_per_m2=75.0,
     dry_heat=24.0, dry31_vent=[(8, 16, 0.3)], dry_factor=0.1,
 )
 

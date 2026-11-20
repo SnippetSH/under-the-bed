@@ -478,10 +478,10 @@ action = "set_heater"
 on = true
 setpoint_degC = 10.0
 
-# 천적 방사: 틱 1800 칠레이리응애 15마리/m2
+# 천적 방사: 틱 1800 칠레이리응애 75마리/m2
 
 [[schedule]]
 tick = 1800
 action = "release_predators"
 predator = "persimilis"
-per_m2 = 15.0
+per_m2 = 75.0
