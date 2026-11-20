@@ -1,9 +1,13 @@
 // M5b 지상부 병해충 보존·불변 조건·결정론 (docs/spec/foliar-disease.md 9장 "보존", "결정론" 행).
 // data/scenarios/m5b/*.toml (S26~S32)과 극한 변형을 매 틱 검사해요.
+// (전체 길이 S26~S34·습도 변형·m4 season_standard/n_excess의 같은 매 틱 검사는 test_m5b_scenarios.cpp가 방향 테스트와
+//  함께 해요. 여기서는 측정 창 전 구간과 극한 입력을 봐요.)
 //   원소: 토양 + 체내 = 초기 + in − leached − gas − harvested − removed (RemovePlant만 계 밖 항).
 //         썩은 과실은 낙엽 규칙으로 토양(계 안), 흰가루 과실은 수확 반출 장부에 들어가요.
 //   유기 C: 초기 + C_in + C_root_litter + C_leaf_litter − C_respired (제거한 포기의 C는 토양 밖이라 항 없음).
-//   불변: 지상부 지수 0~1, 탄저병 감염은 같은 작물이 이어지는 동안 줄지 않음, 하우스 포자 0~1, 토양 무기 N 평균 ≥ 0, NaN 없음.
+//   물·수증기: 토양 물 수지, 하우스 수증기 수지와 원천 일치 (house-humidity 7장).
+//   불변: 지상부 지수 0~1, 탄저병 감염은 같은 작물이 이어지는 동안 줄지 않음, 하우스 포자·습도 0~1, 잎 젖음 0~1,
+//         토양 무기 N 평균 ≥ 0, NaN 없음. 검사 함수는 m5b_world_checks.hpp (test_m5b_scenarios.cpp와 공유).
 // 상대 오차 1e-9, 스케일은 max(1, |값|). 첫 위반에서 멈춰요.
 
 #include <algorithm>
@@ -21,75 +25,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "sim/world.hpp"
+#include "m5b_world_checks.hpp"
 #include "simdata/loader.hpp"
 #include "test_helpers.hpp"
 
 namespace {
 
-constexpr double kRelTol = 1e-9;
+using test::m5b::kRelTol;
 constexpr std::uint64_t kDay = 24;
-
-struct Totals {
-    double water = 0.0, N = 0.0, P = 0.0, K = 0.0, Ca = 0.0, Mg = 0.0, Mn = 0.0, S = 0.0, C = 0.0;
-};
-
-Totals totals_of(const sim::Snapshot& snap) {
-    Totals t;
-    for (std::size_t i = 0; i < snap.soil.size(); ++i) {
-        const sim::SoilCell& c = snap.soil[i];
-        const sim::Crop& crop = snap.crops[i];
-        t.water += c.water_mm;
-        t.N += c.total_N_g_per_m2() + crop.plant_N_g_per_m2;
-        t.P += c.p_g_per_m2 + c.p_fixed_g_per_m2 + crop.plant_P_g_per_m2;
-        t.K += c.k_g_per_m2 + crop.plant_K_g_per_m2;
-        t.Ca += c.ca_g_per_m2 + crop.plant_Ca_g_per_m2;
-        t.Mg += c.mg_g_per_m2 + crop.plant_Mg_g_per_m2;
-        t.Mn += c.mn_g_per_m2 + c.mn_oxide_g_per_m2 + crop.plant_Mn_g_per_m2;
-        t.S += c.s_g_per_m2;
-        t.C += c.organic_C_g_per_m2();
-    }
-    return t;
-}
-
-double rel_err(double actual, double expected) { return std::abs(actual - expected) / std::max(1.0, std::abs(expected)); }
-bool unit(double v) { return std::isfinite(v) && v >= 0.0 && v <= 1.0; }
-
-std::string invalid_reason(const sim::Snapshot& prev, const sim::Snapshot& snap) {
-    for (const double v : {snap.house.botrytis_spore_index, snap.house.powdery_mildew_spore_index,
-                           snap.house.anthracnose_sporulation_index, snap.house.spider_mite_mean_index}) {
-        if (!unit(v)) {
-            return "house foliar index out of 0..1";
-        }
-    }
-    if (!std::isfinite(snap.house.inside_solar_mean_W_per_m2) || snap.house.inside_solar_mean_W_per_m2 < 0.0) {
-        return "house solar mean invalid";
-    }
-    for (std::size_t i = 0; i < snap.crops.size(); ++i) {
-        const sim::Crop& c = snap.crops[i];
-        for (const double v : {c.infection_anthracnose_index, c.infection_botrytis_index, c.infection_powdery_mildew_index,
-                               c.spider_mite_index, c.spider_mite_mean_index, c.predator_mite_index, c.leaf_wetness_index}) {
-            if (!unit(v)) {
-                return std::format("crop {} foliar index out of 0..1", i);
-            }
-        }
-        if (!std::isfinite(c.soil_mineral_N_mean_g_per_m2) || c.soil_mineral_N_mean_g_per_m2 < 0.0) {
-            return std::format("crop {} soil mineral N mean invalid", i);
-        }
-        const sim::Crop& p = prev.crops[i];
-        const bool same_crop = p.present && c.present && !(!p.alive && c.alive);
-        if (same_crop && c.infection_anthracnose_index < p.infection_anthracnose_index) {
-            return std::format("crop {} anthracnose infection decreased", i);
-        }
-    }
-    for (std::size_t i = 0; i < snap.soil.size(); ++i) {
-        for (std::size_t g = 0; g < sim::kMicrobeGroupCount; ++g) {
-            if (!unit(snap.soil[i].microbe_index[g])) {
-                return std::format("cell {} microbe {} out of 0..1", i, g);
-            }
-        }
-    }
-    return {};
-}
 
 struct Loaded {
     sim::Params params;
@@ -123,7 +66,8 @@ Result run(Loaded loaded, std::uint64_t ticks, const Options& options = {}, bool
     const int cols = world->scenario().bed_cols;
     const int rows = world->scenario().bed_rows;
     sim::Snapshot prev = world->snapshot();
-    const Totals init = totals_of(prev);
+    const sim::Snapshot init_snap = prev;
+    const test::m5b::Totals init = test::m5b::totals_of(prev);
     Result result;
     std::size_t next = 0;
     std::vector<sim::Command> removals;
@@ -154,24 +98,11 @@ Result run(Loaded loaded, std::uint64_t ticks, const Options& options = {}, bool
             continue;
         }
         sim::Snapshot snap = world->snapshot();
-        const Totals now = totals_of(snap);
-        const sim::Ledger& l = snap.ledger;
-        const std::array<double, 9> errs = {
-            rel_err(now.water, init.water + l.water_in_mm - l.water_evaporated_mm - l.water_transpired_mm -
-                                   l.water_drained_mm),
-            rel_err(now.N, init.N + l.N_in_g - l.N_leached_g - l.N_gas_g - l.N_harvested_g - l.N_removed_g),
-            rel_err(now.P, init.P + l.P_in_g - l.P_leached_g - l.P_harvested_g - l.P_removed_g),
-            rel_err(now.K, init.K + l.K_in_g - l.K_leached_g - l.K_harvested_g - l.K_removed_g),
-            rel_err(now.Ca, init.Ca + l.Ca_in_g - l.Ca_leached_g - l.Ca_harvested_g - l.Ca_removed_g),
-            rel_err(now.Mg, init.Mg + l.Mg_in_g - l.Mg_leached_g - l.Mg_harvested_g - l.Mg_removed_g),
-            rel_err(now.Mn, init.Mn + l.Mn_in_g - l.Mn_leached_g - l.Mn_harvested_g - l.Mn_removed_g),
-            rel_err(now.S, init.S + l.S_in_g - l.S_leached_g),
-            rel_err(now.C, init.C + l.C_in_g + l.C_root_litter_g + l.C_leaf_litter_g - l.C_respired_g),
-        };
-        static constexpr const char* kNames[9] = {"water", "N", "P", "K", "Ca", "Mg", "Mn", "S", "C"};
+        const auto errs = test::m5b::budget_errors(world->params(), init_snap, init, snap);
+        const auto& kNames = test::m5b::kBudgetNames;
         const double worst = *std::max_element(errs.begin(), errs.end());
         result.max_err = std::max(result.max_err, worst);
-        const std::string reason = invalid_reason(prev, snap);
+        const std::string reason = test::m5b::invalid_reason(prev, snap);
         if (worst > kRelTol || !reason.empty()) {
             INFO("tick " << (t + 1) << " " << reason);
             for (std::size_t i = 0; i < errs.size(); ++i) {
@@ -246,6 +177,27 @@ TEST_CASE("M5b extreme foliar inputs keep conservation", "[conservation][m5b][fo
     CHECK(r.ledger.plants_removed > 0);
     // 1000 + s28 시나리오의 표준 방사 15 (결정 44, m5-overview 15.3 항목 37)
     CHECK(r.ledger.predators_released_per_m2 == 1015.0);
+}
+
+// ---- 극한 기상: 바깥 −15 °C, 바깥 습도 0%·100% 하루씩 번갈아, 관수 0 (house-humidity 8장 극한 행의 월드 판) ----
+// 수증기 보존·원천 일치, 습도·잎 젖음 0~1, NaN 없음을 매 틱 검사해요 (run()이 m5b_world_checks.hpp로 검사)
+TEST_CASE("M5b extreme cold weather with dry and saturated outside air keeps conservation",
+          "[conservation][m5b][humidity][extreme]") {
+    for (const bool irrigate : {true, false}) {
+        Loaded l = load("s28_overhead");
+        for (std::size_t i = 0; i < l.bundle.scenario.weather_hourly.size(); ++i) {
+            sim::WeatherHour& w = l.bundle.scenario.weather_hourly[i];
+            w.outside_air_temp_degC = -15.0;
+            w.outside_rh_percent = (i / kDay) % 2 == 0 ? 0.0 : 100.0;
+        }
+        if (!irrigate) {
+            std::erase_if(l.bundle.schedule, [](const simdata::ScheduledCommand& c) {
+                return std::holds_alternative<sim::IrrigateCommand>(c.command);
+            });
+        }
+        report(irrigate ? "extreme -15 C outside rh 0/100" : "extreme -15 C outside rh 0/100 without irrigation",
+               run(std::move(l), 30 * kDay));
+    }
 }
 
 // ---- 결정론: S26, S28, S31, s29_standard 같은 시드 → 같은 해시 ----

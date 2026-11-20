@@ -46,7 +46,10 @@ add_executable(sim-tests
   test_house_humidity.cpp
   test_foliar_disease.cpp
   test_m5b_foliar_world.cpp
-  test_m5b_mite_rates.cpp)
+  test_m5b_mite_rates.cpp
+  m5b_world_checks.hpp
+  test_m5b_scenarios.cpp
+  test_m5b_determinism.cpp)
 
 target_link_libraries(sim-tests PRIVATE sim-core sim-data Catch2::Catch2WithMain)
 # 실제 data/ 파일을 읽는 테스트용 저장소 경로

@@ -7,7 +7,7 @@ s31_none 대비 감소율을 더해 보여줘요.
 import csv, sys, pathlib
 
 WIN = {"s26": 1968, "s27": 1968, "s28": 0, "s29": 0, "s30": 4872, "s31": 1800, "s32": 4128}
-WIN_S31 = {"s31_none": 1800, "s31_predator": 1800, "s31_predator_dry": 1800, "s31_predator_late": 3600}
+WIN_S31 = {"s31_none": 1800, "s31_none_dry": 1800, "s31_predator": 1800, "s31_predator_dry": 1800, "s31_predator_late": 3600}
 WEEK = 168
 d = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "runs/pass6")
 print(f"{'name':20s} {'harv':>5s} {'rot':>4s} {'rot%':>5s} {'fruit@W':>8s} {'midT':>5s} {'maxT':>5s} {'rh_mean':>7s} {'mite_end':>8s} {'pred_end':>8s} {'pm_inf_end':>10s} {'bot_inf_end':>11s}")

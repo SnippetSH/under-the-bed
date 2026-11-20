@@ -1,7 +1,8 @@
 // M5b 단위 테스트: 하우스 습도 (docs/spec/house-humidity.md 8장 "단위")
 // 수증기 수지(음해법)·피복 면 온도·공기 흐름·잎 젖음·연속 젖음 시간·보존·세이브 왕복.
-// (증산의 습도 되먹임·밤 기본 증산은 되돌림, ADR-0014: 증산은 M4 식 그대로라 여기서 시험하지 않아요.)
-// 명령 행(점적, 두상 관수 표시, InstallDrip 거부)은 이 파일에 아직 없어요 (m5-overview 15.4 4단계 테스트 보강).
+// (증산의 습도 되먹임·밤 기본 증산은 되돌림, ADR-0014: 증산은 M4 식 그대로라 습도와 무관한지만 확인해요.)
+// 명령 행(두상 관수 표시, 점적 설치 뒤 표시 없음, InstallDrip 거부), 증산 되돌림 확인, 점적·팬 세이브 왕복은
+// 파일 끝 "명령·되돌림 확인" 부분에 있어요 (m5-overview 15.4 4단계 테스트 보강).
 // 팬은 fan_on을 직접 세워서 확인해요. 기대값은 방향만 써요 (6장 목표값은 차수 보고에서 확인).
 
 #include <algorithm>
@@ -561,5 +562,175 @@ TEST_CASE("Humidity state survives a save round trip", "[unit][m5b][humidity][se
         world.step(1);
         loaded->step(1);
     }
+    CHECK(loaded->state_hash() == world.state_hash());
+}
+
+// ---- 명령·되돌림 확인 (8장 단위 표, 15.4 4단계 보강) ----
+
+// 팬 켬 대 끔, 습도 0.91, LAI 3 (이슬 문턱 0.95): 끈 쪽만 젖기 시작 (8장 표의 현재 값.
+// 끔 0.91 + 0.08 = 0.99 ≥ 0.95, 팬 0.6이면 0.91 + 0.08 × 0.4 = 0.942 < 0.95)
+// (test_params()의 이슬 문턱은 2차 전 값 0.92라서 최종 값 0.95를 가진 repo_params()로 봐요)
+TEST_CASE("Fan prevents wetting at the spec humidity 0.91 with LAI 3", "[unit][m5b][humidity]") {
+    const sim::Params p = test::repo_params();
+    REQUIRE(p.humidity.dew_rh_index == Approx(0.95));
+    auto off = crop_with_lai(p, 3.0);
+    auto on = off;
+    process::update_leaf_wetness(off, p.crop, p.humidity, 0.91, 0.0, 0.0, false);
+    process::update_leaf_wetness(on, p.crop, p.humidity, 0.91, p.humidity.fan_airflow_index, 0.0, false);
+    CHECK(off.leaf_wetness_index > 0.0);
+    CHECK(on.leaf_wetness_index == 0.0);
+}
+
+// 습도 1, 하우스 안 일사 200 W/m²: 젖은 잎이 마름 (일사 항은 습도 곡선과 무관, 1차 구조 변경)
+TEST_CASE("Sunlit wet leaves dry even in saturated air", "[unit][m5b][humidity]") {
+    const sim::Params p = humidity_params();
+    auto crop = crop_with_lai(p, 3.0);
+    crop.leaf_wetness_index = 1.0;
+    process::update_leaf_wetness(crop, p.crop, p.humidity, 1.0, 0.0, 200.0, false);
+    CHECK(crop.leaf_wetness_index < 1.0);
+    // 같은 포화 공기의 밤에는 마르지 않음 (이슬 조건이라 젖음 쪽)
+    auto night = crop_with_lai(p, 3.0);
+    night.leaf_wetness_index = 1.0;
+    process::update_leaf_wetness(night, p.crop, p.humidity, 1.0, 0.0, 0.0, false);
+    CHECK(night.leaf_wetness_index == 1.0);
+}
+
+namespace {
+
+// 등급 A 2×3 하우스 (병해 없음), 점적 설치 여부만 정해요
+sim::World grade_a_world(bool drip_installed) {
+    sim::Scenario s = test::test_scenario(330, 2, 3);
+    s.crop = sim::CropInit{.seedling_grade = "A", .plants_per_m2 = 8.0, .initial_establishment_index = 1.0};
+    s.drip_installed = drip_installed;
+    return test::make_world(std::move(s));
+}
+
+}  // namespace
+
+// 두상 관수(점적 미설치): 그 틱 w = overhead_wet_index, 셀에 overhead 표시.
+// 점적 설치 뒤 같은 관수는 표시가 없고 잎 젖음은 관수하지 않은 쌍둥이 월드와 같음
+TEST_CASE("Overhead irrigation wets leaves until drip is installed", "[unit][m5b][humidity][command]") {
+    sim::World world = grade_a_world(false);
+    const double overhead_wet = world.params().humidity.overhead_wet_index;
+    world.step(3);  // 밤 (일사 없음)
+    test::must_enqueue(world, sim::IrrigateCommand{.area = sim::whole_grid(2, 3), .amount_mm = 2.0});
+    world.step(1);
+    {
+        const sim::Snapshot s = world.snapshot();
+        CHECK_FALSE(s.house.drip_installed);
+        for (std::size_t i = 0; i < s.soil.size(); ++i) {
+            CHECK(s.soil[i].overhead_irrigated_this_tick);
+            CHECK(s.crops[i].leaf_wetness_index == overhead_wet);
+        }
+    }
+    world.step(1);  // 표시는 틱마다 다시 계산 (관수 없는 틱은 표시 없음)
+    for (const sim::SoilCell& c : world.snapshot().soil) {
+        CHECK_FALSE(c.overhead_irrigated_this_tick);
+    }
+    test::must_enqueue(world, sim::InstallDripCommand{});
+    world.step(12);  // 잎이 마를 시간 (낮)
+    sim::World twin = world;
+    test::must_enqueue(world, sim::IrrigateCommand{.area = sim::whole_grid(2, 3), .amount_mm = 2.0});
+    world.step(1);
+    twin.step(1);
+    const sim::Snapshot a = world.snapshot();
+    const sim::Snapshot b = twin.snapshot();
+    CHECK(a.house.drip_installed);
+    for (std::size_t i = 0; i < a.soil.size(); ++i) {
+        CHECK_FALSE(a.soil[i].overhead_irrigated_this_tick);
+        CHECK(a.crops[i].leaf_wetness_index == b.crops[i].leaf_wetness_index);
+        CHECK(a.crops[i].leaf_wetness_index < overhead_wet);
+        CHECK(a.soil[i].water_mm > b.soil[i].water_mm);  // 물은 토양으로 들어갔어요
+    }
+}
+
+// InstallDrip 두 번: 두 번째는 enqueue에서 거부. 처음부터 점적이 깔린 하우스도 거부
+TEST_CASE("InstallDrip is rejected once drip is installed", "[unit][m5b][humidity][command]") {
+    sim::World installed = grade_a_world(true);
+    CHECK_FALSE(installed.enqueue(sim::InstallDripCommand{}).has_value());
+
+    sim::World world = grade_a_world(false);
+    REQUIRE(world.enqueue(sim::InstallDripCommand{}).has_value());
+    world.step(1);
+    CHECK(world.snapshot().house.drip_installed);
+    CHECK(world.snapshot().house.drip_installations == 1.0);
+    CHECK_FALSE(world.enqueue(sim::InstallDripCommand{}).has_value());
+    world.step(1);
+    CHECK(world.snapshot().house.drip_installations == 1.0);
+}
+
+// 증산 (되돌림 확인): 같은 일사·LAI에서 틱 시작 하우스 습도만 다르게(바깥 습도 30% 대 95%, 창 전부 열림) 해도
+// 증산·증발·토양 물이 같음 (습도와 무관, M4 식). 등급 A·배경 포자 0이라 잎 젖음 차이가 병해로 번지지 않아요
+TEST_CASE("Transpiration does not depend on house humidity", "[unit][m5b][humidity]") {
+    const auto make = [](double outside_rh_percent) {
+        sim::Scenario s = test::test_scenario(120, 2, 3);
+        s.crop = sim::CropInit{.seedling_grade = "A", .plants_per_m2 = 8.0, .initial_establishment_index = 1.0};
+        for (std::size_t i = 0; i < s.weather_hourly.size(); ++i) {
+            const int hour = static_cast<int>(i % sim::kHoursPerDay);
+            s.weather_hourly[i].outside_air_temp_degC = 18.0;
+            s.weather_hourly[i].solar_radiation_W_per_m2 = hour >= 7 && hour < 17 ? 400.0 : 0.0;
+            s.weather_hourly[i].outside_rh_percent = outside_rh_percent;
+        }
+        sim::World w = test::make_world(std::move(s));
+        for (int layer = 0; layer < 3; ++layer) {
+            for (const auto side : {sim::WindowSide::Left, sim::WindowSide::Right}) {
+                test::must_enqueue(w, sim::SetWindowCommand{.layer = layer, .side = side, .open_fraction = 1.0});
+            }
+        }
+        return w;
+    };
+    sim::World dry = make(30.0);
+    sim::World humid = make(95.0);
+    double max_rh_gap = 0.0;
+    double transpired = 0.0;
+    for (int t = 0; t < 72; ++t) {
+        max_rh_gap = std::max(max_rh_gap, humid.snapshot().house.rh_index - dry.snapshot().house.rh_index);
+        dry.step(1);
+        humid.step(1);
+        const sim::Snapshot a = dry.snapshot();
+        const sim::Snapshot b = humid.snapshot();
+        REQUIRE(a.ledger.water_transpired_mm == b.ledger.water_transpired_mm);
+        REQUIRE(a.ledger.water_evaporated_mm == b.ledger.water_evaporated_mm);
+        for (std::size_t i = 0; i < a.soil.size(); ++i) {
+            REQUIRE(a.soil[i].water_mm == b.soil[i].water_mm);
+            REQUIRE(a.crops[i].leaf_g_per_m2 == b.crops[i].leaf_g_per_m2);
+        }
+        transpired = a.ledger.water_transpired_mm;
+    }
+    CHECK(max_rh_gap > 0.3);  // 틱 시작 습도가 실제로 크게 달랐어요 (0.6 대 0.95 수준)
+    CHECK(transpired > 0.0);
+}
+
+// 세이브 왕복: 점적 미설치·팬 가동·두상 관수 하우스의 점적 여부, 팬 시간, 점적 설치 장부, 잎 젖음이 같고,
+// 대기 중인 InstallDrip·SetFan까지 이어서 돌려도 해시가 같음
+TEST_CASE("Drip and fan state survive a save round trip", "[unit][m5b][humidity][serialization]") {
+    sim::World world = grade_a_world(false);
+    test::must_enqueue(world, sim::SetFanCommand{.on = true});
+    for (int t = 0; t < 30; ++t) {
+        if (t % 24 == 8) {
+            test::must_enqueue(world, sim::IrrigateCommand{.area = sim::whole_grid(2, 3), .amount_mm = 2.0});
+        }
+        world.step(1);
+    }
+    test::must_enqueue(world, sim::InstallDripCommand{});
+    test::must_enqueue(world, sim::SetFanCommand{.on = false});
+    auto loaded = sim::World::deserialize(world.serialize());
+    REQUIRE(loaded.has_value());
+    const sim::Snapshot a = world.snapshot();
+    const sim::Snapshot b = loaded->snapshot();
+    CHECK_FALSE(b.house.drip_installed);
+    CHECK(b.house.fan_on);
+    CHECK(b.house.fan_hours == a.house.fan_hours);
+    CHECK(b.house.fan_hours == 30.0);
+    CHECK(b.house.drip_installations == a.house.drip_installations);
+    CHECK(b.house == a.house);
+    CHECK(b.crops == a.crops);
+    CHECK(b.pending_command_count == 2);
+    CHECK(loaded->state_hash() == world.state_hash());
+    world.step(24);
+    loaded->step(24);
+    CHECK(loaded->snapshot().house.drip_installed);
+    CHECK_FALSE(loaded->snapshot().house.fan_on);
+    CHECK(loaded->snapshot().house == world.snapshot().house);
     CHECK(loaded->state_hash() == world.state_hash());
 }
