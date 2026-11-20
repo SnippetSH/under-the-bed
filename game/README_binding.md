@@ -158,6 +158,9 @@ if SimWorld.peek_save_version(raw)["supported"]:
 | E8 | `engine_E8_no_true_value_access_outside_dev_panel` | `tools/check_true_access.py` |
 | E9 | `engine_E9_snapshot_matches_cli_csv` | `game/tests/snapshot_vs_csv.gd` |
 | E10 | `engine_E10_auto_irrigation_replay` | `game/tests/auto_irrigation.gd` |
+| G1 | `engine_G1_game_save_store` | `game/tests/game_save_store.gd` (게임 스크립트의 세이브 묶음·칸·자동 저장·버전 거부·깨진 파일) |
+| G2 | `engine_G2_game_runner` | `game/tests/game_runner.gd` (`SimRunner`: 자동 물 주기 E10·H9, 작기 종료, 263일 해시 = sim-cli H6) |
+| G3 | `engine_G3_game_screen` | `game/tests/game_screen.gd` (행동 패널 17종·거부 알림·개발자 패널·시작 화면) |
 
 - 검사 스크립트는 `RESULT PASS`/`RESULT FAIL …`을 찍고 종료 코드로 끝나요. `tools/run_engine_check.py`가 그 줄과 함께 엔진의 `SCRIPT ERROR`·`ERROR:`·누수 경고("ObjectDB instances leaked", "resources still in use")도 실패로 봐요. 검사에서 노드를 만들면 끝에 `free()`해야 해요.
-- 등록하지 않은 것: `bench_frame.gd`(측정용), `runner_smoke.gd`(게임 스크립트 `SimRunner`·`SaveStore` 검사. 게임 스크립트가 정해지면 고쳐서 등록).
+- 등록하지 않은 것: `bench_frame.gd`(측정용), `capture_shots.gd`(화면 캡처 도구, 창을 띄워야 해요: `godot --path game --script res://tests/capture_shots.gd -- out=<폴더>`).

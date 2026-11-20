@@ -112,7 +112,11 @@ func rebind() -> void:
 
 
 func _on_visibility_changed() -> void:
-	if not visible and bed != null:
+	if bed == null:
+		return
+	if visible:
+		refresh()
+	else:
 		bed.set_overlay(PackedFloat64Array(), 0.0, 1.0)
 
 

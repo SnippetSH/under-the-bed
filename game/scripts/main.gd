@@ -16,6 +16,7 @@ const Labels = preload("res://scripts/labels.gd")
 const START_SCENE := "res://scenes/start.tscn"
 const DEFAULT_SCENARIO := "direct_play"
 const NOTE_MAX := 3
+const NOTE_LINE_PX := 26.0
 
 var runner: Node
 var bed: Control
@@ -213,7 +214,7 @@ func _build_ui() -> void:
 	var dy := hy + 86.0
 	dev = DevPanel.new()
 	dev.position = Vector2(8, dy)
-	dev.size = Vector2(900, 720 - dy - 34)
+	dev.size = Vector2(900, 720 - dy - NOTE_MAX * NOTE_LINE_PX)  # 아래 알림 자리를 남겨요
 	add_child(dev)
 	dev.setup(runner, bed)
 	dev.visible = bool(Cfg.get_v("visual", "dev_panel_default_on"))
@@ -231,6 +232,7 @@ func _build_ui() -> void:
 	save_panel.size = Vector2(880, 560)
 	add_child(save_panel)
 	save_panel.setup(true, true)
+	save_panel.add_theme_stylebox_override("panel", Cfg.overlay_style())
 	save_panel.visible = false
 	save_panel.save_requested.connect(_on_save_requested)
 	save_panel.load_requested.connect(_on_load_requested)
@@ -239,6 +241,7 @@ func _build_ui() -> void:
 	# 작기 종료 화면
 	end_panel = _panel(Vector2(380, 200), Vector2(520, 220))
 	end_panel.visible = false
+	end_panel.add_theme_stylebox_override("panel", Cfg.overlay_style())
 	var ev := VBoxContainer.new()
 	end_panel.add_child(ev)
 	_end_label = _lbl(ev)
@@ -422,7 +425,7 @@ func _process(delta: float) -> void:
 	for n in _notes:
 		lines.push_back(n["text"])
 	_note_label.text = "\n".join(lines)
-	_note_label.position.y = 718.0 - 22.0 * maxi(lines.size(), 1)
+	_note_label.position.y = 716.0 - NOTE_LINE_PX * maxi(lines.size(), 1)
 	_refresh(false)
 
 
@@ -433,7 +436,7 @@ func _refresh(force: bool) -> void:
 		_last_tick = int(t["tick"])
 		_dirty = false
 		bed.set_visuals(w.get_tile_visuals(_ripening_min))
-		_date_label.text = "%d월 %d일 %02d시 (%d일째)" % [t["month"], t["day"], t["hour"], int(t["elapsed_days"]) + 1]
+		_date_label.text = "%d월 %d일 %02d시 (%d일 경과)" % [t["month"], t["day"], t["hour"], int(t["elapsed_days"])]
 		var wx: Dictionary = w.get_weather()
 		_weather_label.text = "바깥 %.1f°C · 일사 %.0f W/m² · 습도 %.0f%%" % [
 			wx["outside_air_temp_degC"], wx["solar_radiation_W_per_m2"], wx["outside_rh_percent"]]

@@ -22,6 +22,16 @@ static func color(key: String) -> Color:
 	return Color(str(_load().get_value("colors", key)))
 
 
+# 위에 겹쳐 뜨는 패널(저장 목록, 종료 화면)의 불투명한 바탕
+static func overlay_style() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color("panel_overlay")
+	sb.border_color = color("selection")
+	sb.set_border_width_all(2)
+	sb.set_content_margin_all(12)
+	return sb
+
+
 # [inputs]의 [기본값, 최소, 최대, 간격] -> {def, min, max, step}
 static func input(key: String) -> Dictionary:
 	var a: Array = _load().get_value("inputs", key)

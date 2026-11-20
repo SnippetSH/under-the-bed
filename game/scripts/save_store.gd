@@ -226,8 +226,8 @@ static func describe(e: Dictionary) -> String:
 	if s.has("saved_at_unix"):
 		var local := int(float(s["saved_at_unix"])) + int(Time.get_time_zone_from_system()["bias"]) * 60
 		saved = Time.get_datetime_string_from_unix_time(local, true)
-	return "%d월 %d일 %02d시 · %d일째 · %s · 저장 %s" % [
-		int(s.get("month", 0)), int(s.get("day", 0)), int(s.get("hour", 0)), int(s.get("elapsed_days", 0)) + 1,
+	return "%d월 %d일 %02d시 · %d일 경과 · %s · 저장 %s" % [
+		int(s.get("month", 0)), int(s.get("day", 0)), int(s.get("hour", 0)), int(s.get("elapsed_days", 0)),
 		str(s.get("scenario_label", "?")), saved]
 
 
