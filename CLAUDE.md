@@ -11,7 +11,7 @@
 
 ## 현재 마일스톤
 
-**M6 엔진 연결** (계획서 7장: GDExtension 바인딩, 타일 렌더링, 행동 입력, 세이브. 완료 기준: 화면에서 1작기 플레이 가능, CLI 결과와 동일한 결과). 아직 명세가 없어요. **다음은 M6 명세 초안 → 디렉터 승인**이고, 승인 전에는 M6 코드를 만들지 않아요.
+**M6 엔진 연결** (계획서 7장: GDExtension 바인딩, 타일 렌더링, 행동 입력, 세이브. 완료 기준: 화면에서 1작기 플레이 가능, CLI 결과와 동일한 결과). **M6 명세([m6-overview](docs/spec/m6-overview.md))는 2026-11-20 승인**(디렉터 결정 D1~D9, [ADR-0015](docs/decisions/0015-godot-version-and-gdextension-build.md): Godot 4.7.2 + godot-cpp 10.0.0-stable). 다음은 **프로토타입**(m6-overview 14장, 버리는 브랜치 `proto/m6-check`: godot-cpp 빌드·로드, CLI와 해시 일치부터 확인) → 최종 명세 승인 → 본구현이에요. Godot 실행 파일 위치는 저장소에 적지 않고 CMake 캐시 `GODOT_EXECUTABLE` 또는 환경 변수 `GODOT_BIN`으로 받아요.
 **M5(미생물·병해)는 2026-11-20 완료 승인**: M5a(토양 미생물·소독, 2026-11-19 승인, [ADR-0013](docs/decisions/0013-m5a-deep-soil-and-cell-variation.md)) + M5b(하우스 습도·지상부 병해충, 2026-11-20 승인, [ADR-0012](docs/decisions/0012-m5-split-and-population-index.md), [ADR-0014](docs/decisions/0014-m5b-transpiration-humidity-feedback.md)는 되돌림). 기록은 [m5-overview](docs/spec/m5-overview.md) 12장(결정 1~52)·15장. `ctest --preset ci` 565개 통과. 프로토타입 브랜치 `proto/m5b-check`는 기록용으로 남아 있어요.
 밸런싱 때 다시 볼 것(디렉터 보류): 살균·살충제 추가(M7 이후), 천적 바깥 유입(결정 49), 겨울 백색 필름 지온(결정 23).
 (M0~M3는 2026-11-18, M4·M5a는 2026-11-19, M5b는 2026-11-20 승인. 단, GitHub Actions CI는 원격 저장소가 없어 실행 검증을 건너뜀)
