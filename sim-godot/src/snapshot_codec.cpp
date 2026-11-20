@@ -12,23 +12,14 @@
 #include <godot_cpp/variant/packed_string_array.hpp>
 
 #include "sim/processes.hpp"
+#include "text.hpp"
 
 namespace simgodot {
 
 namespace {
 
-godot::String gstr(std::string_view s) {
-    return godot::String::utf8(s.data(), static_cast<int64_t>(s.size()));
-}
-
-std::string to_utf8(const godot::String& s) {
-    const godot::CharString cs = s.utf8();
-    return std::string(cs.get_data(), static_cast<std::size_t>(cs.length()));
-}
-
-// 고사 원인·스트레스 요인 이름. 코어 공개 표가 없어서(C3 미적용) sim-cli와 같은 이름을 여기 둬요.
-constexpr std::array<std::string_view, sim::kRootDamageCauseCount> kRootDamageCauseIds = {
-    "waterlog", "heat", "nitrite", "acid", "fusarium", "phytophthora", "fumigant", "anthracnose"};
+// 스트레스 요인 이름 (StressFactor 순서). 코어에 공개 이름표가 없어서(m6-overview 2.3은 C1~C3만 승인)
+// sim-cli CSV 열 이름(stress_hours_<요인>)과 같은 이름을 여기 둬요. 코어 표가 생기면 그것으로 바꿔요.
 constexpr std::array<std::string_view, sim::kStressFactorCount> kStressFactorIds = {
     "water", "salt", "N", "P", "K", "Ca", "Mg", "root", "Mn_deficiency", "Mn_toxicity"};
 
@@ -468,11 +459,6 @@ bool true_column(const sim::Snapshot& s, const sim::Params& p, const godot::Stri
     }
     out.resize(0);
     return false;
-}
-
-godot::String root_damage_cause_id(sim::RootDamageCause cause) {
-    const auto i = static_cast<std::size_t>(cause);
-    return i < kRootDamageCauseIds.size() ? gstr(kRootDamageCauseIds[i]) : godot::String("unknown");
 }
 
 }  // namespace simgodot

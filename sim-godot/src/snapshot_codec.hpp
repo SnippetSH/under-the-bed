@@ -1,7 +1,9 @@
 #pragma once
 // sim::Snapshot -> Godot 값 (m6-overview 4.2). 변환만 하고 계산은 하지 않아요.
 // 예외: nutrient_status(CLI와 같은 코어 함수), 과실 개수 세기, 수확 합계(칸별 HarvestRecord 합)는 개수·합만 해요.
-// 프로토타입(proto/m6-check) 코드예요.
+// 키 이름은 코어 필드 이름 그대로예요. 목록은 game/README_binding.md에 있어요.
+
+#include <cstddef>
 
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -27,10 +29,9 @@ namespace simgodot {
 [[nodiscard]] godot::Dictionary true_cell(const sim::Snapshot& s, const sim::Params& p, std::size_t index);
 [[nodiscard]] godot::Dictionary true_crop(const sim::Snapshot& s, const sim::Params& p, std::size_t index);
 [[nodiscard]] godot::Array true_fruits(const sim::Snapshot& s, std::size_t index);
-// kind = "soil" | "crop", field = 실수 필드 이름 또는 "microbe_index.<id>" 같은 배열 필드. 모르면 빈 배열 + ok=false
+// kind = "soil" | "crop", field = 실수 필드 이름 또는 "microbe_index.<id>" 같은 배열 필드.
+// 모르는 이름이면 out을 비우고 false.
 [[nodiscard]] bool true_column(const sim::Snapshot& s, const sim::Params& p, const godot::String& kind,
                                const godot::String& field, godot::PackedFloat64Array& out);
-// PlantDied 이벤트의 원인 이름 (sim-cli kDeathCauseNames와 같은 표)
-[[nodiscard]] godot::String root_damage_cause_id(sim::RootDamageCause cause);
 
 }  // namespace simgodot

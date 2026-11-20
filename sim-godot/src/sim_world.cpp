@@ -1,7 +1,9 @@
 #include "sim_world.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <span>
 #include <string>
@@ -15,14 +17,21 @@
 #include <godot_cpp/variant/packed_int64_array.hpp>
 
 #include "command_codec.hpp"
-#include "fp_state.hpp"
+#include "sim/calendar.hpp"
+#include "sim/save_format.hpp"
 #include "snapshot_codec.hpp"
+#include "text.hpp"
 
 namespace simgodot {
 
 namespace {
 
+// get_engine_state() 사전의 형식 번호. 키를 바꾸면 올려요 (세이브 묶음 안의 엔진 상태, m6-overview 7.2)
 constexpr int64_t kEngineStateFormat = 1;
+
+// 윤년 없는 365일 달력에서 달(0 = 1월)이 시작하는 day_of_year (core-api "시간과 달력").
+// tools/run_scenarios.py MONTH_START_DOY, tests/test_m4_scenarios.cpp kMonthStartDoy와 같은 표예요.
+constexpr std::array<int, 12> kMonthStartDoy = {1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335};
 
 const char* error_code_name(sim::ErrorCode code) {
     switch (code) {
@@ -33,10 +42,6 @@ const char* error_code_name(sim::ErrorCode code) {
         case sim::ErrorCode::Io: return "Io";
     }
     return "Unknown";
-}
-
-godot::String gstr(std::string_view s) {
-    return godot::String::utf8(s.data(), static_cast<int64_t>(s.size()));
 }
 
 godot::Dictionary ok_result() {
@@ -59,9 +64,12 @@ godot::Dictionary error_result(const sim::Error& e) {
     return error_result(error_code_name(e.code), e.message);
 }
 
-std::string to_utf8(const godot::String& s) {
-    const godot::CharString cs = s.utf8();
-    return std::string(cs.get_data(), static_cast<std::size_t>(cs.length()));
+godot::Dictionary not_loaded() {
+    return error_result("InvalidArgument", "world not loaded");
+}
+
+std::span<const std::byte> byte_span(const godot::PackedByteArray& bytes) {
+    return {reinterpret_cast<const std::byte*>(bytes.ptr()), static_cast<std::size_t>(bytes.size())};
 }
 
 // FileAccess로 파일 바이트를 그대로 읽어요 (줄바꿈 변환 없음). 실패하면 nullopt.
@@ -117,7 +125,7 @@ godot::Dictionary event_to_dict(const sim::Event& e) {
             } else if constexpr (std::is_same_v<T, sim::PlantDiedEvent>) {
                 d["type"] = "plant_died";
                 d["tile_index"] = static_cast<int64_t>(p.tile_index);
-                d["cause"] = root_damage_cause_id(p.cause);
+                d["cause"] = id_at(sim::kRootDamageCauseIds, static_cast<std::size_t>(p.cause));
             } else if constexpr (std::is_same_v<T, sim::NitriteThresholdExceededEvent>) {
                 d["type"] = "nitrite_threshold_exceeded";
                 d["tile_index"] = static_cast<int64_t>(p.tile_index);
@@ -125,11 +133,11 @@ godot::Dictionary event_to_dict(const sim::Event& e) {
             } else if constexpr (std::is_same_v<T, sim::DiseaseOnsetEvent>) {
                 d["type"] = "disease_onset";
                 d["tile_index"] = static_cast<int64_t>(p.tile_index);
-                d["disease"] = gstr(sim::kSoilDiseaseIds[static_cast<std::size_t>(p.disease)]);
+                d["disease"] = id_at(sim::kSoilDiseaseIds, static_cast<std::size_t>(p.disease));
             } else if constexpr (std::is_same_v<T, sim::FoliarDiseaseOnsetEvent>) {
                 d["type"] = "foliar_disease_onset";
                 d["tile_index"] = static_cast<int64_t>(p.tile_index);
-                d["disease"] = gstr(sim::kFoliarDiseaseIds[static_cast<std::size_t>(p.disease)]);
+                d["disease"] = id_at(sim::kFoliarDiseaseIds, static_cast<std::size_t>(p.disease));
             } else {
                 static_assert(sizeof(T) == 0, "unhandled sim::EventPayload alternative");
             }
@@ -147,20 +155,16 @@ std::string_view trim(std::string_view s) {
     return s.substr(first, s.find_last_not_of(kSpace) - first + 1);
 }
 
-}  // namespace
-
-godot::String SimWorld::hello() {
-    return "sim-godot ok";
-}
-
-godot::Dictionary SimWorld::fp_state() {
-    const FpState s = read_fp_state();
+godot::Dictionary log_entry_dict(std::uint64_t tick, std::uint64_t seq, bool from_schedule, const sim::Command& c) {
     godot::Dictionary d;
-    d["mxcsr"] = godot::String(std::format("0x{:08x}", s.mxcsr).c_str());
-    d["controlfp"] = godot::String(std::format("0x{:08x}", s.controlfp).c_str());
-    d["fma3"] = s.fma3_enabled;
+    d["tick"] = static_cast<int64_t>(tick);
+    d["seq"] = static_cast<int64_t>(seq);
+    d["source"] = from_schedule ? "schedule" : "player";
+    d["command"] = command_to_dict(c);
     return d;
 }
+
+}  // namespace
 
 void SimWorld::reset_wrapper_state() {
     schedule_.clear();
@@ -233,9 +237,13 @@ bool SimWorld::is_schedule_enabled() const {
     return schedule_enabled_;
 }
 
+bool SimWorld::is_loaded() const {
+    return world_.has_value();
+}
+
 godot::Dictionary SimWorld::advance(int64_t ticks) {
     if (!world_) {
-        return error_result("InvalidArgument", "world not loaded");
+        return not_loaded();
     }
     if (ticks < 0) {
         return error_result("InvalidArgument", "ticks must be non-negative");
@@ -281,28 +289,15 @@ int64_t SimWorld::get_tick() const {
 
 godot::Dictionary SimWorld::enqueue(const godot::Dictionary& command) {
     if (!world_) {
-        return error_result("InvalidArgument", "world not loaded");
-    }
-    const auto text = command_dict_to_toml(command, ticks_done_);
-    if (!text) {
-        return error_result("InvalidArgument", "enqueue: " + text.error());
+        return not_loaded();
     }
     const sim::Scenario& sc = world_->scenario();
-    auto parsed = simdata::parse_schedule_toml(*text, sc.bed_rows, sc.bed_cols, "enqueue");
+    auto parsed = command_from_dict(command, sc.bed_rows, sc.bed_cols);
     if (!parsed) {
         // 로더는 InvalidData를 돌려주지만, 여기서는 호출자가 넘긴 사전이 틀린 것이라 InvalidArgument예요 (4.3).
-        // 메시지의 "schedule[0]." 위치 표시는 사전에는 없는 이름이라 지워요.
-        std::string message = parsed.error().message;
-        constexpr std::string_view kContext = "schedule[0].";
-        for (auto at = message.find(kContext); at != std::string::npos; at = message.find(kContext, at)) {
-            message.erase(at, kContext.size());
-        }
-        return error_result("InvalidArgument", message);
+        return error_result("InvalidArgument", parsed.error());
     }
-    if (parsed->size() != 1) {
-        return error_result("InvalidArgument", "enqueue: expected exactly one command");
-    }
-    sim::Command cmd = std::move((*parsed)[0].command);
+    sim::Command cmd = std::move(*parsed);
     const auto seq = world_->enqueue(cmd);
     if (!seq) {
         return error_result(seq.error());
@@ -315,6 +310,20 @@ godot::Dictionary SimWorld::enqueue(const godot::Dictionary& command) {
     return d;
 }
 
+godot::Dictionary SimWorld::can_enqueue(const godot::Dictionary& command) const {
+    if (!world_) {
+        return not_loaded();
+    }
+    const sim::Scenario& sc = world_->scenario();
+    const auto parsed = command_from_dict(command, sc.bed_rows, sc.bed_cols);
+    if (!parsed) {
+        return error_result("InvalidArgument", parsed.error());
+    }
+    // 코어 변경 C2: enqueue와 같은 검증, 큐·상태는 그대로 (대기 중인 명령의 효과는 보지 않아요)
+    const auto verdict = world_->can_enqueue(*parsed);
+    return verdict ? ok_result() : error_result(verdict.error());
+}
+
 godot::Array SimWorld::take_events() {
     godot::Array out;
     for (const sim::Event& e : events_) {
@@ -323,17 +332,6 @@ godot::Array SimWorld::take_events() {
     events_.clear();
     return out;
 }
-
-namespace {
-godot::Dictionary log_entry_dict(std::uint64_t tick, std::uint64_t seq, bool from_schedule, const sim::Command& c) {
-    godot::Dictionary d;
-    d["tick"] = static_cast<int64_t>(tick);
-    d["seq"] = static_cast<int64_t>(seq);
-    d["source"] = from_schedule ? "schedule" : "player";
-    d["command"] = command_to_dict(c);
-    return d;
-}
-}  // namespace
 
 godot::Array SimWorld::take_command_log() {
     godot::Array out;
@@ -437,11 +435,20 @@ godot::Dictionary SimWorld::get_time() const {
     if (!world_) {
         return d;
     }
+    // 다음에 처리할 틱(= 지금 화면의 시각)의 달력. Snapshot::time과 같은 코어 함수예요
     const sim::CalendarTime t = sim::calendar_at(world_->scenario().start_day_of_year, ticks_done_);
+    int month_index = 0;
+    for (std::size_t i = 0; i < kMonthStartDoy.size(); ++i) {
+        if (t.day_of_year >= kMonthStartDoy[i]) {
+            month_index = static_cast<int>(i);
+        }
+    }
     d["tick"] = static_cast<int64_t>(ticks_done_);
     d["elapsed_days"] = static_cast<int64_t>(t.elapsed_days);
     d["day_of_year"] = t.day_of_year;
     d["hour"] = t.hour;
+    d["month"] = month_index + 1;                                                       // 1~12
+    d["day"] = t.day_of_year - kMonthStartDoy[static_cast<std::size_t>(month_index)] + 1;  // 1~31
     return d;
 }
 
@@ -563,9 +570,7 @@ godot::Dictionary SimWorld::get_engine_state() const {
 }
 
 godot::Dictionary SimWorld::load_bytes(const godot::PackedByteArray& bytes, const godot::Dictionary& engine_state) {
-    const std::span<const std::byte> span(reinterpret_cast<const std::byte*>(bytes.ptr()),
-                                          static_cast<std::size_t>(bytes.size()));
-    auto world = sim::World::deserialize(span);
+    auto world = sim::World::deserialize(byte_span(bytes));
     if (!world) {
         return error_result(world.error());
     }
@@ -623,7 +628,11 @@ godot::Dictionary SimWorld::load_bytes(const godot::PackedByteArray& bytes, cons
             if (!as_count(seqs[static_cast<int64_t>(i)], seq)) {
                 return error_result("InvalidData", "engine state log_seq must hold integers");
             }
-            const godot::String source = sources[static_cast<int64_t>(i)];
+            const godot::Variant source_v = sources[static_cast<int64_t>(i)];
+            const godot::String source = source_v.get_type() == godot::Variant::STRING ? godot::String(source_v) : "";
+            if (source != "schedule" && source != "player") {
+                return error_result("InvalidData", "engine state log_source must hold \"player\" or \"schedule\"");
+            }
             log.push_back(LogEntry{.tick = (*parsed_log)[i].tick,
                                    .seq = seq,
                                    .from_schedule = source == "schedule",
@@ -647,12 +656,30 @@ godot::Dictionary SimWorld::load_bytes(const godot::PackedByteArray& bytes, cons
     return d;
 }
 
+godot::Dictionary SimWorld::peek_save_version(const godot::PackedByteArray& bytes) {
+    // 코어 변경 C1: 머리글만 읽어요. version은 읽혔을 때만, supported = 지금 코어가 불러올 수 있는 버전인지
+    const auto version = sim::peek_save_format_version(byte_span(bytes));
+    if (!version) {
+        godot::Dictionary d = error_result(version.error());
+        d["version"] = static_cast<int64_t>(-1);
+        d["supported"] = false;
+        return d;
+    }
+    godot::Dictionary d = ok_result();
+    d["version"] = static_cast<int64_t>(*version);
+    d["supported"] = *version == sim::kSaveFormatVersion;
+    return d;
+}
+
+int64_t SimWorld::core_save_version() {
+    return static_cast<int64_t>(sim::kSaveFormatVersion);
+}
+
 void SimWorld::_bind_methods() {
     using godot::ClassDB;
     using godot::D_METHOD;
-    ClassDB::bind_static_method("SimWorld", D_METHOD("hello"), &SimWorld::hello);
-    ClassDB::bind_static_method("SimWorld", D_METHOD("fp_state"), &SimWorld::fp_state);
     ClassDB::bind_method(D_METHOD("load_files", "params_path", "scenario_path"), &SimWorld::load_files);
+    ClassDB::bind_method(D_METHOD("is_loaded"), &SimWorld::is_loaded);
     ClassDB::bind_method(D_METHOD("set_schedule_enabled", "enabled"), &SimWorld::set_schedule_enabled);
     ClassDB::bind_method(D_METHOD("is_schedule_enabled"), &SimWorld::is_schedule_enabled);
     ClassDB::bind_method(D_METHOD("advance", "ticks"), &SimWorld::advance);
@@ -660,6 +687,7 @@ void SimWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_tick"), &SimWorld::get_tick);
 
     ClassDB::bind_method(D_METHOD("enqueue", "command"), &SimWorld::enqueue);
+    ClassDB::bind_method(D_METHOD("can_enqueue", "command"), &SimWorld::can_enqueue);
     ClassDB::bind_method(D_METHOD("take_events"), &SimWorld::take_events);
     ClassDB::bind_method(D_METHOD("take_command_log"), &SimWorld::take_command_log);
     ClassDB::bind_method(D_METHOD("get_command_log"), &SimWorld::get_command_log);
@@ -687,6 +715,8 @@ void SimWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_engine_state"), &SimWorld::get_engine_state);
     ClassDB::bind_method(D_METHOD("load_bytes", "bytes", "engine_state"), &SimWorld::load_bytes,
                          DEFVAL(godot::Dictionary()));
+    ClassDB::bind_static_method("SimWorld", D_METHOD("peek_save_version", "bytes"), &SimWorld::peek_save_version);
+    ClassDB::bind_static_method("SimWorld", D_METHOD("core_save_version"), &SimWorld::core_save_version);
 }
 
 }  // namespace simgodot

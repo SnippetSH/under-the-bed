@@ -3,6 +3,7 @@
 #include <format>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 #include <godot_cpp/variant/array.hpp>
@@ -13,14 +14,11 @@
 #include <godot_cpp/variant/string_name.hpp>
 #include <godot_cpp/variant/variant.hpp>
 
+#include "text.hpp"
+
 namespace simgodot {
 
 namespace {
-
-std::string to_utf8(const godot::String& s) {
-    const godot::CharString cs = s.utf8();
-    return std::string(cs.get_data(), static_cast<std::size_t>(cs.length()));
-}
 
 // 실수는 왕복되는 최단 표기. TOML 정수로 읽히지 않게 소수점이 없으면 ".0"을 붙여요 (inf·nan은 그대로: 로더가 거부).
 std::string format_double(double d) {
@@ -111,10 +109,6 @@ godot::Array area_array(const sim::TileArea& a) {
     return arr;
 }
 
-godot::String gstr(std::string_view s) {
-    return godot::String::utf8(s.data(), static_cast<int64_t>(s.size()));
-}
-
 }  // namespace
 
 std::string toml_quote(std::string_view s) {
@@ -156,6 +150,28 @@ std::expected<std::string, std::string> command_dict_to_toml(const godot::Dictio
         out += key + " = " + *value + "\n";
     }
     return out;
+}
+
+std::expected<sim::Command, std::string> command_from_dict(const godot::Dictionary& command, int bed_rows,
+                                                           int bed_cols) {
+    // 틱 값은 글자 모양을 맞추려는 자리 표시예요 (돌려주는 명령에는 틱이 없어요)
+    const auto text = command_dict_to_toml(command, 0);
+    if (!text) {
+        return std::unexpected(text.error());
+    }
+    auto parsed = simdata::parse_schedule_toml(*text, bed_rows, bed_cols, "command");
+    if (!parsed) {
+        std::string message = parsed.error().message;
+        constexpr std::string_view kContext = "schedule[0].";
+        for (auto at = message.find(kContext); at != std::string::npos; at = message.find(kContext, at)) {
+            message.erase(at, kContext.size());
+        }
+        return std::unexpected(std::move(message));
+    }
+    if (parsed->size() != 1) {
+        return std::unexpected(std::string("expected exactly one command"));
+    }
+    return std::move((*parsed)[0].command);
 }
 
 godot::Dictionary command_to_dict(const sim::Command& command) {
