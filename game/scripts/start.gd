@@ -17,7 +17,7 @@ func _ready() -> void:
 	add_child(bg)
 
 	var title := Label.new()
-	title.text = "침대 밑 농장 — 점검 화면 (M6a)"
+	title.text = "땅속 사정 — 점검 화면 (M6a)"
 	title.add_theme_font_size_override("font_size", 28)
 	title.position = Vector2(40, 24)
 	add_child(title)
