@@ -68,3 +68,11 @@ ADR-0001은 "Godot와 godot-cpp 버전은 뷰어 작업을 시작할 때 그 시
 4. **`SIM_BUILD_GODOT`을 기본 ON**: 빌드 트리가 하나라 단순하지만 모든 빌드가 godot-cpp와 Python에 묶여요. 엔진 작업이 일상이 되는 M7에서 다시 판단해요.
 5. **Godot 4.8 베타로 시작**: 안정판이 아니에요. 제외.
 6. **godot-cpp를 git 서브모듈로**: 템플릿의 방식이지만 저장소에 이미 FetchContent 관례가 있고, 서브모듈은 체크아웃 절차가 늘어요. 제외.
+
+## 프로토타입 확인 결과 (2026-11-20, `proto/m6-check`)
+
+- godot-cpp `10.0.0-stable`은 API 4.3~4.7을 담고 FetchContent로 붙어요. Godot 4.7.2에서 확장이 로드돼요.
+- `CMAKE_MSVC_RUNTIME_LIBRARY`를 /MD로 명시해야 해요. 명시하지 않으면 godot-cpp가 `sim-core`까지 /MT로 바꿔요. 명시한 뒤 기존 테스트와 1작기 회귀는 그대로예요.
+- godot-cpp의 lib·pdb 출력 폴더를 구성(Debug/Release)별로 덮어써야 해요. Debug와 Release DLL은 이름이 같아요.
+- 헤드리스 첫 실행 전에 `game/.godot/extension_list.cfg`가 필요해서 빌드가 그 파일을 써요. 첫 `--import`는 가져오기를 끝낸 뒤 종료할 때 엔진이 크래시해요(감수).
+- Godot 프로세스 안에서도 `season_standard`의 모든 틱 해시가 CLI와 같아요.
