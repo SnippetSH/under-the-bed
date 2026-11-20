@@ -1,14 +1,15 @@
-# P2 측정: season_standard(일정표 켬)를 warm틱까지 돌린 뒤(과실이 많이 달린 때), 한 틱씩 진행하며
+# 측정용 (ctest에 등록하지 않아요. 프로토타입 P2, m6-overview 17.1 U6):
+# season_standard(일정표 켬)를 warm틱까지 돌린 뒤(과실이 많이 달린 때), 한 틱씩 진행하며
 #   advance(1), state_hash(), 화면 한 장 분량 조회(스냅샷 복사 포함), 같은 조회 두 번째(캐시), 진짜 값 열 하나
 # 의 평균 시간(ms)을 재요. 배속 "열흘 = 1초"(240틱/초)의 프레임 예산 판단용이에요.
-#   godot --headless --path game --script res://tests/p2_bench.gd -- [warm=3000] [samples=240]
+#   godot --headless --path game --script res://tests/bench_frame.gd -- [warm=3000] [samples=240] [label=release]
 extends SceneTree
 
 const U = preload("res://tests/util.gd")
 const RIPENING_MIN_INDEX := 0.8  # 게임 쪽 표현 문턱 (게임용 임의값, 측정용)
 
 
-func screen(w: Object) -> int:
+func screen(w: SimWorld) -> int:
 	# 화면이 프레임마다 읽을 것 전부 (게임 화면 + HUD). 반환값은 최적화로 빠지지 않게 쓰는 값
 	var v: Dictionary = w.get_tile_visuals(RIPENING_MIN_INDEX)
 	var h: Dictionary = w.get_house_controls()
@@ -23,7 +24,7 @@ func _init() -> void:
 	var args := U.parse_args()
 	var warm := int(args.get("warm", "3000"))
 	var samples := int(args.get("samples", "240"))
-	var w: Object = U.new_world("res://data/scenarios/m4/season_standard.toml", true)
+	var w: SimWorld = U.new_world(args["params"], "res://data/scenarios/m4/season_standard.toml", true)
 	var t0 := Time.get_ticks_usec()
 	w.advance(warm)
 	var warm_ms := (Time.get_ticks_usec() - t0) / 1000.0

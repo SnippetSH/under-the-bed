@@ -50,7 +50,8 @@ add_executable(sim-tests
   m5b_world_checks.hpp
   test_m5b_scenarios.cpp
   test_m5b_determinism.cpp
-  test_m6_core_api.cpp)
+  test_m6_core_api.cpp
+  test_m6_schedule_parse.cpp)
 
 target_link_libraries(sim-tests PRIVATE sim-core sim-data Catch2::Catch2WithMain)
 # 실제 data/ 파일을 읽는 테스트용 저장소 경로
@@ -59,3 +60,8 @@ sim_apply_compile_options(sim-tests)
 
 include(Catch)
 catch_discover_tests(sim-tests DISCOVERY_MODE PRE_TEST)
+
+# M6a 엔진 검사 E1~E10 (godot 프리셋에서만)
+if(SIM_BUILD_GODOT)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/GodotTests.cmake)
+endif()

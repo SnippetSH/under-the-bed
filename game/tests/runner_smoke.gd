@@ -1,7 +1,9 @@
-# P2·P3 화면 로직 헤드리스 검사: SimRunner(자동 물 주기) + 명령 몇 개 + 빠른 저장·불러오기를 며칠 돌려요.
-# 확인: (1) 자동 물 주기 기록이 하루 하나, 8시 틱(p3_auto_irrigation.gd와 같은 모양), (2) 거부 신호, (3) 저장→불러오기 후
+# 게임 스크립트(SimRunner·SaveStore) 헤드리스 검사 (프로토타입 P2·P3에서 옮김). ctest에는 등록하지 않아요:
+# game/scripts/는 GDScript 담당이 바꿀 예정이라, 그쪽 API가 정해지면 이 검사도 거기에 맞춰 고치고 등록해요.
+# 확인: (1) 자동 물 주기 기록이 하루 하나, 8시 틱(auto_irrigation.gd와 같은 모양), (2) 거부 신호, (3) 저장→불러오기 후
 # 이어 돌린 해시가 끊지 않은 실행과 같음, (4) 자동 처방 관전(일정표 켬, 자동 꺼짐)도 돌아감.
-#   godot --headless --path game --script res://tests/p23_smoke.gd -- [days=30]
+# 만든 노드는 끝에 free()해요(안 하면 종료 때 "ObjectDB instances leaked"·"1 resources still in use" 경고가 나요).
+#   godot --headless --path game --script res://tests/runner_smoke.gd -- [days=30]  (days는 16 이상)
 extends SceneTree
 
 const SimRunner = preload("res://scripts/sim_runner.gd")
@@ -90,5 +92,7 @@ func _init() -> void:
 	if not pr["ok"] or Array(vis["crop_present"]).count(1) != 80:
 		fails += 1
 
-	print("SMOKE %s" % ("FAIL" if fails > 0 else "PASS"))
+	for n in [a, b, c, d]:
+		n.free()
+	print("RESULT %s" % ("FAIL" if fails > 0 else "PASS"))
 	quit(1 if fails > 0 else 0)
