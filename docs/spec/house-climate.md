@@ -60,7 +60,7 @@ M1의 `house.base_offset_degC`, `solar_gain_degC_per_W_per_m2`, `solar_transmitt
 | `house.outside_co2_ppm_by_hour` | 시각 0~23시의 바깥 CO2 농도 24개 | 아래 식의 정시 값 | 디렉터 지정 식. `tools/gen_co2.py`가 생성 |
 | `house.air_volume_m3_per_m2` | 지면 1 m²당 하우스 공기 부피 (평균 높이) | 3.0 | 게임용 임의값 |
 | `house.co2_mg_per_m3_per_ppm` | 1 ppm에 해당하는 CO2 질량 농도 | 1.83 | 20 °C, 1기압 (44/22.4 × 273/293) |
-| `house.infiltration_air_changes_per_hour` | 창을 닫아도 바뀌는 공기 비율 | 0.3 | 게임용 임의값 |
+| `house.infiltration_air_changes_per_hour` | 창을 닫아도 바뀌는 공기 비율 | **0.1** [이전 0.3] | 게임용 임의값. 국내 다겹 단동 실측 0.056~0.106회/h의 높은 쪽 (2026-11-20 파라미터 변경, [m5-overview](m5-overview.md) 결정 25·15.3 항목 19) |
 | `house.vent_air_changes_per_hour` | 모든 겹 양쪽이 열렸을 때 시간당 환기 횟수 | 30 | 게임용 임의값. 맞통풍 경로 `path`를 같이 써요 |
 | `house.co2_floor_ppm` | 하우스 CO2 하한 (광합성 보상점 근처) | 50 | 게임용 임의값 |
 | `crop.co2_g_per_g_dry_matter` | 건물 1 g을 만드는 데 드는 CO2 | 1.65 | 0.45 g C × 44/12 |

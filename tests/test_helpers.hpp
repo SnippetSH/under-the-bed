@@ -476,6 +476,7 @@ inline sim::Params quiet_params() {
 // 증발 냉각, 포기 간 차이)을 끈 상태로 계속 쓰고, 저장소 값은 여기서 고정해요.
 inline sim::Params repo_params() {
     sim::Params p = test_params();
+    p.house.infiltration_air_changes_per_hour = 0.1;  // 틈새 환기 파라미터 변경 (2026-11-20, house-humidity 결정 1)
     p.phenology.induction_nitrogen_curve = {{{{0, 1}}, {{1.05, 1}}, {{1.15, 0.7}}, {{1.5, 0.5}}}};
     p.phenology.induction_spread_index = 0.4;
     p.soil_temperature.evap_cooling_degC_per_mm = 2.5;
