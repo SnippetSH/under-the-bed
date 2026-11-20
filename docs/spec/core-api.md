@@ -33,6 +33,19 @@
 | 6. 직렬화 | `serialize()` / `World::deserialize(bytes)` | 바이트 버퍼만 주고받음. 파일 쓰기는 호출자 몫 |
 | (검증용) | `state_hash()` | 동적 상태의 FNV-1a 64비트 해시 |
 
+### M6a 공개 API 추가 (2026-11-20, [m6-overview](m6-overview.md) 2.3 C1~C3, 결정 D9)
+
+엔진 래퍼(`sim-godot`)가 형식 지식이나 이름표를 따로 들지 않게 공개 선언만 더했어요. 상태·해시·세이브 형식(v8)은 그대로예요.
+
+| # | 선언 | 위치 | 설명 |
+| --- | --- | --- | --- |
+| C1 | `inline constexpr std::uint32_t kSaveFormatVersion` | `sim/save_format.hpp` (`sim/world.hpp`가 포함) | `serialize()`가 쓰는 형식 버전(지금 8). `deserialize()`는 이 값과 다르면 `UnsupportedVersion` |
+| C1 | `peek_save_format_version(std::span<const std::byte>)` → `std::expected<std::uint32_t, Error>` | 같은 곳 | 머리글(매직 + 버전)만 읽어요. 버전이 달라도 그 값을 돌려줘요(비교는 호출자). 머리글 오류는 `deserialize`와 같은 코드: 매직이 다르거나 매직 전에 끝나면(빈 버퍼 포함) `InvalidData`, 버전 중간에 끝나면 `Truncated` |
+| C2 | `World::can_enqueue(const Command&) const` → `std::expected<void, Error>` | `sim/world.hpp` | `enqueue`와 같은 검증(내부 `validate_command`)만 하고 큐·일련번호·상태를 바꾸지 않아요. 지금 상태 기준이라 아직 적용되지 않은 대기 명령의 효과는 보지 않아요(`enqueue`도 같아요) |
+| C3 | `inline constexpr std::array<std::string_view, kRootDamageCauseCount> kRootDamageCauseIds` | `sim/soil.hpp` | 고사 원인 id(`RootDamageCause` 순서): `waterlog, heat, nitrite, acid, fusarium, phytophthora, fumigant, anthracnose`. `sim-cli`의 요약 줄과 래퍼의 `plant_died.cause`가 같이 써요 |
+
+- 단위 테스트: `tests/test_m6_core_api.cpp` (`[m6]` 태그).
+
 - "진짜 값"과 "플레이어가 측정한 값"의 구분은 측정 기능이 생기는 M7에서 스냅샷에 추가해요. M0 스냅샷은 진짜 값만 있어요.
 - 공개 API는 예외를 던지지 않아요.
 
@@ -96,4 +109,4 @@
 
 - 윤년 없음, 서머타임 없음
 - 크로스 플랫폼 비트 일치는 보장하지 않음 ([ADR-0004](../decisions/0004-determinism-scope.md))
-- 세이브 파일 형식 버전 호환(이전 버전 세이브 불러오기)은 M6에서 다시 다뤄요. M0에서는 버전이 다르면 오류예요. (M4, 2026-11-18) M4의 세이브 형식은 **v6**이에요(M3의 v5에서 화방·개별 과실·하우스 창 같은 가변 길이 목록이 들어가 v6). 이전 버전 세이브는 그대로 오류예요([m4-overview](m4-overview.md) "구현 작업 분할" 0b)
+- 세이브 파일 형식 버전 호환(이전 버전 세이브 불러오기)은 M6에서 다시 다뤄요. M0에서는 버전이 다르면 오류예요. (M4, 2026-11-18) M4의 세이브 형식은 **v6**이에요(M3의 v5에서 화방·개별 과실·하우스 창 같은 가변 길이 목록이 들어가 v6). 이전 버전 세이브는 그대로 오류예요([m4-overview](m4-overview.md) "구현 작업 분할" 0b). (M6a, 2026-11-20) 형식은 M5b의 **v8** 그대로이고 버전 상수를 공개했어요(위 C1). 이전 버전은 여전히 변환하지 않고, 엔진은 불러오기를 막고 안내해요([m6-overview](m6-overview.md) 7.3, 결정 D6)

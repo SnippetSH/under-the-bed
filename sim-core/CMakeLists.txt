@@ -10,6 +10,7 @@ add_library(sim-core STATIC
   include/sim/params.hpp
   include/sim/processes.hpp
   include/sim/rng.hpp
+  include/sim/save_format.hpp
   include/sim/scenario.hpp
   include/sim/snapshot.hpp
   include/sim/soil.hpp

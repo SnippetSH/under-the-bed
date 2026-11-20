@@ -7,7 +7,7 @@
 //               tiles(토양 셀 + 작물 + 화방·과실·수확 기록), ledger
 //
 // state_hash()는 동적 상태 부분만 해시해요. 이벤트는 저장하지 않아요.
-// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5, M4 = 6, M5a = 7, M5b = 8).
+// 필드를 추가하면 kSaveFormatVersion(sim/save_format.hpp)을 올려요.
 
 #include <array>
 #include <format>
@@ -23,7 +23,6 @@ namespace sim {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> kMagic = {'F', 'G', 'S', 'V'};
-constexpr std::uint32_t kSaveFormatVersion = 8;
 
 constexpr std::size_t kWeatherHourBytes = 24;       // f64 × 3
 constexpr std::size_t kCurvePointBytes = 16;        // f64 × 2
@@ -2118,9 +2117,10 @@ std::vector<std::byte> World::serialize() const {
     return w.take();
 }
 
-std::expected<World, Error> World::deserialize(std::span<const std::byte> bytes) {
-    detail::ByteReader r(bytes);
+namespace {
 
+// 머리글(매직 + 형식 버전)을 읽어요. deserialize와 peek_save_format_version이 같이 써요.
+std::expected<std::uint32_t, Error> read_header(detail::ByteReader& r) {
     for (const std::uint8_t expected : kMagic) {
         if (r.u8() != expected) {
             return fail(ErrorCode::InvalidData, "not a save file (magic mismatch)");
@@ -2130,6 +2130,24 @@ std::expected<World, Error> World::deserialize(std::span<const std::byte> bytes)
     if (!r.ok()) {
         return fail(ErrorCode::Truncated, "save data ends inside the header");
     }
+    return version;
+}
+
+}  // namespace
+
+std::expected<std::uint32_t, Error> peek_save_format_version(std::span<const std::byte> bytes) {
+    detail::ByteReader r(bytes);
+    return read_header(r);
+}
+
+std::expected<World, Error> World::deserialize(std::span<const std::byte> bytes) {
+    detail::ByteReader r(bytes);
+
+    const auto header = read_header(r);
+    if (!header) {
+        return std::unexpected(header.error());
+    }
+    const std::uint32_t version = *header;
     if (version != kSaveFormatVersion) {
         return fail(ErrorCode::UnsupportedVersion,
                     std::format("save format version {} is not supported (expected {})", version, kSaveFormatVersion));

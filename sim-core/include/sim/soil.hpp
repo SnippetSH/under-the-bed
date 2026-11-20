@@ -226,6 +226,9 @@ enum class RootDamageCause : std::uint8_t {
     Waterlog = 0, Heat, Nitrite, Acid, Fusarium, Phytophthora, Fumigant, Anthracnose
 };
 inline constexpr std::size_t kRootDamageCauseCount = 8;
+// 고사 원인 id (RootDamageCause 순서). PlantDied 이벤트의 원인 이름표로 CLI·엔진 래퍼가 같이 써요 (m6-overview 2.3 C3)
+inline constexpr std::array<std::string_view, kRootDamageCauseCount> kRootDamageCauseIds = {
+    "waterlog", "heat", "nitrite", "acid", "fusarium", "phytophthora", "fumigant", "anthracnose"};
 
 // ---- M4 (docs/spec/strawberry-phenology.md, strawberry-fruit.md) ----
 

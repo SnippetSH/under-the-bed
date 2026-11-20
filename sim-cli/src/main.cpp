@@ -140,9 +140,8 @@ struct Row {
     }
 };
 
-// 고사 원인 이름 (RootDamageCause 순서)
-constexpr std::array<std::string_view, sim::kRootDamageCauseCount> kDeathCauseNames = {
-    "waterlog", "heat", "nitrite", "acid", "fusarium", "phytophthora", "fumigant", "anthracnose"};
+// 고사 원인 이름 (RootDamageCause 순서): 코어 공개 표 (m6-overview 2.3 C3)
+constexpr const auto& kDeathCauseNames = sim::kRootDamageCauseIds;
 
 // 누적 발병 이벤트 수 (토양 병해 SoilDisease 순서, 지상부 FoliarDisease 순서)
 struct OnsetCounts {

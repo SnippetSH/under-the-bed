@@ -14,6 +14,7 @@
 #include "sim/house.hpp"
 #include "sim/params.hpp"
 #include "sim/rng.hpp"
+#include "sim/save_format.hpp"
 #include "sim/scenario.hpp"
 #include "sim/snapshot.hpp"
 #include "sim/soil.hpp"
@@ -45,6 +46,12 @@ public:
     //    M4: 없는 겹의 창·허용 단계가 아닌 개방률, 범위 밖 난방 설정 온도, 범위 밖 겹수나
     //    휴작기(cover_change_window_doy) 밖에 적용될 피복 변경도 거부해요 (house-climate "명령").
     [[nodiscard]] std::expected<std::uint64_t, Error> enqueue(Command command);
+
+    // 2a. 명령 미리 검사 (m6-overview 2.3 C2): enqueue와 같은 검증만 하고 큐·상태는 바꾸지 않아요.
+    //     지금 상태 기준이라, 아직 적용되지 않은 대기 명령의 효과는 보지 않아요 (enqueue도 같아요).
+    [[nodiscard]] std::expected<void, Error> can_enqueue(const Command& command) const {
+        return validate_command(command);
+    }
 
     // 3. 틱 진행: N틱 진행해요. 호출할 때마다 events()가 비워져요.
     void step(std::uint32_t ticks);
