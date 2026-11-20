@@ -11,7 +11,7 @@
 
 ## 현재 마일스톤
 
-**M6a 엔진 연결 + M6b 캐릭터 플레이** ([ADR-0016](docs/decisions/0016-m6-split-and-character-play.md), 2026-11-20 승인: M6를 둘로 나눔). **M6a**([m6-overview](docs/spec/m6-overview.md), 0장이 우선): GDExtension 바인딩, 점검 화면(격자), 세이브. 완료 기준: CLI 결과와 동일한 결과, 점검 화면에서 1작기를 끝까지 돌릴 수 있음. 최종 명세 2026-11-20 승인(m6-overview 17장), **본구현 중(`feature/m6a`)**. **M6b**([m6b-character-play](docs/spec/m6b-character-play.md), 초안 승인): 비스듬한 2.5D 화면, 캐릭터가 걸어가서 칸(포기 8개 묶음) 단위로 작업, 하루 단위 시간. 완료 기준: 캐릭터로 1작기 플레이 가능, 명령 기록이 CLI와 같은 결과. 다음은 프로토타입 P4~P6(`proto/m6b-check`). 포기 단위로 코어를 바꿀지는 그 프로토타입을 디렉터가 본 뒤 판단해요. 버전은 [ADR-0015](docs/decisions/0015-godot-version-and-gdextension-build.md)(Godot 4.7.2 + godot-cpp 10.0.0-stable). Godot 실행 파일 위치는 저장소에 적지 않고 CMake 캐시 `GODOT_EXECUTABLE` 또는 환경 변수 `GODOT_BIN`으로 받아요.
+**M6a 엔진 연결 + M6b 캐릭터 플레이** ([ADR-0016](docs/decisions/0016-m6-split-and-character-play.md), 2026-11-20 승인: M6를 둘로 나눔). **M6a**([m6-overview](docs/spec/m6-overview.md), 0장이 우선): GDExtension 바인딩, 점검 화면(격자), 세이브. 완료 기준: CLI 결과와 동일한 결과, 점검 화면에서 1작기를 끝까지 돌릴 수 있음. 최종 명세 2026-11-20 승인(m6-overview 17장), **본구현 병합, 완료 승인 대기**(`ctest --preset ci` 571개, `ctest --preset godot -R engine` 13개 통과). **M6b**([m6b-character-play](docs/spec/m6b-character-play.md), 초안 승인): 비스듬한 2.5D 화면, 캐릭터가 걸어가서 칸(포기 8개 묶음) 단위로 작업, 하루 단위 시간. 완료 기준: 캐릭터로 1작기 플레이 가능, 명령 기록이 CLI와 같은 결과. 다음은 프로토타입 P4~P6(`proto/m6b-check`). 포기 단위로 코어를 바꿀지는 그 프로토타입을 디렉터가 본 뒤 판단해요. 버전은 [ADR-0015](docs/decisions/0015-godot-version-and-gdextension-build.md)(Godot 4.7.2 + godot-cpp 10.0.0-stable). Godot 실행 파일 위치는 저장소에 적지 않고 CMake 캐시 `GODOT_EXECUTABLE` 또는 환경 변수 `GODOT_BIN`으로 받아요.
 **M5(미생물·병해)는 2026-11-20 완료 승인**: M5a(토양 미생물·소독, 2026-11-19 승인, [ADR-0013](docs/decisions/0013-m5a-deep-soil-and-cell-variation.md)) + M5b(하우스 습도·지상부 병해충, 2026-11-20 승인, [ADR-0012](docs/decisions/0012-m5-split-and-population-index.md), [ADR-0014](docs/decisions/0014-m5b-transpiration-humidity-feedback.md)는 되돌림). 기록은 [m5-overview](docs/spec/m5-overview.md) 12장(결정 1~52)·15장. `ctest --preset ci` 565개 통과. 프로토타입 브랜치 `proto/m5b-check`는 기록용으로 남아 있어요.
 밸런싱 때 다시 볼 것(디렉터 보류): 살균·살충제 추가(M7 이후), 천적 바깥 유입(결정 49), 겨울 백색 필름 지온(결정 23).
 (M0~M3는 2026-11-18, M4·M5a는 2026-11-19, M5b는 2026-11-20 승인. 단, GitHub Actions CI는 원격 저장소가 없어 실행 검증을 건너뜀)
@@ -94,6 +94,7 @@ build\vs2022\sim-cli\Debug\sim-cli.exe --params data/params.toml --scenario data
 - CI와 같은 조건(Release, 경고를 오류로)으로 확인하려면 `ci` 프리셋을 써요: `cmake --preset ci`, `cmake --build --preset ci`, `ctest --preset ci`.
 - Python 도구 환경: `python -m venv .venv` 후 `.venv\Scripts\python.exe -m pip install -r tools/requirements.txt`.
 - 합성 기상 데이터를 다시 만들 때: `python tools/gen_weather.py data/weather/synthetic_year.csv`.
+- **Godot 확장과 엔진 검사**: `cmake --preset godot -DGODOT_EXECUTABLE=<Godot 콘솔 실행 파일>`(또는 환경 변수 `GODOT_BIN`), `cmake --build --preset godot-release`, `ctest --preset godot -R engine`(E1~E10, G1~G3. 실행 파일을 안 주면 건너뛰어요). 점검 화면은 `<Godot 실행 파일> --path game`으로 열어요. 실행 파일 경로는 커밋하는 파일에 적지 않아요.
 - `runs/`는 실행 결과 폴더라서 커밋하지 않아요.
 
 ## 디렉터리
@@ -110,4 +111,6 @@ build\vs2022\sim-cli\Debug\sim-cli.exe --params data/params.toml --scenario data
 | `sim-cli/` | 헤드리스 실행기, CSV 출력 |
 | `tests/` | Catch2 테스트 |
 | `tools/` | Python 도구 (그래프, 합성 기상 생성) |
+| `sim-godot/` | GDExtension 래퍼 (`SimWorld`, godot-cpp. `SIM_BUILD_GODOT`일 때만 빌드) |
+| `game/` | Godot 프로젝트 (화면 스크립트, 설정, 헤드리스 검사) |
 | `cmake/` | 공통 컴파일 옵션, 외부 의존성 |
