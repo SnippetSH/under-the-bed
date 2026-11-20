@@ -1,4 +1,4 @@
-# 엔진 검사 E1~E10 (m6-overview 10.1)를 ctest에 등록해요. SIM_BUILD_GODOT(godot 프리셋)일 때만 tests/CMakeLists.txt가 포함해요.
+# 엔진 검사 E1~E10 (m6-overview 10.1)와 게임 스크립트 검사 G1~G3을 ctest에 등록해요. SIM_BUILD_GODOT(godot 프리셋)일 때만 tests/CMakeLists.txt가 포함해요.
 #
 # Godot 실행 파일 위치는 저장소에 적지 않아요(CLAUDE.md). 다음 중 하나로 받아요:
 #   - 구성할 때 CMake 캐시: cmake --preset godot -DGODOT_EXECUTABLE=<경로>
@@ -36,6 +36,11 @@ sim_add_engine_check(engine_E6_command_conversion command_roundtrip.gd)
 sim_add_engine_check(engine_E7_batch_size_independent batch_independence.gd)
 sim_add_engine_check(engine_E9_snapshot_matches_cli_csv snapshot_vs_csv.gd)
 sim_add_engine_check(engine_E10_auto_irrigation_replay auto_irrigation.gd)
+
+# G1~G3: 게임 스크립트(game/scripts/) 수준의 검사. 진짜 SimRunner·SaveStore·화면 장면을 써요.
+sim_add_engine_check(engine_G1_game_save_store game_save_store.gd)   # 세이브 묶음·칸·자동 저장·버전 거부·깨진 파일 (E3·E5 게임 수준)
+sim_add_engine_check(engine_G2_game_runner game_runner.gd)          # 자동 물 주기(E10·H9), 작기 종료, 263일 해시 = sim-cli (H6)
+sim_add_engine_check(engine_G3_game_screen game_screen.gd)          # 행동 패널 17종, 거부 알림, 개발자 패널 (H2·H3·H8, F2·F4)
 
 # E2: 전체 시나리오 목록(tools/compare_engine_cli.py E2_CASES)을 모든 틱 비교. 결과표를 출력해요.
 add_test(NAME engine_E2_matches_cli_every_tick
