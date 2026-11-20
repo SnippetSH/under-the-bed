@@ -1283,6 +1283,28 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
     return doc;
 }
 
+std::expected<std::vector<ScheduledCommand>, Error> parse_schedule_toml(std::string_view text, int bed_rows,
+                                                                       int bed_cols, std::string_view source_name) {
+    auto root_table = parse_toml(text, source_name);
+    if (!root_table) {
+        return std::unexpected(std::move(root_table.error()));
+    }
+    TableReader root(&*root_table, source_name, "");
+    std::vector<ScheduledCommand> schedule;
+    for (TableReader& entry : root.table_array("schedule", false)) {
+        read_schedule_entry(entry, bed_rows, bed_cols, schedule);
+        if (auto done = entry.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+    }
+    if (auto done = root.finish(); !done) {
+        return std::unexpected(std::move(done.error()));
+    }
+    std::stable_sort(schedule.begin(), schedule.end(),
+                     [](const ScheduledCommand& a, const ScheduledCommand& b) { return a.tick < b.tick; });
+    return schedule;
+}
+
 std::expected<std::vector<sim::WeatherHour>, Error> parse_weather_csv(
     std::string_view text, std::string_view source_name) {
     std::vector<sim::WeatherHour> rows;

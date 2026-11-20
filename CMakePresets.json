@@ -15,12 +15,21 @@
       "inherits": "vs2022",
       "binaryDir": "${sourceDir}/build/ci",
       "cacheVariables": { "SIM_WARNINGS_AS_ERRORS": "ON" }
+    },
+    {
+      "name": "godot",
+      "displayName": "Godot GDExtension (sim-godot + godot-cpp)",
+      "inherits": "vs2022",
+      "binaryDir": "${sourceDir}/build/godot",
+      "cacheVariables": { "SIM_BUILD_GODOT": "ON" }
     }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "vs2022", "configuration": "Debug" },
     { "name": "release", "configurePreset": "vs2022", "configuration": "Release" },
-    { "name": "ci", "configurePreset": "ci", "configuration": "Release" }
+    { "name": "ci", "configurePreset": "ci", "configuration": "Release" },
+    { "name": "godot-debug", "configurePreset": "godot", "configuration": "Debug" },
+    { "name": "godot-release", "configurePreset": "godot", "configuration": "Release" }
   ],
   "testPresets": [
     {
@@ -38,6 +47,12 @@
     {
       "name": "ci",
       "configurePreset": "ci",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "godot",
+      "configurePreset": "godot",
       "configuration": "Release",
       "output": { "outputOnFailure": true }
     }

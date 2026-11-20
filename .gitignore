@@ -24,6 +24,11 @@ venv/
 # Godot (M6 이후)
 .godot/
 *.import
+# sim-godot 빌드가 복사하는 DLL과 data/ 복사본 (m6-overview 8.2)
+/game/bin/
+/game/data/
+# godot-cpp 기본 PDB 위치(${CMAKE_SOURCE_DIR}/bin) 대비
+/bin/
 
 # OS
 Thumbs.db

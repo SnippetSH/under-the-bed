@@ -52,6 +52,11 @@ struct ScenarioBundle {
     std::string_view text, std::string_view source_name);
 [[nodiscard]] std::expected<std::vector<sim::WeatherHour>, sim::Error> parse_weather_csv(
     std::string_view text, std::string_view source_name);
+// 명령 일정표만 담은 TOML 글자(최상위 키는 [[schedule]] 배열 하나뿐)를 파싱해요. 항목 규칙(키, 영역 기본값,
+// 반복 펼치기, 안정 정렬)은 parse_scenario_toml의 [[schedule]]과 같은 코드예요. 엔진 래퍼(sim-godot)가
+// 명령 사전 변환과 세이브 묶음의 일정표 복원에 써요 (M6 프로토타입, m6-overview 4.3).
+[[nodiscard]] std::expected<std::vector<ScheduledCommand>, sim::Error> parse_schedule_toml(
+    std::string_view text, int bed_rows, int bed_cols, std::string_view source_name);
 
 // 파일 로더
 [[nodiscard]] std::expected<sim::Params, sim::Error> load_params(const std::filesystem::path& path);
