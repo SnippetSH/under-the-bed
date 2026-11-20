@@ -1,75 +1,134 @@
-# SimRunner: SimWorld를 들고 배속·프레임당 틱 상한·자동 물 주기·세이브 묶음을 맡는 노드.
-# 시뮬레이션 로직은 하나도 없어요(전부 C++ 쪽). 이 파일은 "언제 몇 틱을 부를지"만 정해요.
+# SimRunner: SimWorld를 들고 배속·프레임당 틱 상한·자동 물 주기·자동 저장·작기 종료를 맡는 노드.
+# 시뮬레이션 로직은 하나도 없어요(전부 C++ 쪽). 이 파일은 "언제 몇 틱을 부를지"와 "어떤 명령을 넣을지"만 정해요.
+# 결과를 정하는 것은 "어느 틱 직전에 어떤 명령을 어떤 순서로 넣었는가"뿐이에요 (m6-overview 3.3).
 extends Node
 
 const Cfg = preload("res://scripts/cfg.gd")
+const SaveStore = preload("res://scripts/save_store.gd")
 
-signal ticked                       # 한 프레임 분량의 틱을 돌린 뒤 (화면 갱신용)
+signal ticked                                       # 한 프레임 분량의 틱을 돌린 뒤 (화면 갱신용)
 signal command_rejected(message: String, command: Dictionary)
 signal events_received(events: Array)
 signal season_ended(summary: Dictionary)
+signal autosaved(result: Dictionary)                # 자동 저장을 시도한 뒤 (실패 안내용)
+signal world_replaced                               # 새 판을 시작하거나 세이브를 불러온 뒤
+
+const EVENT_LOG_MAX := 300
+const GAME_STATE_FORMAT := 1
 
 var world: Object = null
-var scenario_path := ""
+var scenario_id := ""
+var scenario_label := ""
 var mode := ""
-var speed_index := 0                # 0 = 일시정지, 1..4 = 배속 단계
-var auto_irrigation := {"enabled": true, "hour": 8, "amount_mm": 4.0}
-var season_ticks := 6312
+var season_ticks := 0                               # 0이면 작기 종료 없음
 var season_over_notified := false
-var event_log: Array = []           # 개발자 패널용 최근 이벤트 (최대 N개)
-var stats := {"ticks_run": 0, "frames": 0, "capped_frames": 0, "last_frame_ticks": 0}
+var speed_index := 0                                # 0 = 일시정지, 1.. = 배속 단계
+var auto_irrigation := {"enabled": false, "hour": 8, "amount_mm": 4.0}
+var autosave_enabled := true
+var event_log: Array = []                           # 개발자 패널용 최근 이벤트 (최대 EVENT_LOG_MAX개)
+var stats := {"ticks_run": 0, "frames": 0, "capped_frames": 0, "step_usec_sum": 0, "step_usec_max": 0}
 
 var _accum := 0.0
+var _last_auto_day := -1                            # 자동 물 주기를 마지막으로 넣은 게임 날짜(elapsed_days). 하루 한 번만
 var _ticks_per_second: Array = []
 var _max_per_frame := 48
-const EVENT_LOG_MAX := 300
+var _autosave_ticks := 168
 
 
 func _ready() -> void:
+	load_config()
+
+
+# 설정 읽기. 노드를 트리에 달지 않고 쓰는 검사 스크립트는 이걸 직접 불러요.
+func load_config() -> void:
 	_ticks_per_second = Cfg.get_v("time", "ticks_per_second")
 	_max_per_frame = int(Cfg.get_v("time", "max_ticks_per_frame"))
-	season_ticks = int(Cfg.get_v("time", "season_ticks"))
+	_autosave_ticks = int(Cfg.get_v("time", "autosave_interval_days")) * 24
 
 
-# 새 판 시작. schedule_enabled=false면 직접 플레이.
-func start_new(scenario: String, schedule_enabled: bool, auto_on: bool, mode_name: String) -> Dictionary:
-	var w: Object = ClassDB.instantiate("SimWorld")
-	var r: Dictionary = w.load_files(Cfg.get_v("start", "params"), scenario)
+# ---------- 판 시작·불러오기 ----------
+# 새 판. entry는 Cfg.scenario(id)와 같은 모양 {id, label, path, season_ticks, mode, auto_irrigation}.
+func start_new(entry: Dictionary) -> Dictionary:
+	var w: Object = SimWorld.new()
+	var r: Dictionary = w.load_files(Cfg.get_v("start", "params"), entry["path"])
 	if not r["ok"]:
 		return r
-	w.set_schedule_enabled(schedule_enabled)
+	w.set_schedule_enabled(entry["mode"] == "watch")
 	world = w
-	scenario_path = scenario
-	mode = mode_name
+	scenario_id = str(entry["id"])
+	scenario_label = str(entry["label"])
+	mode = str(entry["mode"])
+	season_ticks = int(entry["season_ticks"])
 	auto_irrigation = {
-		"enabled": auto_on,
+		"enabled": bool(entry["auto_irrigation"]),
 		"hour": int(Cfg.get_v("auto_irrigation", "hour")),
 		"amount_mm": float(Cfg.get_v("auto_irrigation", "amount_mm")),
 	}
+	_last_auto_day = -1
+	season_over_notified = false
 	_reset_runtime()
+	world_replaced.emit()
 	return r
+
+
+# SaveStore.load_into가 읽기에 성공한 뒤 불러요. 불러온 직후는 일시정지예요.
+func adopt_loaded(new_world: Object, game: Dictionary) -> void:
+	world = new_world
+	mode = str(game.get("mode", ""))
+	scenario_id = str(game.get("scenario_id", ""))
+	scenario_label = str(game.get("scenario_label", ""))
+	season_ticks = int(game.get("season_ticks", 0))
+	var a: Dictionary = game.get("auto_irrigation", {})
+	auto_irrigation = {
+		"enabled": bool(a.get("enabled", false)),
+		"hour": int(a.get("hour", 8)),
+		"amount_mm": float(a.get("amount_mm", 4.0)),
+	}
+	_last_auto_day = int(game.get("last_auto_day", -1))
+	season_over_notified = bool(game.get("season_over_notified", false))
+	_reset_runtime()
+	world_replaced.emit()
 
 
 func _reset_runtime() -> void:
 	speed_index = 0
 	_accum = 0.0
-	season_over_notified = false
 	event_log.clear()
 
 
+# 세이브 묶음의 게임 구역 (코어 세이브 형식과 무관). 배속은 저장하지 않아요 (불러오면 일시정지).
+func game_state() -> Dictionary:
+	return {
+		"format": GAME_STATE_FORMAT,
+		"mode": mode,
+		"scenario_id": scenario_id,
+		"scenario_label": scenario_label,
+		"season_ticks": season_ticks,
+		"auto_irrigation": auto_irrigation.duplicate(),
+		"last_auto_day": _last_auto_day,
+		"season_over_notified": season_over_notified,
+	}
+
+
+# ---------- 배속 ----------
 func set_speed(i: int) -> void:
 	speed_index = clampi(i, 0, _ticks_per_second.size() - 1)
-
-
-func toggle_pause(last_speed: int) -> void:
-	set_speed(last_speed if speed_index == 0 else 0)
 
 
 func ticks_per_second_for(i: int) -> float:
 	return float(_ticks_per_second[i])
 
 
+func speed_count() -> int:
+	return _ticks_per_second.size()
+
+
 func _process(delta: float) -> void:
+	tick_frame(delta)
+
+
+# 한 프레임: 쌓인 시간만큼 틱을 돌려요 (상한 있음). 화면 갱신 신호는 ticked.
+func tick_frame(delta: float) -> void:
 	if world == null or speed_index == 0:
 		return
 	_accum += delta * float(_ticks_per_second[speed_index])
@@ -86,77 +145,83 @@ func _process(delta: float) -> void:
 		stats["capped_frames"] += 1
 	step(n)
 	var du := Time.get_ticks_usec() - t0
-	stats["step_usec_sum"] = int(stats.get("step_usec_sum", 0)) + du
-	stats["step_usec_max"] = maxi(int(stats.get("step_usec_max", 0)), du)
+	stats["step_usec_sum"] += du
+	stats["step_usec_max"] = maxi(int(stats["step_usec_max"]), du)
 	ticked.emit()
-	_check_season_end()
 
 
-# n틱을 돌려요. 자동 물 주기는 정한 시각의 틱 직전에 밭 전체 irrigate를 하나 넣어요(m6-overview 6.5).
+# ---------- 틱 돌리기 ----------
+# n틱을 돌려요. 틱마다 (자동 물 주기) -> advance(1) -> (자동 저장) -> (작기 끝이면 멈춤).
+# 작기 끝에 닿으면 n틱이 남아 있어도 그 틱에서 멈추고 일시정지해요(종료 화면의 해시가 정확히 그 틱의 것이 되게).
+# 돌아오는 값: 시뮬레이션 오류 없이 끝났는지.
 func step(n: int) -> bool:
+	var ok := true
 	for i in range(n):
-		if auto_irrigation["enabled"] and int(world.get_time()["hour"]) == int(auto_irrigation["hour"]):
-			var cmd := {"action": "irrigate", "amount_mm": float(auto_irrigation["amount_mm"])}
-			var er: Dictionary = world.enqueue(cmd)
-			if not er["ok"]:
-				command_rejected.emit("자동 물 주기가 거부됐어요: %s" % er["message"], cmd)
+		_auto_irrigate_if_due()
 		var r: Dictionary = world.advance(1)
 		if not r["ok"]:
 			push_error("advance 실패: %s %s" % [r["code"], r["message"]])
 			command_rejected.emit("시뮬레이션 오류: %s" % r["message"], {})
 			speed_index = 0
-			return false
+			ok = false
+			break
 		stats["ticks_run"] += 1
-	stats["last_frame_ticks"] = n
+		var tick: int = world.get_tick()
+		var season_reached := season_ticks > 0 and not season_over_notified and tick >= season_ticks
+		if autosave_enabled and not season_reached and tick % _autosave_ticks == 0:
+			_autosave()
+		if season_reached:
+			_end_season()
+			break
 	var ev: Array = world.take_events()
 	if not ev.is_empty():
 		event_log.append_array(ev)
 		if event_log.size() > EVENT_LOG_MAX:
 			event_log = event_log.slice(event_log.size() - EVENT_LOG_MAX)
 		events_received.emit(ev)
-	return true
+	return ok
 
 
-func _check_season_end() -> void:
-	if not season_over_notified and world.get_tick() >= season_ticks:
-		season_over_notified = true
-		speed_index = 0
-		season_ended.emit({
-			"tick": world.get_tick(),
-			"harvest": world.get_harvest_totals(),
-			"state_hash": world.state_hash(),  # 종료 시 한 번만
-		})
+# 자동 물 주기 (m6-overview 6.5, 결정 F3): 설정이 켜져 있고 다음에 처리할 틱의 시각이 정한 시각이고
+# 오늘 아직 안 넣었으면, 그 틱 직전에 밭 전체 irrigate를 플레이어 명령으로 하나 넣어요.
+# 설정은 틱마다 읽으므로 바꾸면 바로 따라요: 오늘 정한 시각이 아직 안 지났으면 오늘부터예요.
+func _auto_irrigate_if_due() -> void:
+	if not auto_irrigation["enabled"]:
+		return
+	var t: Dictionary = world.get_time()
+	if int(t["hour"]) != int(auto_irrigation["hour"]) or int(t["elapsed_days"]) == _last_auto_day:
+		return
+	_last_auto_day = int(t["elapsed_days"])
+	var cmd := {"action": "irrigate", "amount_mm": float(auto_irrigation["amount_mm"])}
+	var r: Dictionary = world.enqueue(cmd)
+	if not r["ok"]:
+		command_rejected.emit("자동 물 주기가 거부됐어요: %s" % r["message"], cmd)
+
+
+func set_auto_irrigation(enabled: bool, hour: int, amount_mm: float) -> void:
+	auto_irrigation = {"enabled": enabled, "hour": clampi(hour, 0, 23), "amount_mm": amount_mm}
+
+
+func _autosave() -> void:
+	autosaved.emit(SaveStore.save(self, SaveStore.AUTO))
+
+
+func _end_season() -> void:
+	season_over_notified = true
+	speed_index = 0
+	if autosave_enabled:
+		_autosave()
+	season_ended.emit({
+		"tick": world.get_tick(),
+		"time": world.get_time(),
+		"harvest": world.get_harvest_totals(),
+		"state_hash": world.state_hash(),  # 종료 시 한 번만 (비싸요)
+	})
 
 
 # 플레이어 명령. 거부되면 알림 신호를 보내고 결과를 그대로 돌려줘요.
 func submit(cmd: Dictionary) -> Dictionary:
 	var r: Dictionary = world.enqueue(cmd)
 	if not r["ok"]:
-		command_rejected.emit(r["message"], cmd)
+		command_rejected.emit(str(r["message"]), cmd)
 	return r
-
-
-# 세이브 묶음에 들어가는 게임 쪽 구역 (코어 세이브 형식과 무관)
-func game_state() -> Dictionary:
-	return {
-		"mode": mode,
-		"scenario_path": scenario_path,
-		"speed_index": speed_index,
-		"auto_irrigation": auto_irrigation.duplicate(),
-		"season_over_notified": season_over_notified,
-	}
-
-
-func restore_game_state(g: Dictionary) -> void:
-	mode = str(g.get("mode", ""))
-	scenario_path = str(g.get("scenario_path", ""))
-	var a: Dictionary = g.get("auto_irrigation", {})
-	auto_irrigation = {
-		"enabled": bool(a.get("enabled", false)),
-		"hour": int(a.get("hour", 8)),
-		"amount_mm": float(a.get("amount_mm", 4.0)),
-	}
-	season_over_notified = bool(g.get("season_over_notified", false))
-	speed_index = 0  # 불러온 뒤에는 일시정지로 시작 (프로토타입 판단)
-	_accum = 0.0
-	event_log.clear()
