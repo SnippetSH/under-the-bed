@@ -1,4 +1,4 @@
-# SimWorld 바인딩 안내 (M6a 본구현, `feature/m6a`)
+# SimWorld 바인딩 안내 (M6a 본구현, M6b에서 문서만 더함)
 
 화면(GDScript)을 만드는 사람이 보는 API 표예요. 설계는 `docs/spec/m6-overview.md` 4장과 17.3이고, 이 문서가 실제 구현과 같은 기준이에요.
 C++ 원본은 `sim-godot/src/sim_world.hpp`예요.
@@ -88,6 +88,8 @@ C++ 원본은 `sim-godot/src/sim_world.hpp`예요.
 | `get_harvest_totals()` | `{harvested_fruits, harvested_fresh_g, harvested_deformed, harvested_deformed_fresh_g}` (칸별 수확 기록의 합, 처음부터 누적. 세이브 뒤에도 그대로) |
 
 - 뽑은 칸(`remove_plant`)은 `crop_present = 0`이라 정식 전 빈 칸과 같아 보여요(결정 F2).
+- **`open_flower_count`는 아직 안 핀 꽃봉오리를 포함해요**(m6b-character-play 8장). 화방이 생길 때 꽃이 한꺼번에 목록에 생기고 개화 판정 전까지 여기 들어가서예요(코어 `fruit.cpp`, 아직 열매가 맺히지 않은 꽃). 그래서 캐릭터 화면의 칸 정보는 "꽃·꽃봉오리 N개"라고 적어요. 핀 꽃만 따로 세는 값은 없어요.
+- 값은 칸(포기 8개 한 묶음) 전체의 개수예요. 캐릭터 화면은 이것을 재식 밀도(정식 명령 또는 시나리오 `[crop]`)로 나눠 포기마다 그려요.
 
 ## 진짜 값 (개발자 패널 전용)
 
@@ -111,6 +113,19 @@ C++ 원본은 `sim-godot/src/sim_world.hpp`예요.
 | `static core_save_version()` | `int` | 지금 코어의 세이브 형식 버전(8) |
 
 파일 쓰기·읽기(`user://saves/`, 임시 파일 뒤 이름 바꾸기, 묶음 머리글·요약·구역)는 GDScript 몫이에요(명세 7장).
+
+### 세이브 묶음의 게임 구역 (GDScript, `game/scripts/save_store.gd`·`sim_runner.gd`)
+
+바인딩과 코어 세이브 형식(v8), 묶음 형식 버전(1)은 M6b에서 바뀌지 않았어요. 게임 구역(JSON)에 키가 더해졌을 뿐이에요.
+
+| 키 | 넣는 곳 | 내용 |
+| --- | --- | --- |
+| `format`, `mode`, `scenario_id`, `scenario_label`, `season_ticks`, `auto_irrigation {enabled, hour, amount_mm}`, `last_auto_day`, `season_over_notified` | M6a `SimRunner.game_state()` | 점검 화면·캐릭터 화면 공통. 자동 물 주기 설정도 여기예요 |
+| `character` | M6b `CharSession.char_state()` (캐릭터 화면에서 저장할 때만) | `format`(1), `pos [x, z]`(m, 하우스 바닥 좌표), `facing [x, z]`, `tool_index`(0~10), `tool_settings`(도구 11종 `{kind?, amount?}`), `speed_index`(일하는 속도 ×1~×4 단추), `toolbar_shown`(도구 줄 Tab 고정), `held`(코어에 아직 안 넣은 대기 행동 `[{cmd, cell, tool, stroke}]`, `stroke` = 한 번 누르고 걸은 구간 번호) |
+
+- 요약(JSON)에는 `screen`(`"character"` 또는 `"check"`)이 더해졌어요. 시작 화면이 어느 화면으로 열지 고를 때만 써요.
+- `character`나 `screen`이 없는 M6a 세이브는 점검 화면 세이브로 보고, 캐릭터 화면에서 불러오면 캐릭터는 출입문 앞·기본 도구로 시작해요. 캐릭터 화면 세이브를 점검 화면에서 불러오면 `character`는 쓰지 않아요.
+- 캐릭터 화면은 자러 가기·며칠 맡기기 도중에 저장하지 않아요. 그동안 자동 저장 때가 오면(7일마다) 미뤘다가 멈춘 뒤 한 번 저장해요(`SimRunner.autosave_hold`).
 
 ## 사용 예
 
@@ -163,4 +178,25 @@ if SimWorld.peek_save_version(raw)["supported"]:
 | G3 | `engine_G3_game_screen` | `game/tests/game_screen.gd` (행동 패널 17종·거부 알림·개발자 패널·시작 화면) |
 
 - 검사 스크립트는 `RESULT PASS`/`RESULT FAIL …`을 찍고 종료 코드로 끝나요. `tools/run_engine_check.py`가 그 줄과 함께 엔진의 `SCRIPT ERROR`·`ERROR:`·누수 경고("ObjectDB instances leaked", "resources still in use")도 실패로 봐요. 검사에서 노드를 만들면 끝에 `free()`해야 해요.
-- 등록하지 않은 것: `bench_frame.gd`(측정용), `capture_shots.gd`(화면 캡처 도구, 창을 띄워야 해요: `godot --path game --script res://tests/capture_shots.gd -- out=<폴더>`).
+- 등록하지 않은 것: `bench_frame.gd`(측정용), `capture_shots.gd`(화면 캡처 도구, 창을 띄워야 해요: `godot --path game --script res://tests/capture_shots.gd -- out=<폴더>`), `char_shots.gd`(캐릭터 화면 캡처, 같은 방식).
+
+### 캐릭터 화면 검사 (M6b, m6b-character-play 9.1)
+
+| ID | ctest 이름 | 스크립트 |
+| --- | --- | --- |
+| C1 | `engine_C01_target_cell_rule` | `game/tests/c01_target_cell.gd` |
+| C2 | `engine_C02_tool_to_command` | `game/tests/c02_tool_commands.gd` |
+| C3 | `engine_C03_hold_and_walk_each_cell_once` | `game/tests/c03_hold_walk.gd` |
+| C4 | `engine_C04_character_play_matches_cli` | `game/tests/c04_play_replays_on_cli.gd` (가짜 판은 `char_plan.gd`, 재생은 E4와 같은 `util.gd` 도구) |
+| C5 | `engine_C05_work_speed_independent` | `game/tests/c05_speed_independent.gd` |
+| C6 | `engine_C06_character_save_roundtrip` | `game/tests/c06_save_roundtrip.gd` |
+| C7 | `engine_C07_no_true_value_access_in_character_screen` | `tools/check_true_access.py --scene res://scenes/char_play.tscn` (Godot 없이) |
+| C8 | `engine_C08_cancel_before_core` | `game/tests/c08_cancel.gd` |
+| C9 | `engine_C09_rejection_notice_korean` | `game/tests/c09_rejections.gd` |
+| C10 | `engine_C10_cell_info` | `game/tests/c10_cell_info.gd` |
+| C11 | `engine_C11_help` | `game/tests/c11_help.gd` |
+| C12 | `engine_C12_toolbar` | `game/tests/c12_toolbar.gd` (화면 높이 비례 UI 부분은 아직: 파일 안 TODO) |
+| C13 | `engine_C13_model_slots` | `game/tests/c13_model_slots.gd` |
+| C14 | `engine_C14_cover_fans_outside` | `game/tests/c14_cover_fans_outside.gd` |
+
+- 가짜 입력은 `game/tests/char_driver.gd`가 넣어요. 걷기는 시간을 흘리지 않고, 기다리기·자러 가기·맡기기만 시계를 흘려서 입력이 틱 기준이에요(C5).
