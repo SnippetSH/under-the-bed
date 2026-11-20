@@ -1020,8 +1020,6 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.reserve_release_rate_per_hour = r.number("reserve_release_rate_per_hour");
         c.maintenance_activity_curve = r.curve("maintenance_activity_curve");
         c.rgr_mean_relax_rate_per_hour = r.number("rgr_mean_relax_rate_per_hour");
-        c.transpiration_humidity_curve = r.curve("transpiration_humidity_curve");
-        c.basal_transpiration_mm_per_hour_per_lai = r.number("basal_transpiration_mm_per_hour_per_lai");
     });
     if (!status) {
         return std::unexpected(std::move(status.error()));

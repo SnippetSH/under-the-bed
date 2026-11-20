@@ -99,7 +99,7 @@ void update_airflow(HouseState& house, const HumidityParams& params);
 // 하우스 단계 4, CO2 뒤 (4.2): 음해법 수증기 수지. source_mm = 이번 틱 셀 평균 (증산 + 증발) mm
 void update_house_vapor(HouseState& house, const HouseParams& house_params, const HumidityParams& params,
                         const WeatherHour& weather, double source_mm);
-// 작물 단계 h, 병해 앞 (4.3): 잎 사이 습도·잎 젖음·연속 젖음 시간. overhead = 이번 틱 두상 관수 (0차: 항상 false)
+// 작물 단계 h, 병해 앞 (4.3): 잎 사이 습도·잎 젖음·연속 젖음 시간. overhead = 이번 틱 두상 관수
 void update_leaf_wetness(Crop& crop, const CropParams& crop_params, const HumidityParams& params,
                          double house_rh_index, double airflow_index, double inside_solar_W_per_m2, bool overhead);
 
@@ -261,9 +261,9 @@ struct WaterSaltFactors {
 [[nodiscard]] WaterSaltFactors water_salt_factors(const SoilCell& cell, const CropParams& params);
 
 // 셀 단계 a에 넘길 증산 요구량 (mm/h). 살아 있지 않으면 0
-// M5b (house-humidity 4.5, ADR-0014): (일사 항 + 밤 기본 증산 × LAI) × min(수분, 염류) × 습도 배율(틱 시작 house_rh_index)
+// (M5b: 습도 되먹임은 되돌림 — ADR-0014. 증산은 M4 식 그대로)
 [[nodiscard]] double transpiration_demand_mm(const Crop& crop, const CropParams& params, double inside_solar_W_per_m2,
-                                             const WaterSaltFactors& factors, double house_rh_index);
+                                             const WaterSaltFactors& factors);
 
 // 원소별 요구량 (M4 strawberry-fruit "요구량"): target_X × (잎 + 관부 + 뿌리) + fruit_target_X × 과실
 struct NutrientRequirement {
@@ -456,7 +456,7 @@ void update_foliar_infection(Crop& crop, const SoilCell& cell, const Params& par
 // h7 (4.5): 응애·칠레이리응애, 응애 2주 이동 평균
 void update_mites(Crop& crop, const FoliarDiseaseParams& params, const CropEnvironment& env, std::uint32_t tile_index,
                   FoliarOnsets& onsets);
-// (5차 프로토타입) 천적 하우스 단위 탐색: 틱 시작(명령 뒤, 셀 계산 앞) 살아 있는 포기의 천적·응애 합.
+// (M5b, 15.3 항목 11) 천적 하우스 단위 탐색: 틱 시작(명령 뒤, 셀 계산 앞) 살아 있는 포기의 천적·응애 합.
 // 셀 계산 앞에 모든 포기를 한 번에 옮기므로 셀 순서와 무관하고, 목표를 자르지 않으면 천적 합이 보존돼요
 struct PredatorSearchSums {
     double predator_sum = 0.0;  // Σ 살아 있는 포기 D

@@ -595,8 +595,6 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.crop.luxury_uptake_ratio);
     w.f64(p.crop.uptake_rate_per_g_root_per_hour);
     w.f64(p.crop.transpiration_mm_per_hour_per_W_per_m2);
-    write_curve(w, p.crop.transpiration_humidity_curve);  // M5b
-    w.f64(p.crop.basal_transpiration_mm_per_hour_per_lai);
     w.f64(p.crop.root_recovery_rate_per_hour);
     w.f64(p.crop.death_root_health);
     w.f64(p.crop.root_dieback_per_damage);
@@ -1046,8 +1044,6 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.crop.luxury_uptake_ratio = r.f64();
     p.crop.uptake_rate_per_g_root_per_hour = r.f64();
     p.crop.transpiration_mm_per_hour_per_W_per_m2 = r.f64();
-    read_curve(r, p.crop.transpiration_humidity_curve);  // M5b
-    p.crop.basal_transpiration_mm_per_hour_per_lai = r.f64();
     p.crop.root_recovery_rate_per_hour = r.f64();
     p.crop.death_root_health = r.f64();
     p.crop.root_dieback_per_damage = r.f64();

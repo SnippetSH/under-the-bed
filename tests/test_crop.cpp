@@ -21,8 +21,6 @@ namespace {
 constexpr double kRelTol = 1e-12;
 constexpr double kDaySolar_W_per_m2 = 500.0;  // 맑은 낮 하우스 안 일사 (테스트 입력)
 constexpr double kNightSolar_W_per_m2 = 0.0;
-// M5b: 틱 시작 하우스 상대습도 (test_params의 습도 배율은 평탄 1이라 값과 무관, M4 증산과 같음)
-constexpr double kHouseRh_index = 0.6;
 constexpr double kOptimalAir_degC = 20.0;  // temp_curve가 1인 기온
 
 std::size_t idx(sim::StressFactor factor) { return static_cast<std::size_t>(factor); }
@@ -144,8 +142,8 @@ TEST_CASE("Crop at night has negative net growth shrinking vegetative organs and
     sim::Ledger ledger;
 
     const auto factors = sim::process::water_salt_factors(cell, params.crop);
-    CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kNightSolar_W_per_m2, factors, kHouseRh_index) == 0.0);
-    CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kDaySolar_W_per_m2, factors, kHouseRh_index) > 0.0);
+    CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kNightSolar_W_per_m2, factors) == 0.0);
+    CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kDaySolar_W_per_m2, factors) > 0.0);
 
     // 유효량 0: 흡수 없음
     CHECK_FALSE(step(crop, cell, params, sim::process::NutrientAvailability{}, kNightSolar_W_per_m2, ledger));
@@ -805,7 +803,7 @@ TEST_CASE("Dead crop does not grow, take up or transpire", "[unit][crop]") {
     sim::Ledger ledger;
 
     const auto factors = sim::process::water_salt_factors(cell, params.crop);
-    CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kDaySolar_W_per_m2, factors, kHouseRh_index) == 0.0);
+    CHECK(sim::process::transpiration_demand_mm(crop, params.crop, kDaySolar_W_per_m2, factors) == 0.0);
     CHECK(sim::process::canopy_interception(crop, params.crop) == 0.0);
     CHECK_FALSE(step(crop, cell, params, full_availability(cell), kDaySolar_W_per_m2, ledger));
     CHECK(crop == crop_before);
@@ -881,7 +879,7 @@ TEST_CASE("Crop stays finite and non-negative under extreme inputs", "[unit][cro
         (void)sim::process::update_crop(crop, cell, params, huge, solar_W_per_m2, air_degC,
                                         sim::StressCombination::Product, 0, ledger);
         const auto factors = sim::process::water_salt_factors(cell, params.crop);
-        REQUIRE(finite_non_negative(sim::process::transpiration_demand_mm(crop, params.crop, solar_W_per_m2, factors, kHouseRh_index)));
+        REQUIRE(finite_non_negative(sim::process::transpiration_demand_mm(crop, params.crop, solar_W_per_m2, factors)));
     }
 
     CHECK(finite_non_negative(crop.leaf_g_per_m2));

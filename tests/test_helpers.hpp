@@ -234,10 +234,6 @@ inline sim::Params test_params() {
         .ca_uptake_rate_per_g_root_per_hour = 0.00019,
         .mg_uptake_rate_per_g_root_per_hour = 0.00021,
         .transpiration_mm_per_hour_per_W_per_m2 = 0.0015,
-        // M5b (house-humidity 4.5): 단위 테스트 고정값은 되먹임 끔(평탄 1)·밤 기본 증산 0 = M4까지의 증산과 같음.
-        // 되먹임 곡선은 test_house_humidity.cpp가 명세 초기값으로 따로 넣어요
-        .transpiration_humidity_curve = {{{{0, 1}}, {{1, 1}}}},
-        .basal_transpiration_mm_per_hour_per_lai = 0.0,
         .root_recovery_rate_per_hour = 0.002,
         .death_root_health = 0.05,
         .root_dieback_per_damage = 1.0,
@@ -536,7 +532,7 @@ inline sim::Params test_params() {
             .splash_transfer_index = 0.01,
             .sporulation_curve = {{{{0, 0}}, {{0.15, 0}}, {{0.3, 0.5}}, {{0.6, 1}}}},
             .onset_infection_index = 0.15,
-            .soil_deposit_per_hour = 0.0,  // 7차: 단위 테스트는 끈 상태, 저장소 값은 repo_params
+            .soil_deposit_per_hour = 0.0,  // 단위 테스트는 끈 상태, 저장소 값은 repo_params
             .residue_index = 0.0,
         };
         f.botrytis = {
@@ -583,8 +579,8 @@ inline sim::Params test_params() {
             .conversion_factor = 0.01,
             .predator_death_rate_per_hour = 0.0022,
             .predator_starvation_death_per_hour = 0.012,
-            .predator_death_temp_curve = {{{{0, 1}}, {{40, 1}}}},  // 7차: 단위 테스트는 기온 무관(옛 값), 저장소 값은 repo_params
-            .predator_search_rate_per_hour = 0.0,  // 5차: 단위 테스트는 끈 상태, 저장소 값은 repo_params
+            .predator_death_temp_curve = {{{{0, 1}}, {{40, 1}}}},  // 단위 테스트는 기온 무관(옛 값), 저장소 값은 repo_params
+            .predator_search_rate_per_hour = 0.0,  // 단위 테스트는 끈 상태, 저장소 값은 repo_params
             .mite_onset_index = 0.05,
         };
         p.predators = {{.id = "persimilis", .name = "칠레이리응애", .index_per_individual_per_m2 = 0.00003}};
@@ -604,7 +600,8 @@ inline sim::Params quiet_params() {
     return p;
 }
 
-// 저장소 data/params.toml의 값 = test_params() + M5a 사전 작업(2026-11-19 승인, m5-overview 13장)으로 바뀐 값.
+// 저장소 data/params.toml의 값 = test_params() + M5a 사전 작업(2026-11-19 승인, m5-overview 13장)·M5a 최종안·
+// M5b 최종안(2026-11-20 승인, m5-overview 15.3)으로 바뀐 값.
 // test_params()는 단위 테스트가 새 기능(근권 온도, 부드러운 N 상한, Mn 조절, 저장 탄수화물, 호흡 활성 보정,
 // 증발 냉각, 포기 간 차이)을 끈 상태로 계속 쓰고, 저장소 값은 여기서 고정해요.
 inline sim::Params repo_params() {
@@ -613,17 +610,18 @@ inline sim::Params repo_params() {
     p.phenology.induction_nitrogen_curve = {{{{0, 1}}, {{1.05, 1}}, {{1.15, 0.7}}, {{1.5, 0.5}}}};
     p.phenology.induction_spread_index = 0.4;
     p.soil_temperature.evap_cooling_degC_per_mm = 2.5;
-    p.foliar_disease.mites.predator_search_rate_per_hour = 0.05;  // M5b 5차 프로토타입 (천적 하우스 단위 탐색)
-    // M5b 5차 디렉터 결정 (2026-11-20): 천적 전환 0.035, 활동 온도 1 도 낮춤, 굶주림 0.007
+    // ---- M5b 최종안 (2026-11-20 승인, m5-overview 15.3): 지상부 병해충 ----
+    p.foliar_disease.mites.predator_search_rate_per_hour = 0.05;  // 천적 하우스 단위 탐색 (항목 11)
+    // 천적 전환 0.035, 활동 온도 9 °C 시작, 굶주림 0.007 (항목 14, 결정 37)
     p.foliar_disease.mites.conversion_factor = 0.035;
     p.foliar_disease.mites.predator_starvation_death_per_hour = 0.007;
     p.foliar_disease.mites.predator_temp_curve = {{{{9, 0}}, {{16, 0.7}}, {{20, 0.9}}, {{25, 1}}, {{28, 1}}, {{30, 0.7}}, {{35, 0}}}};
-    // M5b 5차 값 스윕 (2026-11-20, 프로토타입)
+    // 잿빛곰팡이 썩음, 흰가루병 감염, 탄저병 물 튐·진행 (항목 15~17)
     p.foliar_disease.botrytis.fruit_rot_prob_per_hour = 0.005;
     p.foliar_disease.powdery_mildew.infection_rate_per_hour = 0.0025;
     p.foliar_disease.anthracnose.splash_transfer_index = 0.05;
     p.foliar_disease.anthracnose.progress_rate_per_hour = 0.003;
-    // M5b 7차 프로토타입 (2026-11-20 디렉터 승인 항목 31·32): 천적 사망 기온 배율, 탄저병 흙 접종원 퇴적·잔재
+    // 천적 사망 기온 배율, 탄저병 흙 접종원 퇴적·잔재 (항목 33·34, 결정 42)
     p.foliar_disease.mites.predator_death_temp_curve = {
         {{{5, 0.25}}, {{10, 0.35}}, {{15, 0.5}}, {{20, 0.7}}, {{25, 1}}, {{40, 1}}}};
     p.foliar_disease.anthracnose.soil_deposit_per_hour = 0.0003;
@@ -694,16 +692,12 @@ inline sim::Params repo_params() {
     c.reserve_release_rate_per_hour = 0.0005;
     c.maintenance_activity_curve = {{{{-1, 0.4}}, {{0.0043, 0.4}}, {{0.01, 0.7}}, {{0.02, 0.91}}, {{0.03, 0.97}}, {{0.05, 1}}}};
     c.rgr_mean_relax_rate_per_hour = 0.014;
-    // ---- M5b 프로토타입 0차 (house-humidity 3장·4.5): 증산의 습도 되먹임 켬, 밤 기본 증산 0 (0차 기준선).
-    // [humidity] 값은 test_params()와 같아요 (명세 초기값)
-    c.transpiration_humidity_curve = {{{{0, 1}}, {{1, 1}}}};  // 0차 후보: 되먹임 되돌림 (결정 33)
-    // M5b 2차 후보 (프로토타입, 명세 반영 전)
+    // ---- M5b 최종안 (2026-11-20 승인, m5-overview 15.3 항목 3·4): 하우스 습도·잎 젖음 ----
     p.humidity.inner_surface_resistance_m2K_per_W = 0.06;
     p.humidity.drying_solar_factor_per_W_per_m2 = 0.004;
     p.humidity.drying_rate_per_hour = 0.6;
     p.humidity.dew_rh_index = 0.95;
     p.humidity.drying_rh_curve = {{{{0.5, 1.5}}, {{0.8, 1}}, {{0.95, 0.4}}, {{1, 0}}}};
-    c.basal_transpiration_mm_per_hour_per_lai = 0.0;
     return p;
 }
 

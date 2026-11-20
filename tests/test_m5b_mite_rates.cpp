@@ -1,4 +1,4 @@
-// M5b 7차 프로토타입 하네스 (foliar-disease 4.2·4.5, 7장 B7·B8): 응애·칠레이리응애의 하루 내적 증가율 r과
+// M5b 측정 하네스 (7차에서 만듦) (foliar-disease 4.2·4.5, 7장 B7·B8): 응애·칠레이리응애의 하루 내적 증가율 r과
 // 병든 포기 아래 탄저병 흙 접종원을 일정 조건에서 재요. 숨긴 테스트라 ctest에는 안 잡히고, 직접 실행해요:
 //   build\ci\tests\Release\sim-tests.exe "[harness]"
 // 파라미터는 저장소 data/params.toml (로더로 읽음). 환경 변수 SIM_HARNESS_PARAMS가 있으면 그 파일을 읽어요(값 비교용).

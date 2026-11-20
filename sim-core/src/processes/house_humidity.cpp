@@ -136,7 +136,7 @@ void update_leaf_wetness(Crop& crop, const CropParams& crop_params, const Humidi
         w += std::min(1.0, non_negative(params.wetting_rate_per_hour)) * (1.0 - w);
     } else {
         const double drying_fraction =
-            // 1차 시험: 일사 항은 습도 곡선과 무관 (햇빛 받은 잎은 공기보다 따뜻해 포화 공기에서도 마름)
+            // 일사 항은 습도 곡선과 무관 (15.3 항목 2) (햇빛 받은 잎은 공기보다 따뜻해 포화 공기에서도 마름)
             std::min(1.0, non_negative(params.drying_rate_per_hour) *
                               ((1.0 + params.airflow_drying_factor * airflow) *
                                    non_negative(params.drying_rh_curve(canopy_rh)) +

@@ -116,7 +116,7 @@ void update_microbes(SoilCell& cell, const Params& params, const MicrobeHost& ho
     }
     cell.microbe_index = next;
     cell.disinfection_kill_index = disinfection_kill;
-    // (M5b 7차 프로토타입, foliar-disease 4.2) 살아 있는 병든 포기의 관부·잔재가 그 칸 흙에 접종원을 쌓아요.
+    // (M5b, foliar-disease 4.2) 살아 있는 병든 포기의 관부·잔재가 그 칸 흙에 접종원을 쌓아요.
     // host.anthracnose_infection_index는 살아 있는 작물만 (없으면 0 → sporulation_curve(0) = 0). 이웃 칸을 읽지 않아 셀 순서와 무관
     const AnthracnoseParams& ap = params.foliar_disease.anthracnose;
     const double deposit = non_negative(ap.soil_deposit_per_hour) *

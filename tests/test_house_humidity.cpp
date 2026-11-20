@@ -1,6 +1,7 @@
 // M5b 단위 테스트: 하우스 습도 (docs/spec/house-humidity.md 8장 "단위")
-// 수증기 수지(음해법)·피복 면 온도·공기 흐름·잎 젖음·연속 젖음 시간·증산의 습도 되먹임·밤 기본 증산·보존·세이브 왕복.
-// 프로토타입 0차는 SetFan·InstallDrip·두상 관수가 없어서 그 행(점적, 두상 관수 표시, InstallDrip 거부)은 빠져요.
+// 수증기 수지(음해법)·피복 면 온도·공기 흐름·잎 젖음·연속 젖음 시간·보존·세이브 왕복.
+// (증산의 습도 되먹임·밤 기본 증산은 되돌림, ADR-0014: 증산은 M4 식 그대로라 여기서 시험하지 않아요.)
+// 명령 행(점적, 두상 관수 표시, InstallDrip 거부)은 이 파일에 아직 없어요 (m5-overview 15.4 4단계 테스트 보강).
 // 팬은 fan_on을 직접 세워서 확인해요. 기대값은 방향만 써요 (6장 목표값은 차수 보고에서 확인).
 
 #include <algorithm>
@@ -24,15 +25,8 @@ namespace process = sim::process;
 constexpr double kG_per_mm = 1000.0;
 constexpr double kConservationRelTol = 1e-9;
 
-// 명세 3장의 증산 습도 배율 초기값 (test_params()는 평탄 1이라 따로 넣어요)
-sim::PiecewiseLinear feedback_curve() {
-    return {{{{0, 1.3}}, {{0.4, 1.2}}, {{0.6, 1.0}}, {{0.8, 0.6}}, {{0.95, 0.2}}, {{1, 0.1}}}};
-}
-
 sim::Params humidity_params() {
-    sim::Params p = test::test_params();
-    p.crop.transpiration_humidity_curve = feedback_curve();
-    return p;
+    return test::test_params();
 }
 
 // 창 닫힌 겹수 n 하우스, 기온을 직접 정해요 (열수지는 이 테스트의 대상이 아니에요)
@@ -262,7 +256,7 @@ TEST_CASE("Relative humidity mean relaxes toward the current value", "[unit][m5b
     CHECK(h.rh_mean_index == Approx(h.rh_index * p.humidity.rh_mean_relax_rate_per_hour));
 }
 
-// ---- 공기 흐름, 팬 (0차: 명령 없이 fan_on을 직접 세움) ----
+// ---- 공기 흐름, 팬 (명령 없이 fan_on을 직접 세움) ----
 
 // 팬 켬 대 끔: 공기 흐름 지수가 fan_airflow_index만큼 크고, 하우스 수증기는 같음
 TEST_CASE("Fan adds its airflow index but does not change house vapor", "[unit][m5b][humidity]") {
@@ -338,7 +332,7 @@ TEST_CASE("No new dew forms in daylight even at saturation", "[unit][m5b][humidi
     CHECK(crop.leaf_wetness_index > 0.0);
 }
 
-// 두상 관수 표시(0차는 명령이 없어 함수 인자로만): 그 틱 w = overhead_wet_index
+// 두상 관수 표시(함수 인자로 직접): 그 틱 w = overhead_wet_index
 TEST_CASE("Overhead flag sets leaf wetness to the overhead index", "[unit][m5b][humidity]") {
     const sim::Params p = humidity_params();
     auto crop = crop_with_lai(p, 2.0);
@@ -405,76 +399,6 @@ TEST_CASE("Dead or absent crop has no leaf wetness", "[unit][m5b][humidity]") {
     sim::Crop absent;
     process::update_leaf_wetness(absent, p.crop, p.humidity, 1.0, 0.0, 0.0, false);
     CHECK(absent.leaf_wetness_index == 0.0);
-}
-
-// ---- 증산의 습도 되먹임, 밤 기본 증산 (4.5) ----
-
-// 같은 일사·LAI, 틱 시작 습도 0.6 대 0.95: 0.6은 M4 증산과 같고, 0.95 쪽 증산·토양 물 감소가 0.2배
-TEST_CASE("Transpiration humidity factor is one at 0.6 and 0.2 at 0.95", "[unit][m5b][humidity]") {
-    const sim::Params flat = test::test_params();  // 평탄 1 = M4 증산
-    const sim::Params p = humidity_params();
-    const auto crop = crop_with_lai(p, 2.5);
-    const sim::process::WaterSaltFactors factors{};
-    const double m4 = process::transpiration_demand_mm(crop, flat.crop, 400.0, factors, 0.6);
-    const double at_06 = process::transpiration_demand_mm(crop, p.crop, 400.0, factors, 0.6);
-    const double at_095 = process::transpiration_demand_mm(crop, p.crop, 400.0, factors, 0.95);
-    REQUIRE(m4 > 0.0);
-    CHECK(at_06 == Approx(m4));
-    CHECK(at_095 == Approx(0.2 * at_06));
-    // 토양 물 감소도 0.2배 (수분이 충분해 요구량 그대로 빠짐)
-    auto cell_a = test::test_cell();
-    auto cell_b = cell_a;
-    sim::Ledger la;
-    sim::Ledger lb;
-    const double interception = process::canopy_interception(crop, p.crop);
-    (void)process::update_soil_water(cell_a, p.soil_water, 400.0, interception, at_06, la);
-    (void)process::update_soil_water(cell_b, p.soil_water, 400.0, interception, at_095, lb);
-    CHECK(lb.water_transpired_mm == Approx(0.2 * la.water_transpired_mm));
-}
-
-// 창 닫은 맑은 한낮, 되먹임 곡선 대 평탄 곡선: 되먹임 쪽 하우스 습도가 낮고 포화(dep)가 작음
-TEST_CASE("Transpiration feedback keeps a closed sunny house below saturation", "[unit][m5b][humidity]") {
-    const sim::Params fb = humidity_params();
-    const sim::Params flat = test::test_params();
-    const auto crop = crop_with_lai(fb, 2.5);
-    const WeatherHour w{2.0, 550.0, 50.0};
-    auto run = [&](const sim::Params& p) {
-        auto h = closed_house(p, 3, 22.0);
-        process::init_house_humidity(h, p.house, p.humidity, w);
-        for (int i = 0; i < 6; ++i) {
-            const double demand =
-                process::transpiration_demand_mm(crop, p.crop, 400.0, sim::process::WaterSaltFactors{}, h.rh_index);
-            process::update_house_vapor(h, p.house, p.humidity, w, demand);
-        }
-        return h;
-    };
-    const auto with_feedback = run(fb);
-    const auto without = run(flat);
-    CHECK(with_feedback.rh_index < without.rh_index);
-    CHECK(with_feedback.vapor_deposited_mm < without.vapor_deposited_mm);
-}
-
-// 밤 기본 증산(0차 스윕 값 0.002): 일사 0, LAI 2.5 → 증산 > 0, LAI에 비례, 토양 물 보존식 성립
-TEST_CASE("Basal transpiration is positive at night and proportional to LAI", "[unit][m5b][humidity]") {
-    sim::Params p = humidity_params();
-    p.crop.basal_transpiration_mm_per_hour_per_lai = 0.002;
-    const sim::process::WaterSaltFactors factors{};
-    const double lai25 = process::transpiration_demand_mm(crop_with_lai(p, 2.5), p.crop, 0.0, factors, 0.6);
-    const double lai50 = process::transpiration_demand_mm(crop_with_lai(p, 5.0), p.crop, 0.0, factors, 0.6);
-    CHECK(lai25 == Approx(0.002 * 2.5));
-    CHECK(lai50 == Approx(2.0 * lai25));
-    // 습도 배율도 곱해요 (밤 습도 0.9면 약 0.33배)
-    CHECK(process::transpiration_demand_mm(crop_with_lai(p, 2.5), p.crop, 0.0, factors, 0.9) ==
-          Approx(lai25 * p.crop.transpiration_humidity_curve(0.9)));
-    // 토양 물 보존: 물 = 이전 − 증발 − 증산 − 배수
-    auto cell = test::test_cell();
-    const double before_mm = cell.water_mm;
-    sim::Ledger ledger;
-    const double evaporated =
-        process::update_soil_water(cell, p.soil_water, 0.0, process::canopy_interception(crop_with_lai(p, 2.5), p.crop),
-                                   lai25, ledger);
-    CHECK(ledger.water_transpired_mm == Approx(lai25));
-    CHECK(cell.water_mm == Approx(before_mm - evaporated - ledger.water_transpired_mm - cell.drained_mm_this_tick));
 }
 
 // ---- 극한 ----
@@ -630,7 +554,6 @@ TEST_CASE("Humidity state survives a save round trip", "[unit][m5b][humidity][se
         CHECK(b.crops[i].canopy_rh_index == a.crops[i].canopy_rh_index);
     }
     CHECK(loaded->params().humidity == world.params().humidity);
-    CHECK(loaded->params().crop.transpiration_humidity_curve == world.params().crop.transpiration_humidity_curve);
     CHECK(loaded->state_hash() == world.state_hash());
     for (int t = 0; t < 30; ++t) {
         schedule_vent(world);

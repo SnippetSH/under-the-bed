@@ -323,10 +323,6 @@ reserve_fill_fraction = 0.5  # 광합성만으로 과실이 다 채워진 틱에
 reserve_release_rate_per_hour = 0.0005  # 과실 공급 부족 시 틱당 저장에서 꺼낼 수 있는 비율. 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 maintenance_activity_curve = [[-1, 0.4], [0.0043, 0.4], [0.01, 0.7], [0.02, 0.91], [0.03, 0.97], [0.05, 1]]  # x = 식물 RGR 이동 평균 /일, y = 유지 호흡 배율. 모양은 1 - e^(-c × RGR) (Vanthoor 2011, TOMSIM 토마토 c = 33일)이지만 디렉터 결정으로 근거보다 덜 줄여요(c 약 120일, 하한 0.4, 게임용 임의값) (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
 rgr_mean_relax_rate_per_hour = 0.014  # RGR 이동 평균의 시간당 완화 비율 (약 3일). 게임용 임의값 (M5a 사전 작업 2026-11-19 승인 (m5-overview 13장))
-
-# M5b 추가 (docs/spec/house-humidity.md 3장, 4.5)
-transpiration_humidity_curve = [[0, 1], [1, 1]]  # x = 틱 시작 house_rh_index, y = 증산 배율. 게임용 임의값 (습도 0.6에서 1 = M4까지의 증산과 같음, ADR-0014)
-basal_transpiration_mm_per_hour_per_lai = 0.0  # 일사와 무관한 밤 기본 증산 (LAI 1당). 0 = 없음 (0차 기준선, 스윕이 0.002를 시험). 밤 증산은 낮의 3~13% [R117][R118] (낮음)
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015  # 하우스 안 일사 x 받는 빛 비율 1 W/m²당 증산. 게임용 임의값 (맑은 날 하루 약 1.5~2.5 mm)
 root_recovery_rate_per_hour = 0.002       # 손상이 없을 때 뿌리 건강도 회복 비율. 게임용 임의값
 death_root_health = 0.05                  # 이 아래로 내려가면 고사. 게임용 임의값

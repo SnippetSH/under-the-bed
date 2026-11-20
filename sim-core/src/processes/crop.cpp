@@ -464,16 +464,12 @@ WaterSaltFactors water_salt_factors(const SoilCell& cell, const CropParams& para
 }
 
 double transpiration_demand_mm(const Crop& crop, const CropParams& params, double inside_solar_W_per_m2,
-                               const WaterSaltFactors& factors, double house_rh_index) {
+                               const WaterSaltFactors& factors) {
     if (!crop.present || !crop.alive) {
         return 0.0;
     }
-    // house-humidity 4.5 (ADR-0014): 일사 항 + 밤 기본 증산(LAI 비례), 둘 다 물·염류 계수와 습도 배율을 곱해요
-    const double solar_term_mm = params.transpiration_mm_per_hour_per_W_per_m2 * non_negative(inside_solar_W_per_m2) *
-                                 canopy_interception(crop, params);
-    const double basal_term_mm = params.basal_transpiration_mm_per_hour_per_lai * leaf_area_index(crop, params);
-    return (solar_term_mm + basal_term_mm) * std::min(factors.water, factors.salt) *
-           non_negative(params.transpiration_humidity_curve(house_rh_index));
+    return params.transpiration_mm_per_hour_per_W_per_m2 * non_negative(inside_solar_W_per_m2) *
+           canopy_interception(crop, params) * std::min(factors.water, factors.salt);
 }
 
 NutrientStatus nutrient_status(const Crop& crop, const CropParams& params) {
@@ -929,7 +925,7 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
             cell.labile_C_g_per_m2 += reserve_C_g_per_m2;
             ledger.C_root_litter_g += reserve_C_g_per_m2;
         }
-        // M5b (7차 프로토타입, 4.2): 죽은 포기의 병든 관부·잔재는 흙에 남아요 → 접종원 한 번 (뽑은 포기는 RemovePlant라 이 길이 아님)
+        // M5b (foliar-disease 4.2): 죽은 포기의 병든 관부·잔재는 흙에 남아요 → 접종원 한 번 (뽑은 포기는 RemovePlant라 이 길이 아님)
         {
             const std::size_t g = microbe(MicrobeGroup::Anthracnose);
             const double inf = std::clamp(crop.infection_anthracnose_index, 0.0, 1.0);

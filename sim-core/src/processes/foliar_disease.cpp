@@ -174,7 +174,7 @@ void update_mites(Crop& crop, const FoliarDiseaseParams& params, const CropEnvir
 
     const double M_next =
         clamp01(M + r_m * M * (1.0 - M) - predation + non_negative(mp.mite_spread_rate_per_hour) * (house_mean - M));
-    // (7차) 기본·굶주림 사망 × 기온 배율: 추우면 대사가 느려 덜 죽어요
+    // 기본·굶주림 사망 × 기온 배율 (15.3 항목 33): 추우면 대사가 느려 덜 죽어요
     const double death_temp = non_negative(mp.predator_death_temp_curve(air_degC));
     const double death =
         std::min(1.0, death_temp * (non_negative(mp.predator_death_rate_per_hour) +
@@ -275,7 +275,7 @@ double spore_loss_index(double decay_rate, double vent_fraction, double ach) {
     return std::min(1.0, non_negative(decay_rate) + non_negative(vent_fraction) * non_negative(ach));
 }
 
-// (5차 프로토타입) 배경 원천 bg × L ÷ (1 − bg): 하우스 원천이 0이면 평형이 정확히 배경값 (bg < 1은 검증)
+// (M5b, 15.3 항목 12) 배경 원천 bg × L ÷ (1 − bg): 하우스 원천이 0이면 평형이 정확히 배경값 (bg < 1은 검증)
 double background_spore_source(double background_index, double loss) {
     const double bg = clamp01(background_index);
     return bg < 1.0 ? bg * loss / (1.0 - bg) : 0.0;

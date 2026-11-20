@@ -304,6 +304,10 @@ phytophthora = 0.0
 
 (최종안, 구현 기준) v7 = M5a 사전 작업(저장 탄수화물, RGR 이동 평균 등) + 위 내용 + 셀 `deep_soil_temp_degC`, 셀 `fumigant_residue_index`(약제별 배열), 셀 `disinfection_kill_index`(파생, 7개), 작물 `infection_index`·`disease_onset_reported`(각 2개)·`disease_susceptibility_factor`, 장부 `N_flush_g`·`Mn_flush_g`·`disinfectant_applied_g`(약제별)·`inoculant_applied_g`, 새 명령 4개, **disease 난수 스트림 상태**(biology 스트림 다음), 새 파라미터 전부. 저장된 대기 중 명령은 타일을 읽은 뒤 검증해요(대기 중 `Plant`를 저장된 작물에 대해 확인하려고).
 
+### 세이브 형식 v8 (M5b)
+
+v7(M5a)에 더한 것 (자세한 목록은 [foliar-disease](foliar-disease.md) 8장 "세이브 형식 v8"): 하우스 습도 상태(수증기, 습도 평균, 팬, 점적, 수증기 장부), 포자 압력 2개·하우스 평균 값, 셀 `anthracnose_index`·두상 관수 표시, 작물 잎 젖음·연속 젖음 시간·지상부 지수·발병 보고, 장부, 새 명령 4개(`SetFan`, `InstallDrip`, `RemovePlant`, `ReleasePredators`), **foliar 난수 스트림 상태**(disease 스트림 다음), 새 파라미터 전부(`[humidity]`, `[foliar_disease]`와 하위 4개, `[[predator]]`, 모종 등급 5키, 7차 새 키 `predator_death_temp_curve`·`soil_deposit_per_hour`·`residue_index` 포함). 되돌린 증산 습도 곡선·밤 기본 증산 키는 저장하지 않아요(15.3 항목 1). 프로토타입 중의 v8 세이브와는 호환되지 않아요(형식 번호는 M5a 7에서 한 번만 올림, 15.3 항목 38).
+
 ## 12. 디렉터 결정 기록과 남은 질문
 
 ### 2026-11-19 결정

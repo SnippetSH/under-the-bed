@@ -139,10 +139,6 @@ std::expected<void, Error> validate_humidity(const Params& p) {
     SIM_CHECK(fraction(h.overhead_wet_index, "humidity.overhead_wet_index"));
     SIM_CHECK(fraction(h.wet_threshold_index, "humidity.wet_threshold_index"));
     SIM_CHECK(non_negative(h.wetness_break_hours, "humidity.wetness_break_hours"));
-    // 작물 쪽 M5b 키 (4.5): 습도 배율은 1보다 클 수 있어요 (건조하면 1.3)
-    SIM_CHECK(validate_curve(p.crop.transpiration_humidity_curve, "crop.transpiration_humidity_curve"));
-    SIM_CHECK(non_negative(p.crop.basal_transpiration_mm_per_hour_per_lai,
-                           "crop.basal_transpiration_mm_per_hour_per_lai"));
     return {};
 }
 
@@ -742,7 +738,7 @@ std::expected<void, Error> validate_scenario(const Scenario& s) {
         SIM_CHECK(positive(s.crop->plants_per_m2, "crop.plants_per_m2"));
         SIM_CHECK(fraction(s.crop->initial_establishment_index, "crop.initial_establishment_index"));
     }
-    // M5b [foliar] 배경 포자 0 이상 1 미만 (5차: 배경 원천 bg × L ÷ (1 − bg))
+    // M5b [foliar] 배경 포자 0 이상 1 미만 (배경 원천 bg × L ÷ (1 − bg))
     SIM_CHECK(require(std::isfinite(s.foliar.botrytis_background_index) && s.foliar.botrytis_background_index >= 0.0 &&
                           s.foliar.botrytis_background_index < 1.0,
                       "foliar.botrytis_background_index must be in [0, 1)"));

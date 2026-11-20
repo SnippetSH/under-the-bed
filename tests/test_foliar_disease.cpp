@@ -252,7 +252,7 @@ TEST_CASE("Anthracnose soil inoculum fades without a host and builds with one", 
     CHECK(hosted.microbe_index[g] > 0.05);
 }
 
-// (7차 프로토타입, 4.2) 흙 접종원 0인 칸: 병든 포기(감염 0.5)가 있으면 접종원이 생겨 늘고, 건강한 포기(감염 0)는 0 그대로
+// (4.2) 흙 접종원 0인 칸: 병든 포기(감염 0.5)가 있으면 접종원이 생겨 늘고, 건강한 포기(감염 0)는 0 그대로
 TEST_CASE("Diseased plant builds anthracnose soil inoculum from zero and healthy plant does not", "[unit][m5b][foliar]") {
     sim::Params p = test::test_params();
     p.foliar_disease.anthracnose.soil_deposit_per_hour = 0.0003;
@@ -290,7 +290,7 @@ TEST_CASE("Diseased plant builds anthracnose soil inoculum from zero and healthy
     CHECK(guarded.microbe_index[g] < sick_cell.microbe_index[g]);
 }
 
-// (7차) 병든 포기가 죽으면 잔재가 접종원을 한 번 남기고(residue × 감염), 뽑으면(RemovePlant) 아무것도 남기지 않아요
+// 병든 포기가 죽으면 잔재가 접종원을 한 번 남기고(residue × 감염), 뽑으면(RemovePlant) 아무것도 남기지 않아요
 TEST_CASE("Dead diseased plant leaves anthracnose residue but a removed plant leaves none", "[unit][m5b][foliar]") {
     sim::Params p = test::test_params();
     p.foliar_disease.anthracnose.residue_index = 0.3;
@@ -313,7 +313,7 @@ TEST_CASE("Dead diseased plant leaves anthracnose residue but a removed plant le
     CHECK(removed_cell.microbe_index[g] == 0.0);
 }
 
-// (7차) 쌓인 접종원도 태양열(지온 45 °C)·약제(다조멧 잔류 1)로 줄어요 (M5a 사멸 경로 그대로)
+// 쌓인 접종원도 태양열(지온 45 °C)·약제(다조멧 잔류 1)로 줄어요 (M5a 사멸 경로 그대로)
 TEST_CASE("Solarization and fumigant reduce deposited anthracnose inoculum", "[unit][m5b][foliar]") {
     sim::Params p = test::test_params();
     p.foliar_disease.anthracnose.soil_deposit_per_hour = 0.0003;
@@ -465,7 +465,7 @@ TEST_CASE("Spore pressure vents faster and converges to background", "[unit][m5b
     CHECK(vented.powdery_mildew_spore_index < closed.powdery_mildew_spore_index);
     CHECK(closed.botrytis_spore_index < 0.5);
 
-    // 배경값 (5차 프로토타입): 배경 원천 bg × L ÷ (1 − bg)라서 원천이 없으면 평형이 정확히 배경값이에요.
+    // 배경값: 배경 원천 bg × L ÷ (1 − bg)라서 원천이 없으면 평형이 정확히 배경값이에요.
     // (4차의 bg × 감쇠 원천은 bg·d / (bg·d + d + vent·ach)로 수렴해 배경값보다 낮았어요)
     const sim::FoliarInit background{.botrytis_background_index = 0.05, .powdery_mildew_background_index = 0.02};
     sim::HouseState h;  // 창 닫힘 (ach = 틈새)
@@ -687,7 +687,7 @@ TEST_CASE("Predatory mites starve without prey", "[unit][m5b][foliar]") {
     CHECK(crop.spider_mite_index == 0.0);
 }
 
-// (7차 프로토타입) 사망 기온 배율: 먹이 없는 천적이 10 °C에서 25 °C보다 천천히 줄어요 (추우면 대사가 느려요).
+// 사망 기온 배율: 먹이 없는 천적이 10 °C에서 25 °C보다 천천히 줄어요 (추우면 대사가 느려요).
 // 배율 곡선이 평평하면(test_params) 두 기온의 굶주림이 같아요
 TEST_CASE("Predatory mites starve more slowly in the cold", "[unit][m5b][foliar]") {
     sim::Params p = test::test_params();
@@ -713,7 +713,7 @@ TEST_CASE("Predatory mites starve more slowly in the cold", "[unit][m5b][foliar]
     CHECK(cold.predator_mite_index < 0.01);  // 그래도 굶으면 줄어요
 }
 
-// ---- (5차 프로토타입) 천적 하우스 단위 탐색 ----
+// ---- 천적 하우스 단위 탐색 ----
 
 namespace {
 
@@ -1057,15 +1057,13 @@ TEST_CASE("Seedling disease does not shift biology or disease streams", "[unit][
     CHECK(any_disease);
 }
 
-// 등급 A, 흙 접종원 0, 배경 포자 0, 증산 습도 곡선 평탄, 틈새 0.3, 밤 기본 증산 없음 →
+// 등급 A, 흙 접종원 0, 배경 포자 0, 틈새 0.3 →
 // 지상부 지수가 작기 내내 0이고 결과가 M5a와 비트 단위로 같음.
 // 기대값은 M5a 커밋 d6dff07의 코어에 같은 지문 코드(tests/m5a_fingerprint.hpp)를 붙여 빌드해 기록했어요.
 TEST_CASE("Grade A without inoculum is bit identical to M5a", "[m5b][foliar][determinism]") {
     constexpr std::uint64_t kM5aFingerprint = 0x36b7dc7c59d09278ULL;
     const sim::Params p = test::m5a_fingerprint::params();
-    REQUIRE(p.crop.transpiration_humidity_curve(0.95) == 1.0);
     REQUIRE(p.house.infiltration_air_changes_per_hour == 0.3);
-    REQUIRE(p.crop.basal_transpiration_mm_per_hour_per_lai == 0.0);
     CHECK(test::m5a_fingerprint::run() == kM5aFingerprint);
     // 지상부 지수 0 확인 (같은 실행을 다시)
     auto world = sim::World::create(p, test::m5a_fingerprint::scenario());

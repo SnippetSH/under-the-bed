@@ -230,7 +230,7 @@ TEST_CASE("M5b S30 to S32 scenarios conserve every budget every tick", "[conserv
 // ---- 극한: 두상 관수 매 시간, 포자 1 시작(배경 1), 천적 1000마리/m², 전 포기 제거 ----
 TEST_CASE("M5b extreme foliar inputs keep conservation", "[conservation][m5b][foliar][extreme]") {
     Loaded l = load("s28_overhead");
-    // 5차: 배경은 1 미만만 허용 (배경 원천 bg × L ÷ (1 − bg))
+    // 배경은 1 미만만 허용 (배경 원천 bg × L ÷ (1 − bg))
     l.bundle.scenario.foliar = {.botrytis_background_index = 0.999, .powdery_mildew_background_index = 0.999};
     l.bundle.scenario.soil.microbe_index[sim::microbe(sim::MicrobeGroup::Anthracnose)] = 1.0;
     const sim::TileArea all = sim::whole_grid(l.bundle.scenario.bed_rows, l.bundle.scenario.bed_cols);
@@ -244,7 +244,8 @@ TEST_CASE("M5b extreme foliar inputs keep conservation", "[conservation][m5b][fo
     const Result r = report("extreme overhead every hour + spores 1 + 1000 predators + remove all",
                             run(std::move(l), 70 * kDay, {.remove_all_at_tick = 60 * kDay}));
     CHECK(r.ledger.plants_removed > 0);
-    CHECK(r.ledger.predators_released_per_m2 == 1000.0);
+    // 1000 + s28 시나리오의 표준 방사 15 (결정 44, m5-overview 15.3 항목 37)
+    CHECK(r.ledger.predators_released_per_m2 == 1015.0);
 }
 
 // ---- 결정론: S26, S28, S31, s29_standard 같은 시드 → 같은 해시 ----

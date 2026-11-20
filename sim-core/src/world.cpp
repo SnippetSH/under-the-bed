@@ -615,7 +615,7 @@ void World::tick_once() {
     const double water_vapor_before_mm = ledger_.water_transpired_mm + ledger_.water_evaporated_mm;
     double crop_net_dry_matter_g = 0.0;
 
-    // 2b. (5차 프로토타입, foliar-disease 4.5) 천적 하우스 단위 탐색: 틱 시작(명령 뒤) 값으로 모든 포기를 한 번에
+    // 2b. (M5b, foliar-disease 4.5) 천적 하우스 단위 탐색: 틱 시작(명령 뒤) 값으로 모든 포기를 한 번에
     {
         process::PredatorSearchSums sums;
         for (const Tile& tile : tiles_) {
@@ -640,9 +640,8 @@ void World::tick_once() {
         double transpiration_demand = 0.0;
         if (crop_alive) {
             interception = process::canopy_interception(crop, params_.crop);
-            transpiration_demand =
-                process::transpiration_demand_mm(crop, params_.crop, inside_solar,
-                                                 process::water_salt_factors(cell, params_.crop), house_rh_start_index);
+            transpiration_demand = process::transpiration_demand_mm(crop, params_.crop, inside_solar,
+                                                                    process::water_salt_factors(cell, params_.crop));
         }
         // M5a: 멀칭 증발 배율 (disinfection 1번)
         const double evaporated_mm =

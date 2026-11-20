@@ -481,9 +481,17 @@ TEST_CASE("S18 closed house drops daytime CO2 and gross production", "[scenario]
 // ---- M5a 사전 작업 (m5-overview 13장, 2026-11-19 승인) ----
 
 // 1작기 수확 모양: 12·1·2월이 평균 대비 ±10% 안에서 고르고, 3 < 4 < 5월로 늘어요 (디렉터 목표)
+// M5b 결정 40 (m5-overview 15.3 항목 22): 기준 모델의 수확 모양 확인이라 모종 병해 시작 지수(잠복 탄저·응애·흰가루)만
+// 0으로 둔 params로 돌려요. 포기 비율 판정 난수는 그대로 뽑혀요. 병해를 포함한 시즌 모양은 1작기 기준값이 지켜요.
 TEST_CASE("M5a prework standard season has an even winter and rising spring harvest",
           "[scenario][m5a][season][harvest_shape]") {
-    const Run& run = season("season_standard");
+    const Run& run = season_variant("season_standard", "seedling_disease0", [](sim::Params& p) {
+        for (sim::SeedlingGradeDef& g : p.seedling_grades) {
+            g.latent_anthracnose_index = 0.0;
+            g.spider_mite_start_index = 0.0;
+            g.powdery_mildew_start_index = 0.0;
+        }
+    });
     const auto& m = run.monthly_fresh_g_per_m2;
     WARN(std::format("harvest Dec {:.0f} Jan {:.0f} Feb {:.0f} Mar {:.0f} Apr {:.0f} May {:.0f}; winter spread {:.3f}",
                      m[11], m[0], m[1], m[2], m[3], m[4], winter_spread(run)));

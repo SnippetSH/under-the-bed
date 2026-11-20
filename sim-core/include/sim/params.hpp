@@ -163,7 +163,7 @@ struct AnthracnoseParams {
     double splash_transfer_index = 0.0;  // 두상 관수 1회(틱)가 압력 1에서 옮기는 감염
     PiecewiseLinear sporulation_curve;   // x = 감염 지수, y = 포자(물 튐 원천)
     double onset_infection_index = 0.0;
-    // 7차 프로토타입: 병든 관부·잔재가 흙 접종원을 쌓아요 (살아 있는 포기, 시간당 × sporulation_curve(감염))
+    // M5b (15.3 항목 34): 병든 관부·잔재가 흙 접종원을 쌓아요 (살아 있는 포기, 시간당 × sporulation_curve(감염))
     double soil_deposit_per_hour = 0.0;
     double residue_index = 0.0;  // 포기가 죽을 때 한 번 남기는 접종원 (× 감염 지수). 뽑으면 남기지 않음
 
@@ -220,9 +220,9 @@ struct MiteParams {
     double conversion_factor = 0.0;
     double predator_death_rate_per_hour = 0.0;
     double predator_starvation_death_per_hour = 0.0;
-    // 7차 프로토타입: x = 하우스 기온 °C, y = 기본 사망·굶주림 사망 배율 (추우면 대사가 느려 덜 죽음)
+    // M5b (15.3 항목 33): x = 하우스 기온 °C, y = 기본 사망·굶주림 사망 배율 (추우면 대사가 느려 덜 죽음)
     PiecewiseLinear predator_death_temp_curve;
-    double predator_search_rate_per_hour = 0.0;  // 5차 프로토타입: 천적이 하우스 단위로 응애 많은 포기로 모임 (0~1)
+    double predator_search_rate_per_hour = 0.0;  // M5b (15.3 항목 11): 천적이 하우스 단위로 응애 많은 포기로 모임 (0~1)
     double mite_onset_index = 0.0;
 
     bool operator==(const MiteParams&) const = default;
@@ -452,9 +452,6 @@ struct CropParams {
     double ca_uptake_rate_per_g_root_per_hour = 0.0;  // M3: Ca·Mg 전용 흡수 속도 (cation-exchange "흡수 길항")
     double mg_uptake_rate_per_g_root_per_hour = 0.0;
     double transpiration_mm_per_hour_per_W_per_m2 = 0.0;
-    // M5b (house-humidity 4.5, ADR-0014): x = 틱 시작 house_rh_index, y = 증산 배율 (평탄 1 = 되먹임 끔)
-    PiecewiseLinear transpiration_humidity_curve;
-    double basal_transpiration_mm_per_hour_per_lai = 0.0;  // 밤 기본 증산 (0차 조건부, 0 = 없음)
     double root_recovery_rate_per_hour = 0.0;
     double death_root_health = 0.0;
     double root_dieback_per_damage = 0.0;  // 손상 비율 1당 죽는 뿌리 건물 비율 (뿌리 고사)
