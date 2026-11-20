@@ -85,6 +85,11 @@ private:
     void apply_command(const ApplyDisinfectantCommand& command);
     void apply_command(const AddInoculantCommand& command);
     void apply_command(const PlantCommand& command);
+    // M5b (house-humidity 4.4, foliar-disease 4.5·4.6)
+    void apply_command(const SetFanCommand& command);
+    void apply_command(const RemovePlantCommand& command);
+    void apply_command(const ReleasePredatorsCommand& command);
+    void apply_command(const InstallDripCommand& command);
 
     [[nodiscard]] std::expected<void, Error> validate_command(const Command& command) const;
     [[nodiscard]] std::expected<void, Error> validate_area(const TileArea& area) const;
@@ -95,6 +100,9 @@ private:
     [[nodiscard]] std::optional<std::size_t> find_mulch_index(std::string_view id) const;
     [[nodiscard]] std::optional<std::size_t> find_disinfectant_index(std::string_view id) const;
     [[nodiscard]] const InoculantDef* find_inoculant(std::string_view id) const;
+    [[nodiscard]] const PredatorDef* find_predator(std::string_view id) const;  // M5b
+    // M5b: 정식 직후 포기마다 모종 병해(Foliar 난수, 타일 행 우선). 월드 생성과 Plant 명령이 같이 써요
+    void plant_seedling_disease(const SeedlingGradeDef& grade);
     [[nodiscard]] bool any_live_crop() const;
     void refresh_derived_cell_values();  // 생성·역직렬화 직후 통기 지수·EC 계산
 
@@ -116,6 +124,7 @@ private:
     HouseState house_;         // M4 하우스 기후 (house-climate)
     Pcg32 biology_rng_;        // M4 생물 변이 스트림 (RngStream::Biology)
     Pcg32 disease_rng_;        // M5a 토양 병해 차이 스트림 (RngStream::Disease)
+    Pcg32 foliar_rng_;         // M5b 지상부 병해충 스트림 (RngStream::Foliar)
     Ledger ledger_;
 
     // 일시적 출력

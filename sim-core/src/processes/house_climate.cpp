@@ -52,6 +52,7 @@ CoverState cover_state(const HouseParams& params, const HouseState& house) {
         .conductance_W_per_m2_per_K = through_cover + params.infiltration_W_per_m2_per_K,
         .vent_W_per_m2_per_K = vent * path_index,
         .path_index = path_index,
+        .resistance_m2K_per_W = resistance_m2K_per_W,
     };
 }
 

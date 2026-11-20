@@ -9,13 +9,15 @@
 namespace sim {
 
 // ---- M5a 토양 미생물 (docs/spec/soil-microbes.md "무리"). 순서는 세이브·CSV 열 순서, 뒤에만 추가 ----
+// M5b: Anthracnose(탄저병균 흙·잔재 접종원, foliar-disease 3.2, 무리 순서 7)를 뒤에 추가
 enum class MicrobeGroup : std::uint8_t {
-    Decomposer = 0, NitrifierAob, NitrifierNob, Antagonist, Mycorrhiza, Fusarium, Phytophthora
+    Decomposer = 0, NitrifierAob, NitrifierNob, Antagonist, Mycorrhiza, Fusarium, Phytophthora, Anthracnose
 };
-inline constexpr std::size_t kMicrobeGroupCount = 7;
+inline constexpr std::size_t kMicrobeGroupCount = 8;
 // 데이터 키·CSV 열 이름 (`[microbes.<id>]`, 시나리오 `[microbes]`, `<id>_index`)
 inline constexpr std::array<std::string_view, kMicrobeGroupCount> kMicrobeGroupIds = {
-    "decomposer", "nitrifier_aob", "nitrifier_nob", "antagonist", "mycorrhiza", "fusarium", "phytophthora"};
+    "decomposer", "nitrifier_aob", "nitrifier_nob", "antagonist", "mycorrhiza", "fusarium", "phytophthora",
+    "anthracnose"};
 using MicrobeIndices = std::array<double, kMicrobeGroupCount>;  // MicrobeGroup 순서
 [[nodiscard]] constexpr std::size_t microbe(MicrobeGroup g) { return static_cast<std::size_t>(g); }
 
@@ -26,6 +28,12 @@ inline constexpr std::array<std::string_view, kSoilDiseaseCount> kSoilDiseaseIds
 [[nodiscard]] constexpr MicrobeGroup pathogen_of(SoilDisease d) {
     return d == SoilDisease::Fusarium ? MicrobeGroup::Fusarium : MicrobeGroup::Phytophthora;
 }
+
+// M5b 지상부 병해충 (foliar-disease 2장). DiseaseOnset(지상부)의 병 종류이고 Crop::foliar_onset_reported 순서예요.
+enum class FoliarDisease : std::uint8_t { Anthracnose = 0, Botrytis, PowderyMildew, SpiderMite };
+inline constexpr std::size_t kFoliarDiseaseCount = 4;
+inline constexpr std::array<std::string_view, kFoliarDiseaseCount> kFoliarDiseaseIds = {
+    "anthracnose", "botrytis", "powdery_mildew", "spider_mite"};
 
 // 멀칭 없음 (SoilCell::mulch_def_index)
 inline constexpr std::int32_t kNoMulch = -1;
@@ -112,6 +120,10 @@ struct SoilCell {
     // 파생값 (셀 단계 d2, 매 틱): 무리별 이번 틱 소독(열 + 약제) 사멸분. d3 무기화·망간이 읽어요
     MicrobeIndices disinfection_kill_index{};
 
+    // M5b (house-humidity 4.4): 이번 틱 두상 관수를 받았는지 (점적 없이 Irrigate). 틱 시작 때 지우고 명령 단계가 세워요.
+    // 잎 젖음(4.3)과 탄저병 물 튐(foliar-disease 4.2)이 읽어요. 파생값이지만 세이브 왕복이 같도록 저장해요
+    bool overhead_irrigated_this_tick = false;
+
     [[nodiscard]] double relative_water() const { return water_mm / field_capacity_mm; }
 
     [[nodiscard]] double organic_N_g_per_m2() const { return labile_N_g_per_m2 + stable_N_g_per_m2; }
@@ -177,6 +189,25 @@ struct Ledger {
     std::vector<double> disinfectant_applied_g;
     double inoculant_applied_g = 0.0;            // 유익균 제품 투입 합계 (담체 C·N은 C_in_g·N_in_g에)
 
+    // M5b (foliar-disease 2장 "장부 추가")
+    // 병든 포기 제거(RemovePlant)로 계 밖으로 나간 체내 원소·건물 (원소 보존식의 − removed 항)
+    double N_removed_g = 0.0;
+    double P_removed_g = 0.0;
+    double K_removed_g = 0.0;
+    double Ca_removed_g = 0.0;
+    double Mg_removed_g = 0.0;
+    double Mn_removed_g = 0.0;
+    double dry_matter_removed_g = 0.0;  // 잎·관부·뿌리·과실·저장 건물
+    std::uint64_t plants_removed = 0;   // 제거한 칸 수
+    // 잿빛곰팡이로 썩어 버린 과실 (건물·양분은 낙엽 규칙으로 토양에, 계 안 이동)
+    std::uint64_t fruit_rot_count = 0;
+    double fruit_rot_fresh_g = 0.0;
+    // 흰가루 과실 (상품 아님, 원소는 수확 반출 장부에 같이 들어가요). 정상과·기형과 집계에서 빠져요
+    std::uint64_t harvested_mildew = 0;
+    double harvested_mildew_fresh_g = 0.0;
+    // 누적 천적 방사 (하우스 평균 마리/m², 영역 칸 수 ÷ 전체 칸 수로 환산)
+    double predators_released_per_m2 = 0.0;
+
     bool operator==(const Ledger&) const = default;
 };
 
@@ -190,7 +221,11 @@ enum class StressFactor : std::uint8_t {
 inline constexpr std::size_t kStressFactorCount = 10;
 
 // M5a: Fusarium, Phytophthora(토양 병해), Fumigant(약제 잔류)를 뒤에 추가 (disinfection, soil-microbes)
-enum class RootDamageCause : std::uint8_t { Waterlog = 0, Heat, Nitrite, Acid, Fusarium, Phytophthora, Fumigant };
+// M5b: Anthracnose(관부탄저, foliar-disease 4.2)를 뒤에 추가
+enum class RootDamageCause : std::uint8_t {
+    Waterlog = 0, Heat, Nitrite, Acid, Fusarium, Phytophthora, Fumigant, Anthracnose
+};
+inline constexpr std::size_t kRootDamageCauseCount = 8;
 
 // ---- M4 (docs/spec/strawberry-phenology.md, strawberry-fruit.md) ----
 
@@ -301,6 +336,28 @@ struct Crop {
     std::array<bool, kSoilDiseaseCount> disease_onset_reported{};  // DiseaseOnset 이벤트를 냈는지
     // 포기 간 감수성 차이 (M5a 프로토타입 3차): 두 토양 병해의 감염 증가분에 곱해요. 정식 때 정해지고 기본 1
     double disease_susceptibility_factor = 1.0;
+
+    // M5b 잎 젖음 (house-humidity 2장·4.3). 비공개 진짜 값. 저장 상태
+    double leaf_wetness_index = 0.0;  // 0~1
+    double wet_run_hours = 0.0;       // 연속 젖음 시간
+    double dry_run_hours = 0.0;       // 마른 상태 지속 시간 (끊김 판정)
+    double canopy_rh_index = 0.0;     // 이번 틱 잎 사이 습도 (파생값, 스냅샷용)
+
+    // M5b 지상부 병해충 (foliar-disease 2장). 모두 플레이어 비공개 진짜 값, 0~1
+    double infection_anthracnose_index = 0.0;     // 관부 감염. 줄지 않아요
+    double infection_botrytis_index = 0.0;        // 꽃·어린 과실 감염 압력 (서서히 줄어요)
+    double infection_powdery_mildew_index = 0.0;  // 병든 잎 면적 비율
+    double spider_mite_index = 0.0;               // 점박이응애 밀도 (1 = 소엽당 약 100마리)
+    double spider_mite_mean_index = 0.0;          // 응애 밀도 2주 이동 평균 (광합성 피해가 읽음)
+    double predator_mite_index = 0.0;             // 칠레이리응애 밀도 (응애와 같은 눈금)
+    double soil_mineral_N_mean_g_per_m2 = 0.0;    // 근권 무기 N(NH4 + NO3) 2주 이동 평균 (질소 과다 감수성)
+    std::array<bool, kFoliarDiseaseCount> foliar_onset_reported{};  // FoliarDisease 순서
+    // 이번 틱 파생값 (스냅샷·CSV. 세이브 왕복이 같도록 저장해요)
+    double last_anthracnose_increase_index = 0.0;
+    double last_botrytis_increase_index = 0.0;
+    double last_powdery_mildew_increase_index = 0.0;
+    double last_mite_predation_index = 0.0;
+    double last_fruit_rot_count = 0.0;  // 이번 틱 썩은 과실 수 (타일 1 m²라 곧 개/m²). 포자 원천이 읽어요
 
     // 달려 있는 과실 건물 합 g/m² (꽃은 0)
     [[nodiscard]] double fruit_g_per_m2() const {

@@ -1,6 +1,7 @@
 #include "sim/world.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <format>
 #include <optional>
@@ -74,12 +75,15 @@ void apply_susceptibility_spread(Crop& crop, const MicrobesParams& microbes, Pcg
 // 병원균 시작 지수의 셀 간 차이 (M5a 프로토타입 3차, soil-microbes 1번): 월드 생성 때만.
 // 병원균 무리(MicrobeGroup 순서: fusarium, phytophthora)마다 시작 지수 > 0이고 spread > 0일 때만 1회씩 뽑아요.
 // 지수 × (1 + spread × (2U − 1))은 자르기 전 평균이 시작 지수와 같고, [0, 1]로 잘라요.
+// M5b: 탄저병균 흙 접종원도 같은 규칙으로 시들음병균·역병균 다음에 (foliar-disease 3.2)
 void apply_pathogen_spread(SoilCell& cell, const SoilInit& init, const MicrobesParams& microbes, Pcg32& biology_rng) {
     if (!(microbes.pathogen_spread_index > 0.0)) {
         return;
     }
-    for (std::size_t d = 0; d < kSoilDiseaseCount; ++d) {
-        const std::size_t g = microbe(pathogen_of(static_cast<SoilDisease>(d)));
+    constexpr std::array<MicrobeGroup, 3> kPathogens = {MicrobeGroup::Fusarium, MicrobeGroup::Phytophthora,
+                                                        MicrobeGroup::Anthracnose};
+    for (const MicrobeGroup pathogen : kPathogens) {
+        const std::size_t g = microbe(pathogen);
         const double start_index = init.microbe_index[g];
         if (!(start_index > 0.0)) {
             continue;
@@ -98,11 +102,13 @@ World::World(Params params, Scenario scenario)
       tiles_(static_cast<std::size_t>(scenario_.bed_rows) * static_cast<std::size_t>(scenario_.bed_cols),
              Tile{make_cell(scenario_.soil, params_), Crop{}}),
       biology_rng_(make_stream(scenario_.seed, static_cast<std::uint64_t>(RngStream::Biology))),
-      disease_rng_(make_stream(scenario_.seed, static_cast<std::uint64_t>(RngStream::Disease))) {
+      disease_rng_(make_stream(scenario_.seed, static_cast<std::uint64_t>(RngStream::Disease))),
+      foliar_rng_(make_stream(scenario_.seed, static_cast<std::uint64_t>(RngStream::Foliar))) {
     std::optional<Crop> planted;
+    const SeedlingGradeDef* grade = nullptr;
     if (scenario_.crop) {
         // 등급 존재는 create()에서 검증됨 (validate_scenario_against_params)
-        const SeedlingGradeDef* grade = process::find_seedling_grade(params_, scenario_.crop->seedling_grade);
+        grade = process::find_seedling_grade(params_, scenario_.crop->seedling_grade);
         if (grade != nullptr) {
             planted = process::plant_crop(*grade, scenario_.crop->plants_per_m2, params_);
             planted->establishment_index = scenario_.crop->initial_establishment_index;
@@ -121,9 +127,25 @@ World::World(Params params, Scenario scenario)
         }
         apply_pathogen_spread(tile.soil, scenario_.soil, params_.microbes, disease_rng_);
     }
+    //   foliar 스트림 (M5b, foliar-disease 4.7): 4) 모종 병해 (병원균 차이가 정한 셀 상태 뒤, 타일 행 우선)
+    if (planted && grade != nullptr) {
+        plant_seedling_disease(*grade);
+    }
     const CalendarTime t0 = calendar_at(scenario_.start_day_of_year, 0);
     house_ = process::initial_house(params_.house, scenario_.cover_layers,
                                     scenario_.weather_hourly[weather_index(t0.day_of_year, t0.hour)], t0.hour);
+    // M5b (house-humidity 4.2): 수증기 = 첫 틱 바깥 수증기, 이동 평균 = 그때 상대습도, 보존식 시작값 기록
+    process::init_house_humidity(house_, params_.house, params_.humidity,
+                                 scenario_.weather_hourly[weather_index(t0.day_of_year, t0.hour)]);
+    house_.drip_installed = scenario_.drip_installed;  // M5b (house-humidity 4.4)
+    {
+        // M5b (foliar-disease 4장): 포자 압력 = 배경값, 탄저병 포자 원천·하우스 평균 응애 = 정식한 포기에서
+        process::FoliarHouseSources sources;
+        for (const Tile& tile : tiles_) {
+            process::add_foliar_house_sources(sources, tile.crop, params_, house_.air_temp_degC);
+        }
+        process::init_foliar_house(house_, params_, scenario_.foliar, sources, tiles_.size());
+    }
     // M3 (cation-exchange "초기화 순서"): 통기 지수를 먼저 계산한 뒤 평형을 구해 용액 상태를 채워요(완화 없이).
     // 세이브 로드(deserialize)는 이 뒤에 저장된 셀 상태로 덮어써서 평형을 다시 구하지 않아요.
     for (Tile& tile : tiles_) {
@@ -192,6 +214,23 @@ std::optional<std::size_t> World::find_disinfectant_index(std::string_view id) c
         }
     }
     return std::nullopt;
+}
+
+const PredatorDef* World::find_predator(std::string_view id) const {
+    for (const PredatorDef& d : params_.predators) {
+        if (d.id == id) {
+            return &d;
+        }
+    }
+    return nullptr;
+}
+
+void World::plant_seedling_disease(const SeedlingGradeDef& grade) {
+    for (Tile& tile : tiles_) {
+        if (tile.crop.present) {
+            process::apply_seedling_disease(tile.crop, grade, tile.soil, foliar_rng_);
+        }
+    }
 }
 
 const InoculantDef* World::find_inoculant(std::string_view id) const {
@@ -303,6 +342,31 @@ std::expected<void, Error> World::validate_command(const Command& command) const
             // 살아 있는 작물이 하나라도 있으면 거부 (하우스 전체 정식, disinfection 6번)
             return validation::require(!world.any_live_crop(), "plant is rejected while a live crop exists");
         }
+        // ---- M5b (house-humidity 4.4, foliar-disease 4.5·4.6) ----
+        std::expected<void, Error> operator()(const SetFanCommand&) const { return {}; }
+        std::expected<void, Error> operator()(const RemovePlantCommand& c) const {
+            SIM_CHECK(world.validate_area(c.area));
+            // 영역에 작물(살아 있든 죽었든)이 하나도 없으면 거부
+            bool any = false;
+            for (int r = c.area.row; r < c.area.row + c.area.rows; ++r) {
+                for (int col = c.area.col; col < c.area.col + c.area.cols; ++col) {
+                    const auto index = static_cast<std::size_t>(r) * static_cast<std::size_t>(world.scenario_.bed_cols) +
+                                       static_cast<std::size_t>(col);
+                    any = any || world.tiles_[index].crop.present;
+                }
+            }
+            return validation::require(any, "remove_plant area has no crop");
+        }
+        std::expected<void, Error> operator()(const ReleasePredatorsCommand& c) const {
+            SIM_CHECK(world.validate_area(c.area));
+            if (world.find_predator(c.predator_id) == nullptr) {
+                return fail(ErrorCode::InvalidArgument, std::format("unknown predator id '{}'", c.predator_id));
+            }
+            return validation::non_negative(c.per_m2, "release_predators per_m2");
+        }
+        std::expected<void, Error> operator()(const InstallDripCommand&) const {
+            return validation::require(!world.house_.drip_installed, "install_drip is rejected: drip is already installed");
+        }
         std::expected<void, Error> operator()(const SetCoverLayersCommand& c) const {
             const HouseParams& h = world.params_.house;
             SIM_CHECK(validation::require(c.layers >= h.min_cover_layers && c.layers <= h.max_cover_layers,
@@ -340,8 +404,13 @@ void World::for_each_tile_in(const TileArea& area, Fn&& fn) {
 void World::apply_command(const NoopCommand& /*command*/) {}
 
 void World::apply_command(const IrrigateCommand& command) {
+    // M5b (house-humidity 4.4): 점적이 없으면 두상 관수. 토양 물 수지는 같고, 셀에 이번 틱 두상 관수 표시
+    const bool overhead = !house_.drip_installed;
     for_each_tile_in(command.area, [&](Tile& tile) {
         process::apply_irrigation(tile.soil, command.amount_mm, params_.aeration, ledger_);
+        if (overhead) {
+            tile.soil.overhead_irrigated_this_tick = true;
+        }
     });
 }
 
@@ -448,6 +517,8 @@ void World::apply_command(const PlantCommand& command) {
         // 난수: 타일마다 화아분화 차이(biology) → 감수성 차이(disease) (월드 생성과 같음, 병원균 차이는 생성 때만)
         apply_induction_spread(tile.crop, planted, params_.phenology, biology_rng_);
         apply_susceptibility_spread(tile.crop, params_.microbes, disease_rng_);
+        // M5b: 모종 병해 (Foliar 스트림, 같은 타일 순서)
+        process::apply_seedling_disease(tile.crop, *grade, tile.soil, foliar_rng_);
         // 모종의 체내 원소는 계 밖에서 들어온 투입 (tick 0 정식은 초기값이라 장부에 넣지 않아요)
         ledger_.N_in_g += planted.plant_N_g_per_m2;
         ledger_.P_in_g += planted.plant_P_g_per_m2;
@@ -455,6 +526,37 @@ void World::apply_command(const PlantCommand& command) {
         ledger_.Ca_in_g += planted.plant_Ca_g_per_m2;
         ledger_.Mg_in_g += planted.plant_Mg_g_per_m2;
         ledger_.Mn_in_g += planted.plant_Mn_g_per_m2;
+    }
+}
+
+// ---- M5b (house-humidity 4.4, foliar-disease 4.5·4.6) ----
+
+void World::apply_command(const SetFanCommand& command) { house_.fan_on = command.on; }
+
+void World::apply_command(const RemovePlantCommand& command) {
+    for_each_tile_in(command.area, [&](Tile& tile) { process::remove_plant(tile.crop, ledger_); });
+}
+
+void World::apply_command(const ReleasePredatorsCommand& command) {
+    const PredatorDef* predator = find_predator(command.predator_id);  // enqueue에서 검증됨
+    if (predator == nullptr || !(command.per_m2 > 0.0)) {
+        return;
+    }
+    std::size_t area_tiles = 0;
+    for_each_tile_in(command.area, [&](Tile& tile) {
+        process::release_predators(tile.crop, *predator, command.per_m2);
+        ++area_tiles;
+    });
+    if (!tiles_.empty()) {
+        ledger_.predators_released_per_m2 +=
+            command.per_m2 * static_cast<double>(area_tiles) / static_cast<double>(tiles_.size());
+    }
+}
+
+void World::apply_command(const InstallDripCommand& /*command*/) {
+    if (!house_.drip_installed) {
+        house_.drip_installed = true;
+        house_.drip_installations += 1.0;
     }
 }
 
@@ -469,18 +571,28 @@ void World::step(std::uint32_t ticks) {
 
 // 틱 처리 순서: docs/spec/m5-overview.md 7장 "틱 처리 순서 (M5)" (M5a 부분)
 void World::tick_once() {
+    // M5b: 두상 관수 표시는 틱마다 (명령 단계의 Irrigate가 다시 세워요)
+    for (Tile& tile : tiles_) {
+        tile.soil.overhead_irrigated_this_tick = false;
+    }
     // 1. 명령 적용
     for (const QueuedCommand& queued : pending_commands_) {
         std::visit([this](const auto& command) { apply_command(command); }, queued.command);
         events_.push_back(Event{tick_, CommandAppliedEvent{queued.seq}});
     }
     pending_commands_.clear();
+    if (house_.fan_on) {
+        house_.fan_hours += 1.0;  // M5b 유동팬 가동 시간 (house-humidity 4.4)
+    }
 
     // 2. 하우스 환경
     const CalendarTime now = calendar_at(scenario_.start_day_of_year, tick_);
     const WeatherHour& weather = scenario_.weather_hourly[weather_index(now.day_of_year, now.hour)];
     process::update_house_air(house_, params_.house, weather, now.hour);
+    process::update_airflow(house_, params_.humidity);  // M5b (house-humidity 4.1): 환기 경로 직후
     const double inside_solar = house_.inside_solar_W_per_m2;
+    // M5b: 작물(증산 배율·잎 젖음)은 틱 시작 때의 상대습도를 읽어요 (수증기는 셀 계산 뒤 갱신, CO2와 같은 방식)
+    const double house_rh_start_index = house_.rh_index;
     const double house_air_temp_degC = house_.air_temp_degC;
     const process::CropEnvironment crop_env_base{
         .inside_solar_W_per_m2 = inside_solar,
@@ -491,9 +603,30 @@ void World::tick_once() {
         .tick = tick_,
         .mode = scenario_.stress_combination,
         .tile_index = 0,
+        // M5b 지상부 병해충: 하우스 값은 모두 틱 시작 값 (셀 계산 뒤 한 번에 갱신, foliar-disease 4장)
+        .house_rh_mean_index = house_.rh_mean_index,
+        .botrytis_spore_index = house_.botrytis_spore_index,
+        .powdery_mildew_spore_index = house_.powdery_mildew_spore_index,
+        .anthracnose_sporulation_index = house_.anthracnose_sporulation_index,
+        .house_spider_mite_mean_index = house_.spider_mite_mean_index,
+        .inside_solar_mean_W_per_m2 = house_.inside_solar_mean_W_per_m2,
     };
     const double C_respired_before_g = ledger_.C_respired_g;
+    const double water_vapor_before_mm = ledger_.water_transpired_mm + ledger_.water_evaporated_mm;
     double crop_net_dry_matter_g = 0.0;
+
+    // 2b. (5차 프로토타입, foliar-disease 4.5) 천적 하우스 단위 탐색: 틱 시작(명령 뒤) 값으로 모든 포기를 한 번에
+    {
+        process::PredatorSearchSums sums;
+        for (const Tile& tile : tiles_) {
+            process::add_predator_search_sums(sums, tile.crop);
+        }
+        if (sums.predator_sum > 0.0) {
+            for (Tile& tile : tiles_) {
+                process::apply_predator_search(tile.crop, sums, params_.foliar_disease.mites);
+            }
+        }
+    }
 
     // 3. 토양 셀 (행 우선)
     for (std::size_t i = 0; i < tiles_.size(); ++i) {
@@ -507,8 +640,9 @@ void World::tick_once() {
         double transpiration_demand = 0.0;
         if (crop_alive) {
             interception = process::canopy_interception(crop, params_.crop);
-            transpiration_demand = process::transpiration_demand_mm(crop, params_.crop, inside_solar,
-                                                                    process::water_salt_factors(cell, params_.crop));
+            transpiration_demand =
+                process::transpiration_demand_mm(crop, params_.crop, inside_solar,
+                                                 process::water_salt_factors(cell, params_.crop), house_rh_start_index);
         }
         // M5a: 멀칭 증발 배율 (disinfection 1번)
         const double evaporated_mm =
@@ -529,6 +663,7 @@ void World::tick_once() {
         if (crop_alive) {
             host.root_g_per_m2 = crop.root_g_per_m2;
             host.infection_index = crop.infection_index;
+            host.anthracnose_infection_index = crop.infection_anthracnose_index;  // M5b
         }
         process::update_microbes(cell, params_, host);
         //   d3. 소독 사멸분 → 무기화 증가(N flush), 망간 산화물 환원
@@ -549,18 +684,29 @@ void World::tick_once() {
         // g. 석회 용해(Ca·Mg → 총량과 용액) → pH (완충력에 광물 CEC 항)
         process::update_lime_and_ph(cell, params_, ledger_);
         // h. 작물
+        //   (M5b, house-humidity 4.3) 잎 젖음·연속 젖음 시간: 병해 앞. 두상 관수 틱이면 w = max(w, overhead_wet_index).
+        //   작물이 없거나 죽은 셀은 젖음·시간 0
+        process::update_leaf_wetness(crop, params_.crop, params_.humidity, house_rh_start_index,
+                                     house_.airflow_index, inside_solar, cell.overhead_irrigated_this_tick);
+        process::reset_foliar_tick_values(crop);  // M5b 이번 틱 파생값 (증가분·포식량·썩은 과실 수)
         if (crop_alive) {
             const process::NutrientAvailability available = process::available_nutrients(cell, params_);
             process::CropEnvironment env = crop_env_base;
             env.tile_index = tile_index;
             env.canopy_reflect_factor = process::mulch_canopy_reflect_factor(cell, params_);  // M5a 백색 필름
+            env.overhead_irrigated = cell.overhead_irrigated_this_tick;                       // M5b 탄저병 물 튐
             const process::CropTickResult result =
-                process::update_crop(crop, cell, params_, available, env, biology_rng_, ledger_);
+                process::update_crop(crop, cell, params_, available, env, biology_rng_, ledger_, &foliar_rng_);
             crop_net_dry_matter_g += crop.last_gross_g_per_m2 - crop.last_respiration_g_per_m2;
             if (result.harvested) {
                 events_.push_back(Event{tick_, *result.harvested});
             }
             for (const auto& onset : result.disease_onsets) {  // M5a (SoilDisease 순서)
+                if (onset) {
+                    events_.push_back(Event{tick_, *onset});
+                }
+            }
+            for (const auto& onset : result.foliar_onsets) {  // M5b (FoliarDisease 순서)
                 if (onset) {
                     events_.push_back(Event{tick_, *onset});
                 }
@@ -584,6 +730,17 @@ void World::tick_once() {
         const double cells = static_cast<double>(tiles_.size());
         process::update_house_co2(house_, params_.house, params_.crop, crop_net_dry_matter_g / cells,
                                   (ledger_.C_respired_g - C_respired_before_g) / cells);
+        // M5b (house-humidity 4.2): CO2 뒤 수증기 수지. 원천 = 이번 틱 셀 평균 (증산 + 증발)
+        const double water_vapor_after_mm = ledger_.water_transpired_mm + ledger_.water_evaporated_mm;
+        process::update_house_vapor(house_, params_.house, params_.humidity, weather,
+                                    (water_vapor_after_mm - water_vapor_before_mm) / cells);
+        // M5b (foliar-disease 5장): 포자 압력 2개, 탄저병 포자 원천, 하우스 평균 응애, 하우스 안 일사 이동 평균.
+        // 이번 틱 셀 계산이 끝난 작물 상태의 합이라 셀 순서와 무관해요
+        process::FoliarHouseSources sources;
+        for (const Tile& tile : tiles_) {
+            process::add_foliar_house_sources(sources, tile.crop, params_, house_air_temp_degC);
+        }
+        process::update_foliar_house(house_, params_, scenario_.foliar, sources, tiles_.size());
     }
 
     ++tick_;

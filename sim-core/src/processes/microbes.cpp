@@ -42,6 +42,13 @@ MicrobeIndices microbe_capacity(const SoilCell& cell, const MicrobesParams& para
         const MicrobeGroupParams& gp = params.groups[g];
         capacity[g] = gp.saprophytic_capacity_index + gp.host_capacity_index * clamp01(host.infection_index[d]);
     }
+    // M5b 탄저병균 (foliar-disease 3.2): 부생 + 숙주 × 그 셀 작물의 관부 감염 지수
+    {
+        const std::size_t g = microbe(MicrobeGroup::Anthracnose);
+        const MicrobeGroupParams& gp = params.groups[g];
+        capacity[g] =
+            gp.saprophytic_capacity_index + gp.host_capacity_index * clamp01(host.anthracnose_infection_index);
+    }
     for (double& k : capacity) {
         k = std::max(params.capacity_floor_index, non_negative(k));
     }
@@ -109,6 +116,13 @@ void update_microbes(SoilCell& cell, const Params& params, const MicrobeHost& ho
     }
     cell.microbe_index = next;
     cell.disinfection_kill_index = disinfection_kill;
+    // (M5b 7차 프로토타입, foliar-disease 4.2) 살아 있는 병든 포기의 관부·잔재가 그 칸 흙에 접종원을 쌓아요.
+    // host.anthracnose_infection_index는 살아 있는 작물만 (없으면 0 → sporulation_curve(0) = 0). 이웃 칸을 읽지 않아 셀 순서와 무관
+    const AnthracnoseParams& ap = params.foliar_disease.anthracnose;
+    const double deposit = non_negative(ap.soil_deposit_per_hour) *
+                           clamp01(ap.sporulation_curve(clamp01(host.anthracnose_infection_index)));
+    const std::size_t ga = microbe(MicrobeGroup::Anthracnose);
+    cell.microbe_index[ga] = std::min(1.0, cell.microbe_index[ga] + deposit);
 }
 
 double decomposer_activity_factor(const SoilCell& cell, const MicrobesParams& params) {

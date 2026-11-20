@@ -73,6 +73,7 @@ private:
 enum class RngStream : std::uint64_t {
     Biology = 1,  // M4 strawberry-fruit "생물 변이 난수": 꽃 수 소수부, 수정률, 크기 변이, 저온 과실 손실
     Disease = 2,  // M5a 토양 병해 차이: 포기 감수성, 병원균 시작 편차 (생물 변이 스트림 순서를 건드리지 않게 분리)
+    Foliar = 3,   // M5b 지상부 병해충: 모종 잠복 탄저·응애, 잿빛곰팡이 과실 썩음, 흰가루 과실 (foliar-disease 4.7)
 };
 
 [[nodiscard]] inline Pcg32 make_stream(std::uint64_t master_seed, std::uint64_t stream_id) {

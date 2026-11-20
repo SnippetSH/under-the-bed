@@ -1,7 +1,7 @@
 # S6 양토: 광물 CEC 25, base_buffer 1.25 — m3-overview S6 행. 0·7·14일 황산암모늄·황산칼륨·질산칼슘 각 30 g/m².
 # 값은 전부 게임용 임의값이에요 (기준 토양 = 이행된 M2 s4_optimal, docs/spec/m3-overview.md).
 
-schema_version = 6
+schema_version = 7
 
 [scenario]
 name = "m3/s6_loam"
@@ -13,6 +13,7 @@ weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경�
 bed_rows = 4
 bed_cols = 20
 cover_layers = 3
+drip_installed = true  # M5b: 점적 설치 (house-humidity)
 
 [soil]
 field_capacity_mm = 60.0
@@ -54,6 +55,11 @@ antagonist = 0.5
 mycorrhiza = 0.1
 fusarium = 0.0
 phytophthora = 0.0
+anthracnose = 0.0  # M5b: 탄저병균 시작 지수 (foliar-disease 8장)
+
+[foliar]  # M5b 필수: 바깥에서 늘 들어오는 포자 수준 (foliar-disease 8장). 0 = 배경 포자 없음
+botrytis_background_index = 0.0
+powdery_mildew_background_index = 0.0
 
 [difficulty]
 stress_combination = "minimum"

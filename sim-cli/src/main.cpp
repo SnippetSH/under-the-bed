@@ -1,7 +1,7 @@
 // sim-cli — 헤드리스 실행기
 //
 //   sim-cli --params data/params.toml --scenario data/scenarios/empty.toml --ticks 8760
-//           [--out runs/empty.csv] [--no-hash]
+//           [--out runs/empty.csv] [--no-hash] [--remove-on-onset <disease>]
 //
 // CSV는 틱 0(초기 상태)부터 틱 N까지 N+1행이에요. 행의 값은 해당 틱 시점의 상태예요.
 // 열: 기상·명령 수, house_air_temp_degC, 셀 평균 토양 상태(soil.hpp 필드 이름), 작물 평균(작물이 있는 타일만,
@@ -18,7 +18,17 @@
 // mulched_fraction과 멀칭 id(mulch_id, 섞여 있으면 mixed), 작물 평균 감염 지수 infection_<병>_index, 이번 틱 소독 사멸
 // disinfection_kill_<id>_index와 지금까지의 누적 disinfection_kill_cum_<id>_index(셀 평균), 장부 ledger_N_flush_g,
 // ledger_Mn_flush_g, ledger_inoculant_applied_g, ledger_disinfectant_applied_<id>_g. 전부 플레이어 비공개 진짜 값이에요.
+// M5b 파생 열: 하우스 수증기·상대습도·습도 이동 평균·공기 흐름·피복 안쪽 면 온도, 수증기 장부(vapor_source_mm,
+// water_condensed_mm, vapor_vented_mm, vapor_deposited_mm), 작물 평균 잎 젖음·연속 젖음 시간·잎 사이 습도.
 // M5a 프로토타입 3차 열: 깊은 흙 온도 deep_soil_temp_degC(셀 평균), 포기 감수성 disease_susceptibility_factor(작물 평균).
+// M5b 지상부 병해충 열 (foliar-disease 2장): 하우스 점적·팬(drip_installed, fan_on, fan_hours, drip_installations),
+// 포자 압력 botrytis_spore_index·powdery_mildew_spore_index, 탄저병 포자 원천 anthracnose_sporulation_index, 하우스 평균 응애
+// house_spider_mite_mean_index, 하우스 안 일사 이동 평균 inside_solar_mean_W_per_m2, 두상 관수 셀 비율 overhead_irrigated_fraction,
+// 작물 평균 감염 3종·응애·응애 2주 평균·천적·토양 무기 N 이동 평균·이번 틱 증가분·포식량, 작물 있는/살아 있는 칸 수,
+// 하우스 전체 수확 합계(제거한 칸 포함) harvest_total_*, 누적 발병 이벤트 수 onset_<병>_count(토양 2 + 지상부 4),
+// 장부 *_removed_g·plants_removed·fruit_rot_*·harvested_mildew*·predators_released_per_m2.
+// --remove-on-onset <병>(anthracnose, botrytis, powdery_mildew, spider_mite)을 주면 그 병의 지상부 DiseaseOnset이 난 칸에
+// 다음 틱 시작 전에 RemovePlant를 넣어요 (S28 s28_overhead_remove용 CLI 동작, 코어 규칙 아님).
 // --no-hash를 주면 state_hash 열을 비워 둬요 (긴 실행을 빠르게). 최종 해시는 그래도 찍어요.
 // 표준 출력에는 이벤트 종류별 횟수, 수확 합계, 최종 상태 해시를 찍어요.
 
@@ -52,7 +62,7 @@ constexpr int kExitUsage = 2;
 
 constexpr std::string_view kUsage =
     "usage: sim-cli --params <params.toml> --scenario <scenario.toml> --ticks <N> "
-    "[--out <file.csv>] [--no-hash]";
+    "[--out <file.csv>] [--no-hash] [--remove-on-onset <anthracnose|botrytis|powdery_mildew|spider_mite>]";
 
 struct Options {
     fs::path params;
@@ -60,6 +70,7 @@ struct Options {
     std::optional<fs::path> out;
     std::uint32_t ticks = 0;
     bool no_hash = false;  // CSV의 state_hash 열을 비움
+    std::optional<sim::FoliarDisease> remove_on_onset;  // M5b: 이 병의 발병 칸을 뽑아요
 };
 
 std::optional<Options> parse_args(int argc, char** argv) {
@@ -82,6 +93,17 @@ std::optional<Options> parse_args(int argc, char** argv) {
             opt.scenario = value;
         } else if (arg == "--out") {
             opt.out = fs::path(value);
+        } else if (arg == "--remove-on-onset") {
+            for (std::size_t d = 0; d < sim::kFoliarDiseaseCount; ++d) {
+                if (value == sim::kFoliarDiseaseIds[d]) {
+                    opt.remove_on_onset = static_cast<sim::FoliarDisease>(d);
+                }
+            }
+            if (!opt.remove_on_onset) {
+                std::println(stderr, "--remove-on-onset must be one of anthracnose, botrytis, powdery_mildew, "
+                                     "spider_mite, got '{}'", value);
+                return std::nullopt;
+            }
         } else if (arg == "--ticks") {
             const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), opt.ticks);
             if (ec != std::errc{} || ptr != value.data() + value.size()) {
@@ -119,8 +141,14 @@ struct Row {
 };
 
 // 고사 원인 이름 (RootDamageCause 순서)
-constexpr std::array<std::string_view, 7> kDeathCauseNames = {"waterlog", "heat", "nitrite", "acid",
-                                                              "fusarium", "phytophthora", "fumigant"};
+constexpr std::array<std::string_view, sim::kRootDamageCauseCount> kDeathCauseNames = {
+    "waterlog", "heat", "nitrite", "acid", "fusarium", "phytophthora", "fumigant", "anthracnose"};
+
+// 누적 발병 이벤트 수 (토양 병해 SoilDisease 순서, 지상부 FoliarDisease 순서)
+struct OnsetCounts {
+    std::array<std::uint64_t, sim::kSoilDiseaseCount> soil{};
+    std::array<std::uint64_t, sim::kFoliarDiseaseCount> foliar{};
+};
 
 template <typename Fn>
 double mean_of(const std::vector<sim::SoilCell>& cells, Fn&& fn) {
@@ -135,7 +163,8 @@ double mean_of(const std::vector<sim::SoilCell>& cells, Fn&& fn) {
 }
 
 // cum_kill: 이 행까지 누적한 셀 평균 소독 사멸 (무리 순서). 행 값은 틱 시점 상태라 호출자가 이어서 쌓아요.
-Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndices& cum_kill) {
+Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndices& cum_kill,
+              const OnsetCounts& onsets) {
     const sim::Snapshot s = world.snapshot();
     const sim::CropParams& cp = world.params().crop;
     Row row;
@@ -160,6 +189,29 @@ Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndi
     row.add("heater_on", s.house.heater_on ? 1.0 : 0.0);
     row.add("inside_solar_W_per_m2", s.house.inside_solar_W_per_m2);
     row.add("vent_path_index", s.house.vent_path_index);
+    // M5b 하우스 습도 (house-humidity 2장): 상태, 마지막 틱 파생값, 수증기 장부(지면 1 m²당 mm)
+    row.add("house_vapor_g_per_m3", s.house.vapor_g_per_m3);
+    row.add("house_rh_index", s.house.rh_index);
+    row.add("house_rh_mean_index", s.house.rh_mean_index);
+    row.add("airflow_index", s.house.airflow_index);
+    row.add("cover_inner_temp_degC", s.house.cover_inner_temp_degC);
+    row.add("vapor_source_mm", s.house.vapor_source_mm);
+    row.add("water_condensed_mm", s.house.water_condensed_mm);
+    row.add("vapor_vented_mm", s.house.vapor_vented_mm);
+    row.add("vapor_deposited_mm", s.house.vapor_deposited_mm);
+    // M5b 점적·팬, 지상부 병해충 하우스 값 (foliar-disease 2장)
+    row.add("drip_installed", s.house.drip_installed ? 1.0 : 0.0);
+    row.add("fan_on", s.house.fan_on ? 1.0 : 0.0);
+    row.add("fan_hours", s.house.fan_hours);
+    row.add("drip_installations", s.house.drip_installations);
+    row.add("botrytis_spore_index", s.house.botrytis_spore_index);
+    row.add("powdery_mildew_spore_index", s.house.powdery_mildew_spore_index);
+    row.add("anthracnose_sporulation_index", s.house.anthracnose_sporulation_index);
+    row.add("house_spider_mite_mean_index", s.house.spider_mite_mean_index);
+    row.add("inside_solar_mean_W_per_m2", s.house.inside_solar_mean_W_per_m2);
+    row.add("overhead_irrigated_fraction", mean_of(s.soil, [](const sim::SoilCell& c) {
+                return c.overhead_irrigated_this_tick ? 1.0 : 0.0;
+            }));
 
 #define SOIL_COL(field) row.add(#field, mean_of(s.soil, [](const sim::SoilCell& c) { return c.field; }))
     SOIL_COL(water_mm);
@@ -272,6 +324,9 @@ Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndi
     } else {
         row.add_blank("crop_alive_fraction");
     }
+    // M5b: 작물이 있는 칸 수(RemovePlant로 줄어요), 살아 있는 칸 수
+    row.add("crop_present_count", static_cast<double>(present.size()));
+    row.add("crop_alive_count", static_cast<double>(alive));
 #define CROP_COL(field) crop_col(#field, [](const sim::Crop& c) { return c.field; })
 #define STATUS_COL(name, field) \
     crop_col(name, [&](const sim::Crop& c) { return sim::process::nutrient_status(c, cp).field; })
@@ -343,6 +398,23 @@ Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndi
                  [d](const sim::Crop& c) { return c.infection_index[d]; });
     }
     CROP_COL(disease_susceptibility_factor);  // M5a 프로토타입 3차: 포기 감수성 (작물 평균)
+    // M5b 잎 젖음 (house-humidity 4.3, 작물 평균)
+    CROP_COL(leaf_wetness_index);
+    CROP_COL(wet_run_hours);
+    CROP_COL(canopy_rh_index);
+    // M5b 지상부 병해충 (작물 평균, 플레이어 비공개 진짜 값)
+    CROP_COL(infection_anthracnose_index);
+    CROP_COL(infection_botrytis_index);
+    CROP_COL(infection_powdery_mildew_index);
+    CROP_COL(spider_mite_index);
+    CROP_COL(spider_mite_mean_index);
+    CROP_COL(predator_mite_index);
+    CROP_COL(soil_mineral_N_mean_g_per_m2);
+    CROP_COL(last_anthracnose_increase_index);
+    CROP_COL(last_botrytis_increase_index);
+    CROP_COL(last_powdery_mildew_increase_index);
+    CROP_COL(last_mite_predation_index);
+    CROP_COL(last_fruit_rot_count);
     crop_col("last_gross_g_per_m2", [](const sim::Crop& c) { return c.last_gross_g_per_m2; });
     crop_col("last_respiration_g_per_m2", [](const sim::Crop& c) { return c.last_respiration_g_per_m2; });
     STATUS_COL("excess_index_N", excess_N);
@@ -387,6 +459,26 @@ Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndi
                 row.add_blank(n);
             }
         }
+    }
+    {
+        // M5b: 하우스 전체 수확 합계 (모든 칸, RemovePlant로 비운 칸의 기록 포함)
+        double total_fresh = 0.0;
+        double total_count = 0.0;
+        double total_deformed = 0.0;
+        for (const sim::Crop& c : s.crops) {
+            total_fresh += c.harvest.harvested_fresh_g;
+            total_count += static_cast<double>(c.harvest.harvested_fruits);
+            total_deformed += static_cast<double>(c.harvest.harvested_deformed);
+        }
+        row.add("harvest_total_fresh_g", total_fresh);
+        row.add("harvest_total_count", total_count);
+        row.add("harvest_total_deformed_count", total_deformed);
+    }
+    for (std::size_t d = 0; d < sim::kSoilDiseaseCount; ++d) {
+        row.add(std::format("onset_{}_count", sim::kSoilDiseaseIds[d]), static_cast<double>(onsets.soil[d]));
+    }
+    for (std::size_t d = 0; d < sim::kFoliarDiseaseCount; ++d) {
+        row.add(std::format("onset_{}_count", sim::kFoliarDiseaseIds[d]), static_cast<double>(onsets.foliar[d]));
     }
     crop_col("aborted_count", [](const sim::Crop& c) { return static_cast<double>(c.harvest.aborted_fruits); });
     crop_col("thinned_count", [](const sim::Crop& c) { return static_cast<double>(c.harvest.thinned_fruits); });
@@ -465,6 +557,20 @@ Row build_row(const sim::World& world, bool include_hash, const sim::MicrobeIndi
     LEDGER_COL(N_flush_g);
     LEDGER_COL(Mn_flush_g);
     LEDGER_COL(inoculant_applied_g);
+    // M5b
+    LEDGER_COL(N_removed_g);
+    LEDGER_COL(P_removed_g);
+    LEDGER_COL(K_removed_g);
+    LEDGER_COL(Ca_removed_g);
+    LEDGER_COL(Mg_removed_g);
+    LEDGER_COL(Mn_removed_g);
+    LEDGER_COL(dry_matter_removed_g);
+    row.add("ledger_plants_removed", static_cast<double>(l.plants_removed));
+    row.add("ledger_fruit_rot_count", static_cast<double>(l.fruit_rot_count));
+    LEDGER_COL(fruit_rot_fresh_g);
+    row.add("ledger_harvested_mildew", static_cast<double>(l.harvested_mildew));
+    LEDGER_COL(harvested_mildew_fresh_g);
+    LEDGER_COL(predators_released_per_m2);
 #undef LEDGER_COL
     for (std::size_t d = 0; d < disinfectants.size(); ++d) {
         row.add(std::format("ledger_disinfectant_applied_{}_g", disinfectants[d].id),
@@ -498,11 +604,12 @@ void accumulate_kill(const sim::World& world, sim::MicrobeIndices& cum_kill) {
 }
 
 void write_header(std::ofstream& csv, const sim::World& world) {
-    std::println(csv, "{}", join(build_row(world, true, sim::MicrobeIndices{}).names));
+    std::println(csv, "{}", join(build_row(world, true, sim::MicrobeIndices{}, OnsetCounts{}).names));
 }
 
-void write_row(std::ofstream& csv, const sim::World& world, bool include_hash, const sim::MicrobeIndices& cum_kill) {
-    std::println(csv, "{}", join(build_row(world, include_hash, cum_kill).values));
+void write_row(std::ofstream& csv, const sim::World& world, bool include_hash, const sim::MicrobeIndices& cum_kill,
+               const OnsetCounts& onsets) {
+    std::println(csv, "{}", join(build_row(world, include_hash, cum_kill, onsets).values));
 }
 
 }  // namespace
@@ -551,9 +658,11 @@ int main(int argc, char** argv) {
 
     const auto started = std::chrono::steady_clock::now();
     sim::MicrobeIndices cum_kill{};
+    OnsetCounts onsets;
     if (csv.is_open()) {
-        write_row(csv, *world, !opt->no_hash, cum_kill);
+        write_row(csv, *world, !opt->no_hash, cum_kill, onsets);
     }
+    const int bed_cols = world->scenario().bed_cols;
     std::size_t next_command = 0;
     std::uint64_t command_applied_events = 0;
     std::uint64_t nitrite_events = 0;
@@ -561,8 +670,13 @@ int main(int argc, char** argv) {
     std::uint64_t fruit_harvested_events = 0;
     std::uint64_t disease_onset_events = 0;
     std::array<std::uint64_t, kDeathCauseNames.size()> died_by_cause{};
-    std::array<std::uint64_t, sim::kSoilDiseaseCount> onset_by_disease{};
+    std::vector<sim::Command> removals;  // M5b --remove-on-onset: 다음 틱 시작 전에 넣을 RemovePlant
     for (std::uint32_t t = 0; t < opt->ticks; ++t) {
+        for (sim::Command& removal : removals) {
+            // 같은 칸이 이미 비었으면(앞선 명령) enqueue가 거부할 수 있어요. 그때는 건너뛰어요
+            (void)world->enqueue(std::move(removal));
+        }
+        removals.clear();
         // 일정표는 tick 오름차순이라 현재 틱의 명령만 앞에서부터 꺼내면 돼요.
         while (next_command < schedule.size() && schedule[next_command].tick == t) {
             const auto seq = world->enqueue(schedule[next_command].command);
@@ -586,14 +700,23 @@ int main(int argc, char** argv) {
                 }
             } else if (const auto* onset = std::get_if<sim::DiseaseOnsetEvent>(&event.payload)) {
                 ++disease_onset_events;
-                ++onset_by_disease[static_cast<std::size_t>(onset->disease)];
+                ++onsets.soil[static_cast<std::size_t>(onset->disease)];
+            } else if (const auto* foliar = std::get_if<sim::FoliarDiseaseOnsetEvent>(&event.payload)) {
+                ++disease_onset_events;
+                ++onsets.foliar[static_cast<std::size_t>(foliar->disease)];
+                if (opt->remove_on_onset && foliar->disease == *opt->remove_on_onset) {
+                    const int row = static_cast<int>(foliar->tile_index) / bed_cols;
+                    const int col = static_cast<int>(foliar->tile_index) % bed_cols;
+                    removals.emplace_back(sim::RemovePlantCommand{
+                        .area = sim::TileArea{.row = row, .col = col, .rows = 1, .cols = 1}});
+                }
             } else if (std::holds_alternative<sim::FruitHarvestedEvent>(event.payload)) {
                 ++fruit_harvested_events;
             }
         }
         if (csv.is_open()) {
             accumulate_kill(*world, cum_kill);
-            write_row(csv, *world, !opt->no_hash, cum_kill);
+            write_row(csv, *world, !opt->no_hash, cum_kill, onsets);
         }
     }
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -618,11 +741,14 @@ int main(int argc, char** argv) {
             causes += std::format("{}{}={}", i == 0 ? "" : " ", kDeathCauseNames[i], died_by_cause[i]);
         }
         std::println("plant_died_by_cause {}", causes);
-        std::string onsets;
+        std::string onset_text;
         for (std::size_t i = 0; i < sim::kSoilDiseaseCount; ++i) {
-            onsets += std::format("{}{}={}", i == 0 ? "" : " ", sim::kSoilDiseaseIds[i], onset_by_disease[i]);
+            onset_text += std::format("{}{}={}", i == 0 ? "" : " ", sim::kSoilDiseaseIds[i], onsets.soil[i]);
         }
-        std::println("disease_onset_by_disease {}", onsets);
+        for (std::size_t i = 0; i < sim::kFoliarDiseaseCount; ++i) {
+            onset_text += std::format(" {}={}", sim::kFoliarDiseaseIds[i], onsets.foliar[i]);
+        }
+        std::println("disease_onset_by_disease {}", onset_text);
     }
 
     // 하우스 전체 수확 합계 (모든 타일)
@@ -638,6 +764,14 @@ int main(int argc, char** argv) {
     }
     std::println("harvest_total fresh_g={} count={} deformed_fresh_g={} deformed_count={}", harvest_fresh_g,
                  harvest_count, harvest_deformed_fresh_g, harvest_deformed_count);
+    {
+        // M5b 지상부 병해충 장부 요약
+        const sim::Ledger& l = world->snapshot().ledger;
+        std::println("foliar fruit_rot_count={} fruit_rot_fresh_g={} harvested_mildew={} harvested_mildew_fresh_g={} "
+                     "plants_removed={} predators_released_per_m2={}",
+                     l.fruit_rot_count, l.fruit_rot_fresh_g, l.harvested_mildew, l.harvested_mildew_fresh_g,
+                     l.plants_removed, l.predators_released_per_m2);
+    }
     {
         // 최종 하우스 평균 미생물 지수 (빠른 확인용)
         const sim::Snapshot fin = world->snapshot();

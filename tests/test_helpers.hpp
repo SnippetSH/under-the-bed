@@ -234,6 +234,10 @@ inline sim::Params test_params() {
         .ca_uptake_rate_per_g_root_per_hour = 0.00019,
         .mg_uptake_rate_per_g_root_per_hour = 0.00021,
         .transpiration_mm_per_hour_per_W_per_m2 = 0.0015,
+        // M5b (house-humidity 4.5): 단위 테스트 고정값은 되먹임 끔(평탄 1)·밤 기본 증산 0 = M4까지의 증산과 같음.
+        // 되먹임 곡선은 test_house_humidity.cpp가 명세 초기값으로 따로 넣어요
+        .transpiration_humidity_curve = {{{{0, 1}}, {{1, 1}}}},
+        .basal_transpiration_mm_per_hour_per_lai = 0.0,
         .root_recovery_rate_per_hour = 0.002,
         .death_root_health = 0.05,
         .root_dieback_per_damage = 1.0,
@@ -437,6 +441,29 @@ inline sim::Params test_params() {
     }
     p.disinfection = {.flush_N_g_per_m2_per_index = 6.0, .flush_C_to_N_ratio = 6.0, .mn_reduction_per_index = 0.03,
                       .till_residue_release_fraction = 0.5};
+    // ---- M5b (docs/spec/house-humidity.md 3장 표의 초기값) ----
+    p.humidity = {
+        .saturation_vapor_curve = {{{{-10, 2.35}}, {{-5, 3.41}}, {{0, 4.85}}, {{5, 6.8}}, {{10, 9.4}}, {{15, 12.8}},
+                                    {{20, 17.3}}, {{25, 23.0}}, {{30, 30.4}}, {{35, 39.6}}, {{40, 51.1}}, {{50, 83.0}},
+                                    {{70, 198}}}},
+        .inner_surface_resistance_m2K_per_W = 0.09,
+        .condensation_rate_per_hour = 4.0,
+        .rh_mean_relax_rate_per_hour = 0.014,
+        .vent_airflow_factor = 1.0,
+        .fan_airflow_index = 0.6,
+        .canopy_rh_boost_index = 0.08,
+        .canopy_lai_ref = 3.0,
+        .dew_rh_index = 0.92,
+        .dew_solar_limit_W_per_m2 = 50.0,
+        .wetting_rate_per_hour = 0.5,
+        .drying_rate_per_hour = 0.3,
+        .airflow_drying_factor = 2.0,
+        .drying_rh_curve = {{{{0.5, 1.5}}, {{0.8, 1}}, {{0.92, 0.2}}, {{1, 0}}}},
+        .drying_solar_factor_per_W_per_m2 = 0.01,
+        .overhead_wet_index = 1.0,
+        .wet_threshold_index = 0.5,
+        .wetness_break_hours = 4.0,
+    };
     p.mulches = {
         {.id = "clear_film", .name = "투명 필름", .soil_solar_gain_degC_per_W_per_m2 = 0.025, .evaporation_factor = 0.1,
          .fumigant_retention_factor = 0.3, .canopy_reflect_factor = 0.0},
@@ -456,6 +483,112 @@ inline sim::Params test_params() {
          .decay_temp_curve = {{{{5, 0.4}}, {{15, 0.7}}, {{25, 1}}, {{35, 1.4}}}},
          .activation_moisture_curve = {{{{0.2, 0.6}}, {{0.5, 0.9}}, {{0.7, 1}}}}},
     };
+    // ---- M5b 지상부 병해충 (docs/spec/foliar-disease.md 3장 표의 초기값) ----
+    {
+        using G = sim::MicrobeGroup;
+        const auto idx = [](G g) { return sim::microbe(g); };
+        const sim::PiecewiseLinear identity = {{{{0, 1}}, {{14, 1}}}};
+        p.root_damage.anthracnose_curve = {{{{0, 0}}, {{0.15, 0.0003}}, {{0.4, 0.003}}, {{0.8, 0.012}}}};
+        // 토양 접종원 [microbes.anthracnose] (soil-microbes 틀, 무리 7). 열 사멸은 시들음병균과 같은 곡선
+        auto& groups = p.microbes.groups;
+        groups[idx(G::Anthracnose)] = {
+            .growth_rate_per_hour = 0.003,
+            .temp_curve = {{{{9, 0}}, {{20, 0.6}}, {{27, 1}}, {{32, 1}}, {{38, 0}}}},
+            .moisture_curve = identity,
+            .ph_curve = identity,
+            .o2_curve = identity,
+            .base_death_rate_per_hour = 0.002,
+            .heat_kill_curve = groups[idx(G::Fusarium)].heat_kill_curve,
+            .immigration_rate_per_hour = 0.0,
+            .saprophytic_capacity_index = 0.05,
+            .host_capacity_index = 0.8,
+        };
+        groups[idx(G::Anthracnose)].competition[idx(G::Antagonist)] = 0.4;
+        groups[idx(G::Antagonist)].competition[idx(G::Anthracnose)] = 0.3;
+        p.disinfectants[0].kill_rate_per_hour[idx(G::Anthracnose)] = 0.02;   // dazomet
+        p.disinfectants[1].kill_rate_per_hour[idx(G::Anthracnose)] = 0.035;  // chloropicrin
+        for (sim::MulchDef& m : p.mulches) {
+            m.soil_splash_factor = 0.1;
+            m.plant_splash_factor = 2.5;
+        }
+        // 모종 등급 (3.6): A, B, C 순서
+        const double latent_fraction[] = {0.0, 0.05, 0.25};
+        const double mite_fraction[] = {0.0, 0.05, 0.15};
+        const double mildew_start[] = {0.0, 0.005, 0.02};
+        for (std::size_t i = 0; i < p.seedling_grades.size() && i < 3; ++i) {
+            sim::SeedlingGradeDef& g = p.seedling_grades[i];
+            g.latent_anthracnose_fraction = latent_fraction[i];
+            g.latent_anthracnose_index = 0.05;
+            g.spider_mite_fraction = mite_fraction[i];
+            g.spider_mite_start_index = 0.01;
+            g.powdery_mildew_start_index = mildew_start[i];
+        }
+        sim::FoliarDiseaseParams& f = p.foliar_disease;
+        f.n_susceptibility_curve = {{{{0, 1}}, {{6, 1}}, {{12, 1.4}}, {{20, 1.8}}, {{30, 2}}}};
+        f.n_mean_relax_rate_per_hour = 0.003;
+        f.mite_mean_relax_rate_per_hour = 0.003;
+        f.anthracnose = {
+            .temp_curve = {{{{9, 0}}, {{15, 0.16}}, {{20, 0.58}}, {{25, 0.95}}, {{27, 1}}, {{30, 0.91}}, {{35, 0.34}},
+                            {{38, 0}}}},
+            .wetness_curve = {{{{0, 0}}, {{6, 0.05}}, {{13, 0.8}}, {{36, 1}}}},
+            .contact_rate_per_hour = 0.0005,
+            .progress_rate_per_hour = 0.004,
+            .splash_transfer_index = 0.01,
+            .sporulation_curve = {{{{0, 0}}, {{0.15, 0}}, {{0.3, 0.5}}, {{0.6, 1}}}},
+            .onset_infection_index = 0.15,
+            .soil_deposit_per_hour = 0.0,  // 7차: 단위 테스트는 끈 상태, 저장소 값은 repo_params
+            .residue_index = 0.0,
+        };
+        f.botrytis = {
+            .infection_temp_curve = {{{{5, 0.02}}, {{10, 0.08}}, {{15, 0.55}}, {{20, 1}}, {{25, 0.79}}, {{30, 0.11}},
+                                      {{33, 0}}}},
+            .wetness_curve = {{{{0, 0}}, {{6, 0.05}}, {{12, 0.15}}, {{16, 0.25}}, {{24, 0.58}}, {{32, 1}}}},
+            .infection_rate_per_hour = 0.03,
+            .infection_decay_rate_per_hour = 0.002,
+            .sporulation_temp_curve = {{{{5, 0.1}}, {{10, 0.4}}, {{15, 0.8}}, {{17.5, 1}}, {{22, 0.8}}, {{25, 0.1}},
+                                        {{30, 0}}}},
+            .spore_source_per_infection_per_hour = 0.02,
+            .spore_source_per_rotten_fruit_per_hour = 0.01,
+            .spore_decay_rate_per_hour = 0.02,
+            .spore_vent_fraction = 0.05,
+            .fruit_rot_prob_per_hour = 0.002,
+            .fruit_stage_curve = {{{{0, 1}}, {{0.15, 0.6}}, {{0.4, 0.2}}, {{0.8, 0.6}}, {{1, 1}}}},
+            .onset_infection_index = 0.2,
+        };
+        f.powdery_mildew = {
+            .temp_curve = {{{{5, 0.05}}, {{10, 0.3}}, {{15, 0.7}}, {{20, 1}}, {{25, 1}}, {{30, 0.4}}, {{32, 0}}}},
+            .rh_curve = {{{{0.6, 0}}, {{0.75, 1}}, {{0.95, 1}}, {{1, 0.7}}}},
+            .free_water_inhibition_factor = 0.7,
+            .light_curve = {{{{0, 1.3}}, {{60, 1.15}}, {{120, 1}}}},
+            .density_curve = {{{{0, 0.8}}, {{2, 1}}, {{4, 1.2}}}},
+            .young_leaf_curve = {{{{0, 0.3}}, {{0.01, 0.6}}, {{0.03, 1}}}},
+            .infection_rate_per_hour = 0.004,
+            .spore_source_per_infection_per_hour = 0.02,
+            .spore_decay_rate_per_hour = 0.005,
+            .spore_vent_fraction = 0.05,
+            .photosynthesis_damage_curve = {{{{0, 0}}, {{0.17, 0.05}}, {{0.5, 0.2}}, {{1, 0.5}}}},
+            .fruit_prob_curve = {{{{0, 0}}, {{0.1, 0.02}}, {{0.3, 0.08}}, {{0.6, 0.17}}}},
+            .onset_infection_index = 0.05,
+        };
+        f.mites = {
+            .mite_growth_curve_per_hour = {{{{12, 0}}, {{15, 0.0013}}, {{20, 0.0044}}, {{25, 0.0063}}, {{30, 0.0079}},
+                                            {{35, 0.005}}, {{40, 0}}}},
+            .mite_rh_curve = {{{{0.2, 0.8}}, {{0.4, 1.15}}, {{0.55, 1.15}}, {{0.7, 1}}, {{0.85, 0.9}}, {{1, 0.8}}}},
+            .mite_spread_rate_per_hour = 0.0005,
+            .photosynthesis_damage_curve = {{{{0, 0}}, {{0.05, 0.1}}, {{0.3, 0.4}}, {{1, 0.6}}}},
+            .predator_temp_curve = {{{{10, 0}}, {{17, 0.7}}, {{20, 0.9}}, {{25, 1}}, {{28, 1}}, {{30, 0.7}}, {{35, 0}}}},
+            .predator_hatch_curve = {{{{0.4, 0}}, {{0.5, 0.15}}, {{0.6, 0.45}}, {{0.7, 0.75}}, {{0.8, 0.95}}, {{1, 1}}}},
+            .attack_rate_per_hour = 5.0,
+            .handling_time_hours = 1.25,
+            .conversion_factor = 0.01,
+            .predator_death_rate_per_hour = 0.0022,
+            .predator_starvation_death_per_hour = 0.012,
+            .predator_death_temp_curve = {{{{0, 1}}, {{40, 1}}}},  // 7차: 단위 테스트는 기온 무관(옛 값), 저장소 값은 repo_params
+            .predator_search_rate_per_hour = 0.0,  // 5차: 단위 테스트는 끈 상태, 저장소 값은 repo_params
+            .mite_onset_index = 0.05,
+        };
+        p.predators = {{.id = "persimilis", .name = "칠레이리응애", .index_per_individual_per_m2 = 0.00003}};
+    }
     return p;
 }
 
@@ -480,6 +613,21 @@ inline sim::Params repo_params() {
     p.phenology.induction_nitrogen_curve = {{{{0, 1}}, {{1.05, 1}}, {{1.15, 0.7}}, {{1.5, 0.5}}}};
     p.phenology.induction_spread_index = 0.4;
     p.soil_temperature.evap_cooling_degC_per_mm = 2.5;
+    p.foliar_disease.mites.predator_search_rate_per_hour = 0.05;  // M5b 5차 프로토타입 (천적 하우스 단위 탐색)
+    // M5b 5차 디렉터 결정 (2026-11-20): 천적 전환 0.035, 활동 온도 1 도 낮춤, 굶주림 0.007
+    p.foliar_disease.mites.conversion_factor = 0.035;
+    p.foliar_disease.mites.predator_starvation_death_per_hour = 0.007;
+    p.foliar_disease.mites.predator_temp_curve = {{{{9, 0}}, {{16, 0.7}}, {{20, 0.9}}, {{25, 1}}, {{28, 1}}, {{30, 0.7}}, {{35, 0}}}};
+    // M5b 5차 값 스윕 (2026-11-20, 프로토타입)
+    p.foliar_disease.botrytis.fruit_rot_prob_per_hour = 0.005;
+    p.foliar_disease.powdery_mildew.infection_rate_per_hour = 0.0025;
+    p.foliar_disease.anthracnose.splash_transfer_index = 0.05;
+    p.foliar_disease.anthracnose.progress_rate_per_hour = 0.003;
+    // M5b 7차 프로토타입 (2026-11-20 디렉터 승인 항목 31·32): 천적 사망 기온 배율, 탄저병 흙 접종원 퇴적·잔재
+    p.foliar_disease.mites.predator_death_temp_curve = {
+        {{{5, 0.25}}, {{10, 0.35}}, {{15, 0.5}}, {{20, 0.7}}, {{25, 1}}, {{40, 1}}}};
+    p.foliar_disease.anthracnose.soil_deposit_per_hour = 0.0003;
+    p.foliar_disease.anthracnose.residue_index = 0.3;
     // ---- M5a 최종안 (2026-11-19 승인, m5-overview 14.2): 프로토타입 1~4차로 조정한 값 ----
     // M1~M4 값 변경 (14.2 결정 8·9)
     p.soil_temperature.relax_rate_per_hour = 0.08;
@@ -527,8 +675,9 @@ inline sim::Params repo_params() {
         p.mulches[0].soil_solar_gain_degC_per_W_per_m2 = 0.021;   // clear_film
         p.mulches[2].soil_solar_gain_degC_per_W_per_m2 = -0.02;   // white_film
         // 약제 kill_rate 순서: decomposer, nitrifier_aob, nitrifier_nob, antagonist, mycorrhiza, fusarium, phytophthora
-        p.disinfectants[0].kill_rate_per_hour = {0.015, 0.002, 0.001, 0.015, 0.02, 0.02, 0.02};  // dazomet
-        p.disinfectants[1].kill_rate_per_hour = {0.01, 0.03, 0.03, 0.01, 0.02, 0.035, 0.03};     // chloropicrin
+        // M5b: 8번째 = anthracnose (시들음병균 값, foliar-disease 3.2)
+        p.disinfectants[0].kill_rate_per_hour = {0.015, 0.002, 0.001, 0.015, 0.02, 0.02, 0.02, 0.02};     // dazomet
+        p.disinfectants[1].kill_rate_per_hour = {0.01, 0.03, 0.03, 0.01, 0.02, 0.035, 0.03, 0.035};  // chloropicrin
     }
     sim::CropParams& c = p.crop;
     c.light_use_efficiency_g_per_MJ = 2.1;
@@ -545,6 +694,16 @@ inline sim::Params repo_params() {
     c.reserve_release_rate_per_hour = 0.0005;
     c.maintenance_activity_curve = {{{{-1, 0.4}}, {{0.0043, 0.4}}, {{0.01, 0.7}}, {{0.02, 0.91}}, {{0.03, 0.97}}, {{0.05, 1}}}};
     c.rgr_mean_relax_rate_per_hour = 0.014;
+    // ---- M5b 프로토타입 0차 (house-humidity 3장·4.5): 증산의 습도 되먹임 켬, 밤 기본 증산 0 (0차 기준선).
+    // [humidity] 값은 test_params()와 같아요 (명세 초기값)
+    c.transpiration_humidity_curve = {{{{0, 1}}, {{1, 1}}}};  // 0차 후보: 되먹임 되돌림 (결정 33)
+    // M5b 2차 후보 (프로토타입, 명세 반영 전)
+    p.humidity.inner_surface_resistance_m2K_per_W = 0.06;
+    p.humidity.drying_solar_factor_per_W_per_m2 = 0.004;
+    p.humidity.drying_rate_per_hour = 0.6;
+    p.humidity.dew_rh_index = 0.95;
+    p.humidity.drying_rh_curve = {{{{0.5, 1.5}}, {{0.8, 1}}, {{0.95, 0.4}}, {{1, 0}}}};
+    c.basal_transpiration_mm_per_hour_per_lai = 0.0;
     return p;
 }
 

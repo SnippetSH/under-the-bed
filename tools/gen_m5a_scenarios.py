@@ -105,6 +105,11 @@ antagonist = {fmt(float(antagonist))}
 mycorrhiza = {fmt(float(mycorrhiza))}
 fusarium = {fmt(float(fusarium))}
 phytophthora = {fmt(float(phytophthora))}
+anthracnose = 0.0  # M5b: 탄저병균 시작 지수 (foliar-disease 8장)
+
+[foliar]  # M5b 필수: 바깥에서 늘 들어오는 포자 수준 (foliar-disease 8장). 0 = 배경 포자 없음
+botrytis_background_index = 0.0
+powdery_mildew_background_index = 0.0
 """
 
 
@@ -136,7 +141,7 @@ def render(sc: Scenario) -> str:
         f"{head}\n"
         f"# 길이는 sim-cli의 --ticks로 정해요: {sc.days}일 = {sc.days * HOURS}틱. 시작: day {sc.start_doy}, 틱 0 = 그날 0시.\n"
         "# 값은 전부 게임용 임의값이에요. 이 파일은 tools/gen_m5a_scenarios.py가 만들어요(고치려면 스크립트를 고쳐요).\n",
-        "schema_version = 6\n",
+        "schema_version = 7\n",
         f"""[scenario]
 name = "m5a/{sc.name}"
 seed = {SEED}
@@ -147,6 +152,7 @@ weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경�
 bed_rows = 4
 bed_cols = 20
 cover_layers = 3
+drip_installed = true  # M5b: 점적 설치 (house-humidity)
 """,
         sc.soil,
     ]

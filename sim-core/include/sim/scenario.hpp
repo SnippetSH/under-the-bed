@@ -61,6 +61,14 @@ struct CropInit {
     bool operator==(const CropInit&) const = default;
 };
 
+// M5b 시나리오 [foliar] (foliar-disease 8장): 바깥에서 늘 들어오는 포자 수준 0~1. 포자 압력은 이 값에서 시작해요
+struct FoliarInit {
+    double botrytis_background_index = 0.0;
+    double powdery_mildew_background_index = 0.0;
+
+    bool operator==(const FoliarInit&) const = default;
+};
+
 // 계획서 5장 "기본 모드(최소값) / 하드 모드(곱)"
 enum class StressCombination : std::uint8_t { Minimum = 0, Product = 1 };
 
@@ -73,9 +81,12 @@ struct Scenario {
     int bed_rows = 0;           // 하우스 베드 타일 그리드 행 수
     int bed_cols = 0;           // 열 수
     int cover_layers = 0;       // M4: 피복 겹수 시작값 (house-climate)
+    // M5b: 시나리오 [house] drip_installed (필수 키, house-humidity 4.4). 코드로 만든 시나리오는 점적 있음 = M5a 관수
+    bool drip_installed = true;
     SoilInit soil;
     std::optional<CropInit> crop;  // 없으면 작물 없음
     StressCombination stress_combination = StressCombination::Minimum;
+    FoliarInit foliar;  // M5b [foliar] (필수 섹션)
 
     // (day_of_year, hour) 오름차순 365 × 24 = 8,760개. 인덱스는 weather_index()로 구해요.
     std::vector<WeatherHour> weather_hourly;

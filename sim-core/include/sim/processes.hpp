@@ -26,6 +26,9 @@
 //     microbes.cpp          개체군 갱신(d2), 활동 계수, 균근균 완화, 유익균 투입 (M5a)
 //     disinfection.cpp      멀칭 증발·지온·반사광, 약제 잔류(d1)·활성, 경운 방출, 소독 무기화·망간(d3) (M5a)
 //     soil_disease.cpp      작물 감염(h6, 뿌리 건강도 앞), DiseaseOnset (M5a)
+//     house_humidity.cpp    하우스 수증기 수지, 공기 흐름, 잎 젖음 (M5b)
+//     foliar_disease.cpp    지상부 병해충: 질소 감수성, 탄저·잿빛곰팡이·흰가루 감염, 응애·천적, 모종 병해,
+//                           포기 제거·천적 방사, 하우스 포자 압력 (M5b). 과실 썩음·흰가루 과실은 crop.cpp h4
 
 #include <array>
 #include <cstddef>
@@ -62,6 +65,7 @@ struct CoverState {
     double conductance_W_per_m2_per_K = 0.0;  // U
     double vent_W_per_m2_per_K = 0.0;         // V = vent_conductance × path
     double path_index = 0.0;                  // 직렬 개구부 경로 sqrt(n) / sqrt(Σ 1/a_l²), 어느 겹이든 닫히면 0
+    double resistance_m2K_per_W = 0.0;        // M5b: 피복 저항 합 R (창 개방 반영). 피복 면 온도가 읽어요
 };
 [[nodiscard]] CoverState cover_state(const HouseParams& params, const HouseState& house);
 [[nodiscard]] double inside_solar_W_per_m2(const HouseParams& params, const HouseState& house,
@@ -81,6 +85,24 @@ void update_house_air(HouseState& house, const HouseParams& params, const Weathe
 // 하우스 단계 4: 이번 틱 작물 순흡수(셀 평균 g 건물/m², 음수 = 방출)와 토양 호흡 C(셀 평균 g/m²)로 CO2 갱신
 void update_house_co2(HouseState& house, const HouseParams& params, const CropParams& crop_params,
                       double crop_net_dry_matter_g_per_m2, double soil_respired_C_g_per_m2);
+// ---- house_humidity.cpp (docs/spec/house-humidity.md, M5b) ----
+// 포화 수증기 농도 g/m³ (표 보간, 0 이상)
+[[nodiscard]] double saturation_vapor_g_per_m3(const HumidityParams& params, double temp_degC);
+// 피복 안쪽 면 온도 (4.2): frac = R > 0 ? clamp(1 − inner_surface_resistance / R, 0, 1) : 0
+[[nodiscard]] double cover_inner_temp_degC(const HouseParams& house_params, const HumidityParams& params,
+                                           const HouseState& house, double outside_air_temp_degC);
+// 월드 생성: 수증기 = 첫 틱 바깥 수증기, 이동 평균 = 그때 상대습도, vapor_initial_mm 기록, 파생값 채움
+void init_house_humidity(HouseState& house, const HouseParams& house_params, const HumidityParams& params,
+                         const WeatherHour& weather);
+// 하우스 단계 2 직후 (4.1): airflow_index = min(1, vent_airflow_factor × path + fan)
+void update_airflow(HouseState& house, const HumidityParams& params);
+// 하우스 단계 4, CO2 뒤 (4.2): 음해법 수증기 수지. source_mm = 이번 틱 셀 평균 (증산 + 증발) mm
+void update_house_vapor(HouseState& house, const HouseParams& house_params, const HumidityParams& params,
+                        const WeatherHour& weather, double source_mm);
+// 작물 단계 h, 병해 앞 (4.3): 잎 사이 습도·잎 젖음·연속 젖음 시간. overhead = 이번 틱 두상 관수 (0차: 항상 false)
+void update_leaf_wetness(Crop& crop, const CropParams& crop_params, const HumidityParams& params,
+                         double house_rh_index, double airflow_index, double inside_solar_W_per_m2, bool overhead);
+
 // SetCoverLayers 적용: 늘린 겹의 창은 닫힘, 줄인 겹(안쪽부터)의 창 상태는 사라짐
 void set_cover_layers(HouseState& house, int layers);
 // SetCoverLayers 허용 날짜인지 (cover_change_window_doy 양 끝 포함)
@@ -225,6 +247,9 @@ void fix_phosphorus(SoilCell& cell, const PhosphorusParams& params, double relea
 // induction = 등급 초기값, 체내 양분 = 요구량(적정 농도 × 기관 건물), 수확 기록 크기 구간 = 경계 수 + 1
 [[nodiscard]] Crop plant_crop(const SeedlingGradeDef& grade, double plants_per_m2, const Params& params);
 
+// 잎 면적 지수 LAI = 잎 건물 × 비엽면적 (살아 있는지와 무관). M5b 잎 사이 습도·밤 기본 증산이 읽어요
+[[nodiscard]] double leaf_area_index(const Crop& crop, const CropParams& params);
+
 // 받는 빛 비율 = light_interception_curve(LAI). 살아 있지 않으면 0
 [[nodiscard]] double canopy_interception(const Crop& crop, const CropParams& params);
 
@@ -236,8 +261,9 @@ struct WaterSaltFactors {
 [[nodiscard]] WaterSaltFactors water_salt_factors(const SoilCell& cell, const CropParams& params);
 
 // 셀 단계 a에 넘길 증산 요구량 (mm/h). 살아 있지 않으면 0
+// M5b (house-humidity 4.5, ADR-0014): (일사 항 + 밤 기본 증산 × LAI) × min(수분, 염류) × 습도 배율(틱 시작 house_rh_index)
 [[nodiscard]] double transpiration_demand_mm(const Crop& crop, const CropParams& params, double inside_solar_W_per_m2,
-                                             const WaterSaltFactors& factors);
+                                             const WaterSaltFactors& factors, double house_rh_index);
 
 // 원소별 요구량 (M4 strawberry-fruit "요구량"): target_X × (잎 + 관부 + 뿌리) + fruit_target_X × 과실
 struct NutrientRequirement {
@@ -273,12 +299,22 @@ struct CropEnvironment {
     std::uint32_t tile_index = 0;
     // M5a 백색 필름 반사광 (disinfection 1번): h3 광합성 광량만 inside_solar × (1 + 이 값 × (1 − interception))
     double canopy_reflect_factor = 0.0;
+    // M5b 지상부 병해충 (foliar-disease 4장): 모두 틱 시작 때의 하우스 값. 기본값 0 = 병해충 없음
+    double house_rh_mean_index = 0.0;            // 천적 부화·응애 습도 배율
+    double botrytis_spore_index = 0.0;
+    double powdery_mildew_spore_index = 0.0;
+    double anthracnose_sporulation_index = 0.0;  // 탄저병 물 튐 원천 (포기 → 포기)
+    double house_spider_mite_mean_index = 0.0;   // 응애 이동의 하우스 평균
+    double inside_solar_mean_W_per_m2 = 0.0;     // 흰가루병 약광
+    bool overhead_irrigated = false;             // 이번 틱 두상 관수 (탄저병 물 튐 Δ3)
 };
 
 struct CropTickResult {
     std::optional<PlantDiedEvent> died;
     std::optional<FruitHarvestedEvent> harvested;
     std::array<std::optional<DiseaseOnsetEvent>, kSoilDiseaseCount> disease_onsets{};  // M5a h6 (SoilDisease 순서)
+    // M5b h6·h7 (FoliarDisease 순서)
+    std::array<std::optional<FoliarDiseaseOnsetEvent>, kFoliarDiseaseCount> foliar_onsets{};
 };
 
 // M4 셀 단계 h (살아 있는 작물만): h0 저온 피해 → h1 생물계절(활착·화아분화·화방·꽃 만들기·개화 판정) →
@@ -288,9 +324,12 @@ struct CropTickResult {
 //   난수는 biology_rng에서 목록 순서로 (저온 손실 → 꽃 만들기(화방 순) → 개화 판정 → 낙과)
 // M5a: h2·h5의 물·염류 계수에 균근균 완화(cell.microbe_index), h3 광량에 env.canopy_reflect_factor,
 //   h6 앞에 감염 진행(update_soil_infection), 뿌리 손상 합에 fusarium·phytophthora·fumigant 곡선
+// M5b (foliar-disease 5장): h3 총생산 × (1 − 흰가루 피해) × (1 − 응애 피해)(틱 시작 값), h4 수확 때 흰가루 과실 판정 →
+//   낙과 → 잿빛곰팡이 과실 썩음(낙엽 규칙), h6 질소 감수성 → 토양 병해 → 탄저·잿빛곰팡이·흰가루(희석) → 뿌리 손상 합에
+//   탄저병, h7 응애·천적. foliar_rng = RngStream::Foliar (nullptr이면 확률 판정을 하지 않아요: 단위 테스트 호환)
 [[nodiscard]] CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params,
                                          const NutrientAvailability& available, const CropEnvironment& env,
-                                         Pcg32& biology_rng, Ledger& ledger);
+                                         Pcg32& biology_rng, Ledger& ledger, Pcg32* foliar_rng = nullptr);
 
 // M5a Plant 명령 (disinfection 6번): 죽은 작물의 체내 원소·건물(+ 남은 저장)을 낙엽 규칙으로 토양에 돌려주고
 // 작물을 비워요(Crop{}). 잎·과실 C는 C_leaf_litter_g, 관부·뿌리·저장 C는 C_root_litter_g.
@@ -327,6 +366,7 @@ std::uint64_t thin_flowers(Crop& crop, SoilCell& cell, const Params& params, dou
 struct MicrobeHost {
     double root_g_per_m2 = 0.0;
     std::array<double, kSoilDiseaseCount> infection_index{};  // SoilDisease 순서
+    double anthracnose_infection_index = 0.0;                 // M5b: 탄저병 무리의 숙주 수용력
 };
 // 무리별 적합도 = temp × moisture × ph × o2 곡선 (토양 온도, relative_water, pH, aeration_index)
 [[nodiscard]] MicrobeIndices microbe_suitability(const SoilCell& cell, const MicrobesParams& params);
@@ -392,5 +432,63 @@ void apply_disinfection_flush(SoilCell& cell, const DisinfectionParams& params, 
 // 작물 단계 h6 앞: infection += rate × pressure × (1 − infection) (줄지 않음). 처음 onset 이상이면 이벤트
 [[nodiscard]] std::array<std::optional<DiseaseOnsetEvent>, kSoilDiseaseCount> update_soil_infection(
     Crop& crop, const SoilCell& cell, const Params& params, std::uint32_t tile_index);
+
+// ---- foliar_disease.cpp (docs/spec/foliar-disease.md, M5b) ----
+
+// 셀 멀칭의 탄저병 물 튐 계수 (멀칭 없음 = 맨흙 1)
+[[nodiscard]] double mulch_soil_splash_factor(const SoilCell& cell, const Params& params);
+[[nodiscard]] double mulch_plant_splash_factor(const SoilCell& cell, const Params& params);
+// 환기 횟수 ach = 틈새 + 환기 × path (CO2·수증기와 같은 값)
+[[nodiscard]] double house_air_changes_per_hour(const HouseParams& params, const HouseState& house);
+// 정식 (4.7): 모종 등급의 값으로 ① 잠복 탄저(fraction > 0이면 난수 1회) ② 응애(fraction > 0이면 난수 1회),
+// 흰가루 시작 병반(난수 없음), 토양 무기 N 이동 평균 = 그 셀의 지금 NH4 + NO3
+void apply_seedling_disease(Crop& crop, const SeedlingGradeDef& grade, const SoilCell& cell, Pcg32& foliar_rng);
+// 4.1: 토양 무기 N 이동 평균 갱신 후 s_N = n_susceptibility_curve(평균)
+double update_n_susceptibility(Crop& crop, const SoilCell& cell, const FoliarDiseaseParams& params);
+// h3 총생산 배율 = (1 − 흰가루 피해(병든 잎 면적)) × (1 − 응애 피해(2주 평균 밀도))
+[[nodiscard]] double foliar_photosynthesis_factor(const Crop& crop, const FoliarDiseaseParams& params);
+using FoliarOnsets = std::array<std::optional<FoliarDiseaseOnsetEvent>, kFoliarDiseaseCount>;
+// h6 (4.2~4.4): 탄저병 → 잿빛곰팡이 → 흰가루병(희석 포함). s_N은 update_n_susceptibility 값.
+// leaf_before_growth_g_per_m2 = 이번 틱 분배 전 잎 건물 (희석: 늘었으면 inf_p × 이전 ÷ 지금)
+void update_foliar_infection(Crop& crop, const SoilCell& cell, const Params& params, const CropEnvironment& env,
+                             double n_susceptibility_factor, double leaf_before_growth_g_per_m2,
+                             std::uint32_t tile_index, FoliarOnsets& onsets);
+// h7 (4.5): 응애·칠레이리응애, 응애 2주 이동 평균
+void update_mites(Crop& crop, const FoliarDiseaseParams& params, const CropEnvironment& env, std::uint32_t tile_index,
+                  FoliarOnsets& onsets);
+// (5차 프로토타입) 천적 하우스 단위 탐색: 틱 시작(명령 뒤, 셀 계산 앞) 살아 있는 포기의 천적·응애 합.
+// 셀 계산 앞에 모든 포기를 한 번에 옮기므로 셀 순서와 무관하고, 목표를 자르지 않으면 천적 합이 보존돼요
+struct PredatorSearchSums {
+    double predator_sum = 0.0;  // Σ 살아 있는 포기 D
+    double mite_sum = 0.0;      // Σ 살아 있는 포기 M
+    std::size_t live_crops = 0;
+};
+void add_predator_search_sums(PredatorSearchSums& sums, const Crop& crop);
+// D_mean·M_mean = 합 ÷ 포기 수. target = M_mean > 0 ? D_mean × M ÷ M_mean : D_mean (0~1로 자름).
+// D += predator_search_rate × (target − D). M은 이 포기의 틱 시작 응애
+void apply_predator_search(Crop& crop, const PredatorSearchSums& sums, const MiteParams& params);
+// 이번 틱 파생값(증가분·포식량·썩은 과실 수)을 0으로 (모든 작물, 틱마다 작물 단계 앞)
+void reset_foliar_tick_values(Crop& crop);
+// RemovePlant (4.6): 체내 원소·건물(+ 달린 과실, 저장)을 *_removed_g로 내보내고 작물을 비워요. 수확 기록은 남겨요
+void remove_plant(Crop& crop, Ledger& ledger);
+// ReleasePredators (4.5): 살아 있는 작물만 D = min(1, D + per_m2 × index_per_individual_per_m2)
+void release_predators(Crop& crop, const PredatorDef& predator, double per_m2);
+
+// 하우스 포자 원천 합 (셀 계산 뒤, 타일마다 add_foliar_house_sources)
+struct FoliarHouseSources {
+    double anthracnose_sporulation_sum = 0.0;  // Σ 살아 있는 포기 sporulation_curve(inf_a)
+    double botrytis_source_sum = 0.0;          // Σ (src_inf × inf_b × 포자 형성 온도 × 젖음 + src_rot × 썩은 수)
+    double powdery_mildew_source_sum = 0.0;    // Σ 살아 있는 포기 src × inf_p
+    double spider_mite_sum = 0.0;              // Σ 살아 있는 포기 응애 밀도
+    std::size_t live_crops = 0;
+};
+void add_foliar_house_sources(FoliarHouseSources& sources, const Crop& crop, const Params& params,
+                              double house_air_temp_degC);
+// 하우스 단계 4 (수증기 뒤): 포자 압력 2개, 탄저병 포자 원천, 하우스 평균 응애, 하우스 안 일사 이동 평균
+void update_foliar_house(HouseState& house, const Params& params, const FoliarInit& foliar,
+                         const FoliarHouseSources& sources, std::size_t cells);
+// 월드 생성: 포자 압력 = 배경값, 원천·응애 평균 = 정식한 포기에서, 일사 평균 = 첫 틱 하우스 안 일사
+void init_foliar_house(HouseState& house, const Params& params, const FoliarInit& foliar,
+                       const FoliarHouseSources& sources, std::size_t cells);
 
 }  // namespace sim::process

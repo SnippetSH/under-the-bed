@@ -111,6 +111,41 @@ std::expected<void, Error> validate_microbes(const Params& p) {
     return {};
 }
 
+// ---- M5b (house-humidity 3장) ----
+
+std::expected<void, Error> validate_humidity(const Params& p) {
+    const HumidityParams& h = p.humidity;
+    // 포화 수증기 표: 점 2개 이상, x 오름차순, y > 0이고 기온이 오르면 엄격히 커져요 (상대습도 분모)
+    SIM_CHECK(validate_curve(h.saturation_vapor_curve, "humidity.saturation_vapor_curve"));
+    SIM_CHECK(curve_y_positive(h.saturation_vapor_curve, "humidity.saturation_vapor_curve"));
+    for (std::size_t i = 1; i < h.saturation_vapor_curve.points.size(); ++i) {
+        SIM_CHECK(require(h.saturation_vapor_curve.points[i][1] > h.saturation_vapor_curve.points[i - 1][1],
+                          "curve 'humidity.saturation_vapor_curve' y values must be strictly increasing"));
+    }
+    SIM_CHECK(non_negative(h.inner_surface_resistance_m2K_per_W, "humidity.inner_surface_resistance_m2K_per_W"));
+    SIM_CHECK(non_negative(h.condensation_rate_per_hour, "humidity.condensation_rate_per_hour"));
+    SIM_CHECK(non_negative(h.rh_mean_relax_rate_per_hour, "humidity.rh_mean_relax_rate_per_hour"));
+    SIM_CHECK(non_negative(h.vent_airflow_factor, "humidity.vent_airflow_factor"));
+    SIM_CHECK(fraction(h.fan_airflow_index, "humidity.fan_airflow_index"));
+    SIM_CHECK(fraction(h.canopy_rh_boost_index, "humidity.canopy_rh_boost_index"));
+    SIM_CHECK(positive(h.canopy_lai_ref, "humidity.canopy_lai_ref"));
+    SIM_CHECK(fraction(h.dew_rh_index, "humidity.dew_rh_index"));
+    SIM_CHECK(non_negative(h.dew_solar_limit_W_per_m2, "humidity.dew_solar_limit_W_per_m2"));
+    SIM_CHECK(non_negative(h.wetting_rate_per_hour, "humidity.wetting_rate_per_hour"));
+    SIM_CHECK(non_negative(h.drying_rate_per_hour, "humidity.drying_rate_per_hour"));
+    SIM_CHECK(non_negative(h.airflow_drying_factor, "humidity.airflow_drying_factor"));
+    SIM_CHECK(validate_curve(h.drying_rh_curve, "humidity.drying_rh_curve"));
+    SIM_CHECK(non_negative(h.drying_solar_factor_per_W_per_m2, "humidity.drying_solar_factor_per_W_per_m2"));
+    SIM_CHECK(fraction(h.overhead_wet_index, "humidity.overhead_wet_index"));
+    SIM_CHECK(fraction(h.wet_threshold_index, "humidity.wet_threshold_index"));
+    SIM_CHECK(non_negative(h.wetness_break_hours, "humidity.wetness_break_hours"));
+    // 작물 쪽 M5b 키 (4.5): 습도 배율은 1보다 클 수 있어요 (건조하면 1.3)
+    SIM_CHECK(validate_curve(p.crop.transpiration_humidity_curve, "crop.transpiration_humidity_curve"));
+    SIM_CHECK(non_negative(p.crop.basal_transpiration_mm_per_hour_per_lai,
+                           "crop.basal_transpiration_mm_per_hour_per_lai"));
+    return {};
+}
+
 std::expected<void, Error> validate_disinfection(const Params& p) {
     const DisinfectionParams& d = p.disinfection;
     SIM_CHECK(non_negative(d.flush_N_g_per_m2_per_index, "disinfection.flush_N_g_per_m2_per_index"));
@@ -127,6 +162,8 @@ std::expected<void, Error> validate_disinfection(const Params& p) {
         SIM_CHECK(non_negative(m.evaporation_factor, std::format("mulch '{}' evaporation_factor", m.id)));
         SIM_CHECK(non_negative(m.fumigant_retention_factor, std::format("mulch '{}' fumigant_retention_factor", m.id)));
         SIM_CHECK(non_negative(m.canopy_reflect_factor, std::format("mulch '{}' canopy_reflect_factor", m.id)));
+        SIM_CHECK(non_negative(m.soil_splash_factor, std::format("mulch '{}' soil_splash_factor", m.id)));    // M5b
+        SIM_CHECK(non_negative(m.plant_splash_factor, std::format("mulch '{}' plant_splash_factor", m.id)));  // M5b
     }
     std::set<std::string, std::less<>> disinfectant_ids;
     for (const DisinfectantDef& f : p.disinfectants) {
@@ -142,6 +179,92 @@ std::expected<void, Error> validate_disinfection(const Params& p) {
         SIM_CHECK(validate_curve(f.decay_temp_curve, std::format("disinfectant '{}' decay_temp_curve", f.id)));
         SIM_CHECK(factor_curve(f.activation_moisture_curve,
                                std::format("disinfectant '{}' activation_moisture_curve", f.id)));
+    }
+    return {};
+}
+
+// ---- M5b (foliar-disease 3장) ----
+
+// 곡선 y가 0 이상인 배율 (1보다 클 수 있음)
+std::expected<void, Error> multiplier_curve(const PiecewiseLinear& curve, std::string_view name) {
+    return validate_curve(curve, name);
+}
+
+std::expected<void, Error> onset_index(double v, std::string_view name) {
+    return require(std::isfinite(v) && v > 0.0 && v <= 1.0, std::format("{} must be within (0, 1]", name));
+}
+
+std::expected<void, Error> validate_foliar_disease(const Params& p) {
+    const FoliarDiseaseParams& f = p.foliar_disease;
+    SIM_CHECK(multiplier_curve(f.n_susceptibility_curve, "foliar_disease.n_susceptibility_curve"));
+    SIM_CHECK(fraction(f.n_mean_relax_rate_per_hour, "foliar_disease.n_mean_relax_rate_per_hour"));
+    SIM_CHECK(fraction(f.mite_mean_relax_rate_per_hour, "foliar_disease.mite_mean_relax_rate_per_hour"));
+
+    const AnthracnoseParams& a = f.anthracnose;
+    SIM_CHECK(factor_curve(a.temp_curve, "foliar_disease.anthracnose.temp_curve"));
+    SIM_CHECK(factor_curve(a.wetness_curve, "foliar_disease.anthracnose.wetness_curve"));
+    SIM_CHECK(non_negative(a.contact_rate_per_hour, "foliar_disease.anthracnose.contact_rate_per_hour"));
+    SIM_CHECK(non_negative(a.progress_rate_per_hour, "foliar_disease.anthracnose.progress_rate_per_hour"));
+    SIM_CHECK(non_negative(a.splash_transfer_index, "foliar_disease.anthracnose.splash_transfer_index"));
+    SIM_CHECK(factor_curve(a.sporulation_curve, "foliar_disease.anthracnose.sporulation_curve"));
+    SIM_CHECK(onset_index(a.onset_infection_index, "foliar_disease.anthracnose.onset_infection_index"));
+    SIM_CHECK(fraction(a.soil_deposit_per_hour, "foliar_disease.anthracnose.soil_deposit_per_hour"));
+    SIM_CHECK(fraction(a.residue_index, "foliar_disease.anthracnose.residue_index"));
+
+    const BotrytisParams& b = f.botrytis;
+    SIM_CHECK(factor_curve(b.infection_temp_curve, "foliar_disease.botrytis.infection_temp_curve"));
+    SIM_CHECK(factor_curve(b.wetness_curve, "foliar_disease.botrytis.wetness_curve"));
+    SIM_CHECK(non_negative(b.infection_rate_per_hour, "foliar_disease.botrytis.infection_rate_per_hour"));
+    SIM_CHECK(fraction(b.infection_decay_rate_per_hour, "foliar_disease.botrytis.infection_decay_rate_per_hour"));
+    SIM_CHECK(factor_curve(b.sporulation_temp_curve, "foliar_disease.botrytis.sporulation_temp_curve"));
+    SIM_CHECK(non_negative(b.spore_source_per_infection_per_hour,
+                           "foliar_disease.botrytis.spore_source_per_infection_per_hour"));
+    SIM_CHECK(non_negative(b.spore_source_per_rotten_fruit_per_hour,
+                           "foliar_disease.botrytis.spore_source_per_rotten_fruit_per_hour"));
+    SIM_CHECK(fraction(b.spore_decay_rate_per_hour, "foliar_disease.botrytis.spore_decay_rate_per_hour"));
+    SIM_CHECK(non_negative(b.spore_vent_fraction, "foliar_disease.botrytis.spore_vent_fraction"));
+    SIM_CHECK(fraction(b.fruit_rot_prob_per_hour, "foliar_disease.botrytis.fruit_rot_prob_per_hour"));
+    SIM_CHECK(multiplier_curve(b.fruit_stage_curve, "foliar_disease.botrytis.fruit_stage_curve"));
+    SIM_CHECK(onset_index(b.onset_infection_index, "foliar_disease.botrytis.onset_infection_index"));
+
+    const PowderyMildewParams& m = f.powdery_mildew;
+    SIM_CHECK(factor_curve(m.temp_curve, "foliar_disease.powdery_mildew.temp_curve"));
+    SIM_CHECK(factor_curve(m.rh_curve, "foliar_disease.powdery_mildew.rh_curve"));
+    SIM_CHECK(fraction(m.free_water_inhibition_factor, "foliar_disease.powdery_mildew.free_water_inhibition_factor"));
+    SIM_CHECK(multiplier_curve(m.light_curve, "foliar_disease.powdery_mildew.light_curve"));
+    SIM_CHECK(multiplier_curve(m.density_curve, "foliar_disease.powdery_mildew.density_curve"));
+    SIM_CHECK(multiplier_curve(m.young_leaf_curve, "foliar_disease.powdery_mildew.young_leaf_curve"));
+    SIM_CHECK(non_negative(m.infection_rate_per_hour, "foliar_disease.powdery_mildew.infection_rate_per_hour"));
+    SIM_CHECK(non_negative(m.spore_source_per_infection_per_hour,
+                           "foliar_disease.powdery_mildew.spore_source_per_infection_per_hour"));
+    SIM_CHECK(fraction(m.spore_decay_rate_per_hour, "foliar_disease.powdery_mildew.spore_decay_rate_per_hour"));
+    SIM_CHECK(non_negative(m.spore_vent_fraction, "foliar_disease.powdery_mildew.spore_vent_fraction"));
+    SIM_CHECK(factor_curve(m.photosynthesis_damage_curve, "foliar_disease.powdery_mildew.photosynthesis_damage_curve"));
+    SIM_CHECK(factor_curve(m.fruit_prob_curve, "foliar_disease.powdery_mildew.fruit_prob_curve"));
+    SIM_CHECK(onset_index(m.onset_infection_index, "foliar_disease.powdery_mildew.onset_infection_index"));
+
+    const MiteParams& t = f.mites;
+    SIM_CHECK(validate_curve(t.mite_growth_curve_per_hour, "foliar_disease.mites.mite_growth_curve_per_hour"));
+    SIM_CHECK(multiplier_curve(t.mite_rh_curve, "foliar_disease.mites.mite_rh_curve"));
+    SIM_CHECK(fraction(t.mite_spread_rate_per_hour, "foliar_disease.mites.mite_spread_rate_per_hour"));
+    SIM_CHECK(factor_curve(t.photosynthesis_damage_curve, "foliar_disease.mites.photosynthesis_damage_curve"));
+    SIM_CHECK(factor_curve(t.predator_temp_curve, "foliar_disease.mites.predator_temp_curve"));
+    SIM_CHECK(factor_curve(t.predator_hatch_curve, "foliar_disease.mites.predator_hatch_curve"));
+    SIM_CHECK(non_negative(t.attack_rate_per_hour, "foliar_disease.mites.attack_rate_per_hour"));
+    SIM_CHECK(non_negative(t.handling_time_hours, "foliar_disease.mites.handling_time_hours"));
+    SIM_CHECK(non_negative(t.conversion_factor, "foliar_disease.mites.conversion_factor"));
+    SIM_CHECK(fraction(t.predator_death_rate_per_hour, "foliar_disease.mites.predator_death_rate_per_hour"));
+    SIM_CHECK(fraction(t.predator_starvation_death_per_hour, "foliar_disease.mites.predator_starvation_death_per_hour"));
+    SIM_CHECK(factor_curve(t.predator_death_temp_curve, "foliar_disease.mites.predator_death_temp_curve"));
+    SIM_CHECK(fraction(t.predator_search_rate_per_hour, "foliar_disease.mites.predator_search_rate_per_hour"));
+    SIM_CHECK(onset_index(t.mite_onset_index, "foliar_disease.mites.mite_onset_index"));
+
+    std::set<std::string, std::less<>> predator_ids;
+    for (const PredatorDef& d : p.predators) {
+        SIM_CHECK(require(!d.id.empty() && predator_ids.insert(d.id).second,
+                          std::format("predator id '{}' must be non-empty and unique", d.id)));
+        SIM_CHECK(non_negative(d.index_per_individual_per_m2,
+                               std::format("predator '{}' index_per_individual_per_m2", d.id)));
     }
     return {};
 }
@@ -302,6 +425,7 @@ std::expected<void, Error> validate_params(const Params& p) {
     SIM_CHECK(validate_curve(rd.fusarium_curve, "root_damage.fusarium_curve"));
     SIM_CHECK(validate_curve(rd.phytophthora_curve, "root_damage.phytophthora_curve"));
     SIM_CHECK(validate_curve(rd.fumigant_curve, "root_damage.fumigant_curve"));
+    SIM_CHECK(validate_curve(rd.anthracnose_curve, "root_damage.anthracnose_curve"));  // M5b
 
     const CropParams& crop = p.crop;
     SIM_CHECK(positive(crop.specific_leaf_area_m2_per_g, "crop.specific_leaf_area_m2_per_g"));
@@ -400,6 +524,13 @@ std::expected<void, Error> validate_params(const Params& p) {
         SIM_CHECK(require(std::isfinite(g.initial_induction_index) && g.initial_induction_index >= 0.0 &&
                               g.initial_induction_index <= 1.0,  // 1 = 분화 완료 모종 (활착 직후 첫 화방)
                           std::format("seedling grade '{}' initial_induction_index must be within [0, 1]", g.id)));
+        // M5b 모종 병해 (foliar-disease 3.6)
+        SIM_CHECK(fraction(g.latent_anthracnose_fraction, std::format("seedling grade '{}' latent_anthracnose_fraction", g.id)));
+        SIM_CHECK(fraction(g.latent_anthracnose_index, std::format("seedling grade '{}' latent_anthracnose_index", g.id)));
+        SIM_CHECK(fraction(g.spider_mite_fraction, std::format("seedling grade '{}' spider_mite_fraction", g.id)));
+        SIM_CHECK(fraction(g.spider_mite_start_index, std::format("seedling grade '{}' spider_mite_start_index", g.id)));
+        SIM_CHECK(fraction(g.powdery_mildew_start_index,
+                           std::format("seedling grade '{}' powdery_mildew_start_index", g.id)));
     }
 
     const FruitParams& fr = p.fruit;
@@ -558,6 +689,8 @@ std::expected<void, Error> validate_params(const Params& p) {
     }
     SIM_CHECK(validate_microbes(p));
     SIM_CHECK(validate_disinfection(p));
+    SIM_CHECK(validate_humidity(p));
+    SIM_CHECK(validate_foliar_disease(p));
     return {};
 }
 
@@ -609,6 +742,14 @@ std::expected<void, Error> validate_scenario(const Scenario& s) {
         SIM_CHECK(positive(s.crop->plants_per_m2, "crop.plants_per_m2"));
         SIM_CHECK(fraction(s.crop->initial_establishment_index, "crop.initial_establishment_index"));
     }
+    // M5b [foliar] 배경 포자 0 이상 1 미만 (5차: 배경 원천 bg × L ÷ (1 − bg))
+    SIM_CHECK(require(std::isfinite(s.foliar.botrytis_background_index) && s.foliar.botrytis_background_index >= 0.0 &&
+                          s.foliar.botrytis_background_index < 1.0,
+                      "foliar.botrytis_background_index must be in [0, 1)"));
+    SIM_CHECK(require(std::isfinite(s.foliar.powdery_mildew_background_index) &&
+                          s.foliar.powdery_mildew_background_index >= 0.0 &&
+                          s.foliar.powdery_mildew_background_index < 1.0,
+                      "foliar.powdery_mildew_background_index must be in [0, 1)"));
     SIM_CHECK(require(s.stress_combination == StressCombination::Minimum ||
                           s.stress_combination == StressCombination::Product,
                       "stress_combination is not a known value"));

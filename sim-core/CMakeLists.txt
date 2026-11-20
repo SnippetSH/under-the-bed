@@ -26,6 +26,7 @@ add_library(sim-core STATIC
   src/processes/denitrification.cpp
   src/processes/fruit.cpp
   src/processes/house_climate.cpp
+  src/processes/house_humidity.cpp
   src/processes/phenology.cpp
   src/processes/leaching.cpp
   src/processes/nitrification.cpp
@@ -35,7 +36,8 @@ add_library(sim-core STATIC
   src/processes/temperature.cpp
   src/processes/microbes.cpp
   src/processes/disinfection.cpp
-  src/processes/soil_disease.cpp)
+  src/processes/soil_disease.cpp
+  src/processes/foliar_disease.cpp)
 
 target_include_directories(sim-core PUBLIC include PRIVATE src)
 target_compile_features(sim-core PUBLIC cxx_std_23)

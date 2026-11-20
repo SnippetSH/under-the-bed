@@ -20,10 +20,6 @@ constexpr double kMJ_per_W_h = 0.0036;
 
 [[nodiscard]] double non_negative(double value) { return std::max(0.0, value); }
 
-[[nodiscard]] double leaf_area_index(const Crop& crop, const CropParams& params) {
-    return non_negative(crop.leaf_g_per_m2) * params.specific_leaf_area_m2_per_g;
-}
-
 // 체내 양분 / 요구량. 요구량이 0이면(건물량 0) 충족된 것으로 봐요 (비율 1).
 [[nodiscard]] double nutrient_ratio(double plant_g_per_m2, double required_g_per_m2) {
     if (!(required_g_per_m2 > 0.0)) {
@@ -206,9 +202,12 @@ void abort_young_fruits(Crop& crop, SoilCell& cell, const Params& params, double
 // 자동 수확 (strawberry-fruit 6번). 익은 과실(진행도 ≥ 1)이 있을 때만 불러요.
 // 딴 과실을 목록에서 지우고 수확 기록·장부·이벤트를 만들어요.
 // fruit_dry_g_per_m2: 들어올 때 지금 과실 건물 합, 나갈 때 남은 과실의 건물 합 (목록 순서)
+// M5b (foliar-disease 4.4): 딴 과실마다 mildew_prob > 0이면 Foliar 난수 u < p → 흰가루 과실 (정상과·기형과 집계에서 빠지고
+// 장부 harvested_mildew에. 건물·양분은 수확 반출로 같이 나가요). foliar_rng가 없으면 판정하지 않아요.
 std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params& params, std::uint64_t tick,
                                                        std::uint32_t tile_index, Ledger& ledger,
-                                                       double& fruit_dry_g_per_m2) {
+                                                       double& fruit_dry_g_per_m2, double mildew_prob,
+                                                       Pcg32* foliar_rng) {
     const FruitParams& fp = params.fruit;
     const CropParams& cp = params.crop;
     if (!(fp.dry_matter_fraction > 0.0)) {
@@ -228,6 +227,7 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
         record.harvested_size_class_counts.resize(fp.size_class_bounds_g.size() + 1, 0);
     }
     double kept_dry_g = 0.0;
+    std::uint32_t mildew_count = 0;
     detail::remove_fruits_if(crop.fruits, [&](const Fruit& fruit) {
         if (!fruit.set || fruit.development_index < 1.0) {
             kept_dry_g += fruit.dry_g;
@@ -236,6 +236,12 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
         const double dry_g = non_negative(fruit.dry_g);
         const double fresh_g = dry_g / fp.dry_matter_fraction;
         harvested_dry_g += dry_g;
+        if (mildew_prob > 0.0 && foliar_rng != nullptr && foliar_rng->next_unit_double() < mildew_prob) {
+            ++mildew_count;
+            ++ledger.harvested_mildew;
+            ledger.harvested_mildew_fresh_g += fresh_g;
+            return true;
+        }
         if (fruit.truss_index < crop.trusses.size()) {
             Truss& truss = crop.trusses[fruit.truss_index];
             if (truss.harvested_fruits == 0) {
@@ -272,10 +278,11 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
         return true;
     });
     fruit_dry_g_per_m2 = kept_dry_g;
-    if (normal_count + deformed_count == 0) {
+    const bool marketable = normal_count + deformed_count > 0;
+    if (!marketable && mildew_count == 0) {
         return std::nullopt;
     }
-    if (!record.has_first_harvest) {
+    if (marketable && !record.has_first_harvest) {
         record.has_first_harvest = true;
         record.first_harvest_tick = tick;
     }
@@ -294,6 +301,9 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
     export_nutrient(crop.plant_Mg_g_per_m2, cp.fruit_target_Mg_g_per_g, required.Mg, ledger.Mg_harvested_g);
     export_nutrient(crop.plant_Mn_g_per_m2, cp.fruit_target_Mn_g_per_g, required.Mn, ledger.Mn_harvested_g);
 
+    if (!marketable) {
+        return std::nullopt;  // 흰가루 과실만 딴 틱: 반출은 했지만 수확 이벤트는 없어요
+    }
     return FruitHarvestedEvent{
         .tile_index = tile_index,
         .fruits = normal_count,
@@ -302,6 +312,44 @@ std::optional<FruitHarvestedEvent> harvest_ripe_fruits(Crop& crop, const Params&
         .mean_brix = normal_fresh_g > 0.0 ? brix_weighted / normal_fresh_g : 0.0,
         .mean_firmness = normal_fresh_g > 0.0 ? firmness_weighted / normal_fresh_g : 0.0,
     };
+}
+
+// M5b 잿빛곰팡이 과실 썩음 (foliar-disease 4.3): 수확·낙과 뒤, 착과된 과실마다 목록 순서대로
+// p = fruit_rot_prob × inf_b × fruit_stage_curve(development) > 0이면 Foliar 난수 u < p → 썩음.
+// 썩은 과실의 건물·양분은 낙엽 규칙으로 토양에 (C는 C_leaf_litter_g). 아직 피지 않은 봉오리는 대상이 아니에요.
+// fruit_dry_g_per_m2: 들어올 때 지금 과실 건물 합, 나갈 때 남은 과실의 건물 합
+void rot_botrytis_fruits(Crop& crop, SoilCell& cell, const Params& params, Pcg32* foliar_rng, Ledger& ledger,
+                         double& fruit_dry_g_per_m2) {
+    const BotrytisParams& bp = params.foliar_disease.botrytis;
+    const double base = non_negative(bp.fruit_rot_prob_per_hour) * std::clamp(crop.infection_botrytis_index, 0.0, 1.0);
+    if (!(base > 0.0) || foliar_rng == nullptr) {
+        return;
+    }
+    const FruitParams& fp = params.fruit;
+    const double before = vegetative_biomass_g_per_m2(crop) + fruit_dry_g_per_m2;
+    double lost_dry_g = 0.0;
+    double kept_dry_g = 0.0;
+    std::uint64_t rotten = 0;
+    detail::remove_fruits_if(crop.fruits, [&](const Fruit& fruit) {
+        if (fruit.set) {
+            const double p = std::min(1.0, base * non_negative(bp.fruit_stage_curve(fruit.development_index)));
+            if (p > 0.0 && foliar_rng->next_unit_double() < p) {
+                const double dry_g = non_negative(fruit.dry_g);
+                lost_dry_g += dry_g;
+                ledger.fruit_rot_fresh_g += fp.dry_matter_fraction > 0.0 ? dry_g / fp.dry_matter_fraction : 0.0;
+                ++rotten;
+                return true;
+            }
+        }
+        kept_dry_g += fruit.dry_g;
+        return false;
+    });
+    fruit_dry_g_per_m2 = kept_dry_g;
+    if (rotten > 0) {
+        ledger.fruit_rot_count += rotten;
+        crop.last_fruit_rot_count += static_cast<double>(rotten);
+        ledger.C_leaf_litter_g += return_litter(crop, cell, params.crop, lost_dry_g, before);
+    }
 }
 
 // 과실 목표 건물 = 최대 생체중 × 건물 비율 × shape(새 진행도 D′) (strawberry-fruit 4번).
@@ -397,6 +445,10 @@ NutrientRequirement nutrient_requirement(const Crop& crop, const CropParams& par
     };
 }
 
+double leaf_area_index(const Crop& crop, const CropParams& params) {
+    return non_negative(crop.leaf_g_per_m2) * params.specific_leaf_area_m2_per_g;
+}
+
 double canopy_interception(const Crop& crop, const CropParams& params) {
     if (!crop.present || !crop.alive) {
         return 0.0;
@@ -412,12 +464,16 @@ WaterSaltFactors water_salt_factors(const SoilCell& cell, const CropParams& para
 }
 
 double transpiration_demand_mm(const Crop& crop, const CropParams& params, double inside_solar_W_per_m2,
-                               const WaterSaltFactors& factors) {
+                               const WaterSaltFactors& factors, double house_rh_index) {
     if (!crop.present || !crop.alive) {
         return 0.0;
     }
-    return params.transpiration_mm_per_hour_per_W_per_m2 * non_negative(inside_solar_W_per_m2) *
-           canopy_interception(crop, params) * std::min(factors.water, factors.salt);
+    // house-humidity 4.5 (ADR-0014): 일사 항 + 밤 기본 증산(LAI 비례), 둘 다 물·염류 계수와 습도 배율을 곱해요
+    const double solar_term_mm = params.transpiration_mm_per_hour_per_W_per_m2 * non_negative(inside_solar_W_per_m2) *
+                                 canopy_interception(crop, params);
+    const double basal_term_mm = params.basal_transpiration_mm_per_hour_per_lai * leaf_area_index(crop, params);
+    return (solar_term_mm + basal_term_mm) * std::min(factors.water, factors.salt) *
+           non_negative(params.transpiration_humidity_curve(house_rh_index));
 }
 
 NutrientStatus nutrient_status(const Crop& crop, const CropParams& params) {
@@ -479,7 +535,7 @@ std::uint64_t thin_flowers(Crop& crop, SoilCell& cell, const Params& params, dou
 }
 
 CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, const NutrientAvailability& available,
-                           const CropEnvironment& env, Pcg32& biology_rng, Ledger& ledger) {
+                           const CropEnvironment& env, Pcg32& biology_rng, Ledger& ledger, Pcg32* foliar_rng) {
     CropTickResult result;
     if (!crop.present || !crop.alive) {
         return result;
@@ -543,8 +599,10 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
         (1.0 + non_negative(env.canopy_reflect_factor) * (1.0 - std::clamp(interception, 0.0, 1.0)));
     const double potential_g_per_m2 = cp.light_use_efficiency_g_per_MJ * crop_light_W_per_m2 * cp.par_fraction *
                                       kMJ_per_W_h * interception * cp.temp_curve(air_degC);
+    // M5b (foliar-disease 4.4·4.5): 마지막에 흰가루·응애 피해 배율 (틱 시작 병든 잎 면적·응애 2주 평균). 없으면 정확히 1
     const double gross_g_per_m2 = non_negative(potential_g_per_m2 * cp.co2_growth_curve(env.house_co2_ppm) *
-                                               combined_factor * growth_factor_establish);
+                                               combined_factor * growth_factor_establish) *
+                                  foliar_photosynthesis_factor(crop, params.foliar_disease);
     const double respiration_g_per_m2 =
         non_negative((non_negative(crop.leaf_g_per_m2) * cp.maintenance_rate_leaf_per_hour +
                       non_negative(crop.crown_g_per_m2) * cp.maintenance_rate_crown_per_hour +
@@ -562,6 +620,9 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
                 (rgr_tick_per_day - crop.rgr_mean_per_day) * std::min(1.0, cp.rgr_mean_relax_rate_per_hour);
         }
     }
+
+    // M5b 흰가루병 희석(h6)의 기준: 분배 전 잎 건물
+    const double leaf_before_growth_g_per_m2 = non_negative(crop.leaf_g_per_m2);
 
     // 분배 (strawberry-fruit 4번): 착과된 과실의 따라잡기 수요 = 새 진행도의 목표 건물 − 지금 건물
     const double development_increment = fruit_development_increment(fp, air_degC);
@@ -679,10 +740,16 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
             any_ripe = any_ripe || fruit.development_index >= 1.0;
         }
         if (any_ripe) {
-            result.harvested = harvest_ripe_fruits(crop, params, env.tick, env.tile_index, ledger, fruit_dry_g_per_m2);
+            // M5b: 흰가루 과실 확률 = fruit_prob_curve(병든 잎 면적, 틱 시작)
+            const double mildew_prob = std::clamp(
+                params.foliar_disease.powdery_mildew.fruit_prob_curve(crop.infection_powdery_mildew_index), 0.0, 1.0);
+            result.harvested = harvest_ripe_fruits(crop, params, env.tick, env.tile_index, ledger, fruit_dry_g_per_m2,
+                                                   mildew_prob, foliar_rng);
         }
         // 6b 낙과: 착과된 어린 과실(진행도 < abortion_window_index)마다 난수 < p 이면 떨어짐 (biology 스트림)
         abort_young_fruits(crop, cell, params, development_increment, biology_rng, ledger, fruit_dry_g_per_m2);
+        // M5b 잿빛곰팡이 과실 썩음 (Foliar 스트림, 감염 압력은 틱 시작 값)
+        rot_botrytis_fruits(crop, cell, params, foliar_rng, ledger, fruit_dry_g_per_m2);
     }
 
     // ---- h5. 흡수 (요구량에 관부·과실 포함, 흡수 능력에 활착 배율) ----
@@ -784,12 +851,16 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
                                                      std::min(mn_demand_g_per_m2, mn_capacity_g_per_m2));
     }
 
-    // ---- h6. 감염 진행 (M5a, soil-microbes 3번) → 뿌리 건강도 → 뿌리 고사 → 낙엽 → 고사 판정 ----
+    // ---- h6. 감염 진행: (M5b) 질소 감수성 → (M5a) 시들음병·역병 → (M5b) 탄저·잿빛곰팡이·흰가루 →
+    //      뿌리 건강도 → 뿌리 고사 → 낙엽 → 고사 판정 ----
+    const double n_susceptibility = update_n_susceptibility(crop, cell, params.foliar_disease);
     result.disease_onsets = update_soil_infection(crop, cell, params, env.tile_index);
+    update_foliar_infection(crop, cell, params, env, n_susceptibility, leaf_before_growth_g_per_m2, env.tile_index,
+                            result.foliar_onsets);
     const RootDamageParams& rd = params.root_damage;
     const double effective_nitrite = non_negative(effective_nitrite_g_N_per_m2(cell, params.nitrification));
-    // RootDamageCause 순서 그대로 (동률이면 앞선 원인). M5a: 병(감염 지수), 약제(잔류 × 활성의 합)
-    const std::array<double, 7> damage_terms{
+    // RootDamageCause 순서 그대로 (동률이면 앞선 원인). M5a: 병(감염 지수), 약제(잔류 × 활성의 합). M5b: 관부탄저
+    const std::array<double, kRootDamageCauseCount> damage_terms{
         rd.waterlog_curve(cell.aeration_index),
         rd.heat_curve(cell.soil_temp_degC),
         rd.nitrite_curve(effective_nitrite),
@@ -797,6 +868,7 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
         rd.fusarium_curve(crop.infection_index[static_cast<std::size_t>(SoilDisease::Fusarium)]),
         rd.phytophthora_curve(crop.infection_index[static_cast<std::size_t>(SoilDisease::Phytophthora)]),
         rd.fumigant_curve(fumigant_exposure_index(cell, params)),
+        rd.anthracnose_curve(crop.infection_anthracnose_index),
     };
     double damage_per_hour = 0.0;
     std::size_t dominant_cause_index = 0;
@@ -857,9 +929,23 @@ CropTickResult update_crop(Crop& crop, SoilCell& cell, const Params& params, con
             cell.labile_C_g_per_m2 += reserve_C_g_per_m2;
             ledger.C_root_litter_g += reserve_C_g_per_m2;
         }
+        // M5b (7차 프로토타입, 4.2): 죽은 포기의 병든 관부·잔재는 흙에 남아요 → 접종원 한 번 (뽑은 포기는 RemovePlant라 이 길이 아님)
+        {
+            const std::size_t g = microbe(MicrobeGroup::Anthracnose);
+            const double inf = std::clamp(crop.infection_anthracnose_index, 0.0, 1.0);
+            const double lump = non_negative(params.foliar_disease.anthracnose.residue_index) * inf;
+            cell.microbe_index[g] = std::min(1.0, std::clamp(cell.microbe_index[g], 0.0, 1.0) + lump);
+        }
+        // M5b (4.5): 작물이 죽으면 응애·천적 = 0
+        crop.spider_mite_index = 0.0;
+        crop.predator_mite_index = 0.0;
         result.died =
             PlantDiedEvent{.tile_index = env.tile_index, .cause = static_cast<RootDamageCause>(dominant_cause_index)};
+        return result;
     }
+
+    // ---- h7. (M5b) 점박이응애·칠레이리응애 ----
+    update_mites(crop, params.foliar_disease, env, env.tile_index, result.foliar_onsets);
     return result;
 }
 

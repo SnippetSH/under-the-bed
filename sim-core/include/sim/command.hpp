@@ -140,11 +140,43 @@ struct PlantCommand {
     bool operator==(const PlantCommand&) const = default;
 };
 
+// ---- M5b (house-humidity 4.4, foliar-disease 4.5·4.6) ----
+
+// 유동팬 가동/정지 (하우스 전체, 다음 틱부터)
+struct SetFanCommand {
+    bool on = false;
+
+    bool operator==(const SetFanCommand&) const = default;
+};
+
+// 병든 포기 제거: 영역 안 작물(살아 있든 죽었든)을 없애고 체내 원소·건물은 계 밖으로 (*_removed_g).
+// 영역에 작물이 하나도 없으면 enqueue에서 거부. 뽑은 칸은 빈 칸으로 남아요 (보식 없음)
+struct RemovePlantCommand {
+    TileArea area;
+
+    bool operator==(const RemovePlantCommand&) const = default;
+};
+
+// 천적 방사: 살아 있는 포기마다 D = min(1, D + per_m2 × index_per_individual_per_m2)
+struct ReleasePredatorsCommand {
+    TileArea area;
+    std::string predator_id;  // params [[predator]] id
+    double per_m2 = 0.0;      // 마리/m²
+
+    bool operator==(const ReleasePredatorsCommand&) const = default;
+};
+
+// 점적 호스 설치 (하우스 전체). 이미 깔려 있으면 enqueue에서 거부
+struct InstallDripCommand {
+    bool operator==(const InstallDripCommand&) const = default;
+};
+
 // 플레이어 행동. 직렬화는 variant 인덱스를 쓰므로, 기존 항목의 순서를 바꾸지 말고 뒤에만 추가해요.
 using Command = std::variant<NoopCommand, IrrigateCommand, AddCompostCommand, AddFertilizerCommand, AddLimeCommand,
                              TillCommand, SetWindowCommand, SetHeaterCommand, SetCoverLayersCommand,
                              ThinFlowersCommand, SetMulchCommand, ApplyDisinfectantCommand, AddInoculantCommand,
-                             PlantCommand>;
+                             PlantCommand, SetFanCommand, RemovePlantCommand, ReleasePredatorsCommand,
+                             InstallDripCommand>;
 
 struct QueuedCommand {
     std::uint64_t seq;  // 투입 순서 일련번호

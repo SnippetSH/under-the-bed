@@ -2,11 +2,12 @@
 //
 //   magic "FGSV" | format_version u32
 //   [정적 입력] params, scenario (토양 초기값, 기상 표 포함)
-//   [동적 상태] tick, next_command_seq, house(하우스 상태), biology_rng, disease_rng(M5a), pending_commands,
+//   [동적 상태] tick, next_command_seq, house(하우스 상태), biology_rng, disease_rng(M5a), foliar_rng(M5b),
+//               pending_commands,
 //               tiles(토양 셀 + 작물 + 화방·과실·수확 기록), ledger
 //
 // state_hash()는 동적 상태 부분만 해시해요. 이벤트는 저장하지 않아요.
-// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5, M4 = 6, M5a = 7).
+// 필드를 추가하면 kSaveFormatVersion을 올려요 (M0 = 1, M1 = 2, M2 = 3, 뿌리 고사 = 4, M3 = 5, M4 = 6, M5a = 7, M5b = 8).
 
 #include <array>
 #include <format>
@@ -22,7 +23,7 @@ namespace sim {
 namespace {
 
 constexpr std::array<std::uint8_t, 4> kMagic = {'F', 'G', 'S', 'V'};
-constexpr std::uint32_t kSaveFormatVersion = 7;
+constexpr std::uint32_t kSaveFormatVersion = 8;
 
 constexpr std::size_t kWeatherHourBytes = 24;       // f64 × 3
 constexpr std::size_t kCurvePointBytes = 16;        // f64 × 2
@@ -153,6 +154,7 @@ void write_cell(detail::ByteWriter& w, const SoilCell& c) {
     write_f64_list(w, c.fumigant_residue_index);
     write_indices(w, c.disinfection_kill_index);
     w.f64(c.deep_soil_temp_degC);  // M5a 프로토타입 3차
+    w.u8(c.overhead_irrigated_this_tick ? 1 : 0);  // M5b
 }
 
 void read_cell(detail::ByteReader& r, SoilCell& c) {
@@ -205,6 +207,11 @@ void read_cell(detail::ByteReader& r, SoilCell& c) {
     read_f64_list(r, c.fumigant_residue_index);
     read_indices(r, c.disinfection_kill_index);
     c.deep_soil_temp_degC = r.f64();  // M5a 프로토타입 3차
+    const std::uint8_t overhead = r.u8();  // M5b
+    if (overhead > 1) {
+        r.fail();
+    }
+    c.overhead_irrigated_this_tick = overhead == 1;
 }
 
 void write_crop(detail::ByteWriter& w, const Crop& c) {
@@ -295,6 +302,27 @@ void write_crop(detail::ByteWriter& w, const Crop& c) {
         w.u8(reported ? 1 : 0);
     }
     w.f64(c.disease_susceptibility_factor);  // M5a 프로토타입 3차
+    // M5b 잎 젖음 (house-humidity 2장)
+    w.f64(c.leaf_wetness_index);
+    w.f64(c.wet_run_hours);
+    w.f64(c.dry_run_hours);
+    w.f64(c.canopy_rh_index);
+    // M5b 지상부 병해충 (foliar-disease 2장)
+    w.f64(c.infection_anthracnose_index);
+    w.f64(c.infection_botrytis_index);
+    w.f64(c.infection_powdery_mildew_index);
+    w.f64(c.spider_mite_index);
+    w.f64(c.spider_mite_mean_index);
+    w.f64(c.predator_mite_index);
+    w.f64(c.soil_mineral_N_mean_g_per_m2);
+    for (const bool reported : c.foliar_onset_reported) {
+        w.u8(reported ? 1 : 0);
+    }
+    w.f64(c.last_anthracnose_increase_index);
+    w.f64(c.last_botrytis_increase_index);
+    w.f64(c.last_powdery_mildew_increase_index);
+    w.f64(c.last_mite_predation_index);
+    w.f64(c.last_fruit_rot_count);
 }
 
 void read_crop(detail::ByteReader& r, Crop& c) {
@@ -425,6 +453,31 @@ void read_crop(detail::ByteReader& r, Crop& c) {
         reported = flag == 1;
     }
     c.disease_susceptibility_factor = r.f64();  // M5a 프로토타입 3차
+    // M5b 잎 젖음 (house-humidity 2장)
+    c.leaf_wetness_index = r.f64();
+    c.wet_run_hours = r.f64();
+    c.dry_run_hours = r.f64();
+    c.canopy_rh_index = r.f64();
+    // M5b 지상부 병해충
+    c.infection_anthracnose_index = r.f64();
+    c.infection_botrytis_index = r.f64();
+    c.infection_powdery_mildew_index = r.f64();
+    c.spider_mite_index = r.f64();
+    c.spider_mite_mean_index = r.f64();
+    c.predator_mite_index = r.f64();
+    c.soil_mineral_N_mean_g_per_m2 = r.f64();
+    for (bool& reported : c.foliar_onset_reported) {
+        const std::uint8_t flag = r.u8();
+        if (flag > 1) {
+            r.fail();
+        }
+        reported = flag == 1;
+    }
+    c.last_anthracnose_increase_index = r.f64();
+    c.last_botrytis_increase_index = r.f64();
+    c.last_powdery_mildew_increase_index = r.f64();
+    c.last_mite_predation_index = r.f64();
+    c.last_fruit_rot_count = r.f64();
 }
 
 // 세이브의 작물 구조 검사: 과위·화방 인덱스가 범위 안이고, 꽃(set = false)은 건물이 0이고,
@@ -542,6 +595,8 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.crop.luxury_uptake_ratio);
     w.f64(p.crop.uptake_rate_per_g_root_per_hour);
     w.f64(p.crop.transpiration_mm_per_hour_per_W_per_m2);
+    write_curve(w, p.crop.transpiration_humidity_curve);  // M5b
+    w.f64(p.crop.basal_transpiration_mm_per_hour_per_lai);
     w.f64(p.crop.root_recovery_rate_per_hour);
     w.f64(p.crop.death_root_health);
     w.f64(p.crop.root_dieback_per_damage);
@@ -782,6 +837,28 @@ void write_params(detail::ByteWriter& w, const Params& p) {
     w.f64(p.disinfection.flush_C_to_N_ratio);
     w.f64(p.disinfection.mn_reduction_per_index);
     w.f64(p.disinfection.till_residue_release_fraction);
+    // M5b [humidity]
+    {
+        const HumidityParams& hum = p.humidity;
+        write_curve(w, hum.saturation_vapor_curve);
+        w.f64(hum.inner_surface_resistance_m2K_per_W);
+        w.f64(hum.condensation_rate_per_hour);
+        w.f64(hum.rh_mean_relax_rate_per_hour);
+        w.f64(hum.vent_airflow_factor);
+        w.f64(hum.fan_airflow_index);
+        w.f64(hum.canopy_rh_boost_index);
+        w.f64(hum.canopy_lai_ref);
+        w.f64(hum.dew_rh_index);
+        w.f64(hum.dew_solar_limit_W_per_m2);
+        w.f64(hum.wetting_rate_per_hour);
+        w.f64(hum.drying_rate_per_hour);
+        w.f64(hum.airflow_drying_factor);
+        write_curve(w, hum.drying_rh_curve);
+        w.f64(hum.drying_solar_factor_per_W_per_m2);
+        w.f64(hum.overhead_wet_index);
+        w.f64(hum.wet_threshold_index);
+        w.f64(hum.wetness_break_hours);
+    }
     w.u64(p.mulches.size());
     for (const MulchDef& d : p.mulches) {
         w.str(d.id);
@@ -808,6 +885,81 @@ void write_params(detail::ByteWriter& w, const Params& p) {
         write_indices(w, d.index_gain_per_g_per_m2);
         w.f64(d.C_g_per_kg);
         w.f64(d.N_g_per_kg);
+    }
+    // ---- M5b 지상부 병해충 (append, foliar-disease 8장) ----
+    write_curve(w, p.root_damage.anthracnose_curve);
+    for (const SeedlingGradeDef& g : p.seedling_grades) {
+        w.f64(g.latent_anthracnose_fraction);
+        w.f64(g.latent_anthracnose_index);
+        w.f64(g.spider_mite_fraction);
+        w.f64(g.spider_mite_start_index);
+        w.f64(g.powdery_mildew_start_index);
+    }
+    for (const MulchDef& d : p.mulches) {
+        w.f64(d.soil_splash_factor);
+        w.f64(d.plant_splash_factor);
+    }
+    const FoliarDiseaseParams& fd = p.foliar_disease;
+    write_curve(w, fd.n_susceptibility_curve);
+    w.f64(fd.n_mean_relax_rate_per_hour);
+    w.f64(fd.mite_mean_relax_rate_per_hour);
+    const AnthracnoseParams& an = fd.anthracnose;
+    write_curve(w, an.temp_curve);
+    write_curve(w, an.wetness_curve);
+    w.f64(an.contact_rate_per_hour);
+    w.f64(an.progress_rate_per_hour);
+    w.f64(an.splash_transfer_index);
+    write_curve(w, an.sporulation_curve);
+    w.f64(an.onset_infection_index);
+    w.f64(an.soil_deposit_per_hour);
+    w.f64(an.residue_index);
+    const BotrytisParams& bo = fd.botrytis;
+    write_curve(w, bo.infection_temp_curve);
+    write_curve(w, bo.wetness_curve);
+    w.f64(bo.infection_rate_per_hour);
+    w.f64(bo.infection_decay_rate_per_hour);
+    write_curve(w, bo.sporulation_temp_curve);
+    w.f64(bo.spore_source_per_infection_per_hour);
+    w.f64(bo.spore_source_per_rotten_fruit_per_hour);
+    w.f64(bo.spore_decay_rate_per_hour);
+    w.f64(bo.spore_vent_fraction);
+    w.f64(bo.fruit_rot_prob_per_hour);
+    write_curve(w, bo.fruit_stage_curve);
+    w.f64(bo.onset_infection_index);
+    const PowderyMildewParams& pm = fd.powdery_mildew;
+    write_curve(w, pm.temp_curve);
+    write_curve(w, pm.rh_curve);
+    w.f64(pm.free_water_inhibition_factor);
+    write_curve(w, pm.light_curve);
+    write_curve(w, pm.density_curve);
+    write_curve(w, pm.young_leaf_curve);
+    w.f64(pm.infection_rate_per_hour);
+    w.f64(pm.spore_source_per_infection_per_hour);
+    w.f64(pm.spore_decay_rate_per_hour);
+    w.f64(pm.spore_vent_fraction);
+    write_curve(w, pm.photosynthesis_damage_curve);
+    write_curve(w, pm.fruit_prob_curve);
+    w.f64(pm.onset_infection_index);
+    const MiteParams& mi = fd.mites;
+    write_curve(w, mi.mite_growth_curve_per_hour);
+    write_curve(w, mi.mite_rh_curve);
+    w.f64(mi.mite_spread_rate_per_hour);
+    write_curve(w, mi.photosynthesis_damage_curve);
+    write_curve(w, mi.predator_temp_curve);
+    write_curve(w, mi.predator_hatch_curve);
+    w.f64(mi.attack_rate_per_hour);
+    w.f64(mi.handling_time_hours);
+    w.f64(mi.conversion_factor);
+    w.f64(mi.predator_death_rate_per_hour);
+    w.f64(mi.predator_starvation_death_per_hour);
+    write_curve(w, mi.predator_death_temp_curve);
+    w.f64(mi.predator_search_rate_per_hour);
+    w.f64(mi.mite_onset_index);
+    w.u64(p.predators.size());
+    for (const PredatorDef& d : p.predators) {
+        w.str(d.id);
+        w.str(d.name);
+        w.f64(d.index_per_individual_per_m2);
     }
 }
 
@@ -894,6 +1046,8 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.crop.luxury_uptake_ratio = r.f64();
     p.crop.uptake_rate_per_g_root_per_hour = r.f64();
     p.crop.transpiration_mm_per_hour_per_W_per_m2 = r.f64();
+    read_curve(r, p.crop.transpiration_humidity_curve);  // M5b
+    p.crop.basal_transpiration_mm_per_hour_per_lai = r.f64();
     p.crop.root_recovery_rate_per_hour = r.f64();
     p.crop.death_root_health = r.f64();
     p.crop.root_dieback_per_damage = r.f64();
@@ -1154,6 +1308,28 @@ void read_params(detail::ByteReader& r, Params& p) {
     p.disinfection.flush_C_to_N_ratio = r.f64();
     p.disinfection.mn_reduction_per_index = r.f64();
     p.disinfection.till_residue_release_fraction = r.f64();
+    // M5b [humidity]
+    {
+        HumidityParams& hum = p.humidity;
+        read_curve(r, hum.saturation_vapor_curve);
+        hum.inner_surface_resistance_m2K_per_W = r.f64();
+        hum.condensation_rate_per_hour = r.f64();
+        hum.rh_mean_relax_rate_per_hour = r.f64();
+        hum.vent_airflow_factor = r.f64();
+        hum.fan_airflow_index = r.f64();
+        hum.canopy_rh_boost_index = r.f64();
+        hum.canopy_lai_ref = r.f64();
+        hum.dew_rh_index = r.f64();
+        hum.dew_solar_limit_W_per_m2 = r.f64();
+        hum.wetting_rate_per_hour = r.f64();
+        hum.drying_rate_per_hour = r.f64();
+        hum.airflow_drying_factor = r.f64();
+        read_curve(r, hum.drying_rh_curve);
+        hum.drying_solar_factor_per_W_per_m2 = r.f64();
+        hum.overhead_wet_index = r.f64();
+        hum.wet_threshold_index = r.f64();
+        hum.wetness_break_hours = r.f64();
+    }
     const std::uint64_t mulch_count = r.u64();
     if (!r.ok() || mulch_count > r.remaining() / (2 * kMinStringBytes + 4 * kF64Bytes)) {
         r.fail();
@@ -1195,6 +1371,86 @@ void read_params(detail::ByteReader& r, Params& p) {
         read_indices(r, d.index_gain_per_g_per_m2);
         d.C_g_per_kg = r.f64();
         d.N_g_per_kg = r.f64();
+    }
+    // ---- M5b 지상부 병해충 (append) ----
+    read_curve(r, p.root_damage.anthracnose_curve);
+    for (SeedlingGradeDef& g : p.seedling_grades) {
+        g.latent_anthracnose_fraction = r.f64();
+        g.latent_anthracnose_index = r.f64();
+        g.spider_mite_fraction = r.f64();
+        g.spider_mite_start_index = r.f64();
+        g.powdery_mildew_start_index = r.f64();
+    }
+    for (MulchDef& d : p.mulches) {
+        d.soil_splash_factor = r.f64();
+        d.plant_splash_factor = r.f64();
+    }
+    FoliarDiseaseParams& fd = p.foliar_disease;
+    read_curve(r, fd.n_susceptibility_curve);
+    fd.n_mean_relax_rate_per_hour = r.f64();
+    fd.mite_mean_relax_rate_per_hour = r.f64();
+    AnthracnoseParams& an = fd.anthracnose;
+    read_curve(r, an.temp_curve);
+    read_curve(r, an.wetness_curve);
+    an.contact_rate_per_hour = r.f64();
+    an.progress_rate_per_hour = r.f64();
+    an.splash_transfer_index = r.f64();
+    read_curve(r, an.sporulation_curve);
+    an.onset_infection_index = r.f64();
+    an.soil_deposit_per_hour = r.f64();
+    an.residue_index = r.f64();
+    BotrytisParams& bo = fd.botrytis;
+    read_curve(r, bo.infection_temp_curve);
+    read_curve(r, bo.wetness_curve);
+    bo.infection_rate_per_hour = r.f64();
+    bo.infection_decay_rate_per_hour = r.f64();
+    read_curve(r, bo.sporulation_temp_curve);
+    bo.spore_source_per_infection_per_hour = r.f64();
+    bo.spore_source_per_rotten_fruit_per_hour = r.f64();
+    bo.spore_decay_rate_per_hour = r.f64();
+    bo.spore_vent_fraction = r.f64();
+    bo.fruit_rot_prob_per_hour = r.f64();
+    read_curve(r, bo.fruit_stage_curve);
+    bo.onset_infection_index = r.f64();
+    PowderyMildewParams& pm = fd.powdery_mildew;
+    read_curve(r, pm.temp_curve);
+    read_curve(r, pm.rh_curve);
+    pm.free_water_inhibition_factor = r.f64();
+    read_curve(r, pm.light_curve);
+    read_curve(r, pm.density_curve);
+    read_curve(r, pm.young_leaf_curve);
+    pm.infection_rate_per_hour = r.f64();
+    pm.spore_source_per_infection_per_hour = r.f64();
+    pm.spore_decay_rate_per_hour = r.f64();
+    pm.spore_vent_fraction = r.f64();
+    read_curve(r, pm.photosynthesis_damage_curve);
+    read_curve(r, pm.fruit_prob_curve);
+    pm.onset_infection_index = r.f64();
+    MiteParams& mi = fd.mites;
+    read_curve(r, mi.mite_growth_curve_per_hour);
+    read_curve(r, mi.mite_rh_curve);
+    mi.mite_spread_rate_per_hour = r.f64();
+    read_curve(r, mi.photosynthesis_damage_curve);
+    read_curve(r, mi.predator_temp_curve);
+    read_curve(r, mi.predator_hatch_curve);
+    mi.attack_rate_per_hour = r.f64();
+    mi.handling_time_hours = r.f64();
+    mi.conversion_factor = r.f64();
+    mi.predator_death_rate_per_hour = r.f64();
+    mi.predator_starvation_death_per_hour = r.f64();
+    read_curve(r, mi.predator_death_temp_curve);
+    mi.predator_search_rate_per_hour = r.f64();
+    mi.mite_onset_index = r.f64();
+    const std::uint64_t predator_count = r.u64();
+    if (!r.ok() || predator_count > r.remaining() / (2 * kMinStringBytes + kF64Bytes)) {
+        r.fail();
+        return;
+    }
+    p.predators.resize(static_cast<std::size_t>(predator_count));
+    for (PredatorDef& d : p.predators) {
+        d.id = r.str();
+        d.name = r.str();
+        d.index_per_individual_per_m2 = r.f64();
     }
 }
 
@@ -1239,6 +1495,10 @@ void write_scenario(detail::ByteWriter& w, const Scenario& s) {
         w.f64(s.crop->initial_establishment_index);
     }
     w.u8(static_cast<std::uint8_t>(s.stress_combination));
+    // M5b
+    w.u8(s.drip_installed ? 1 : 0);
+    w.f64(s.foliar.botrytis_background_index);
+    w.f64(s.foliar.powdery_mildew_background_index);
 
     w.u64(s.weather_hourly.size());
     for (const WeatherHour& h : s.weather_hourly) {
@@ -1298,6 +1558,14 @@ void read_scenario(detail::ByteReader& r, Scenario& s) {
         r.fail();
     }
     s.stress_combination = static_cast<StressCombination>(stress_combination);
+    // M5b
+    const std::uint8_t drip = r.u8();
+    if (drip > 1) {
+        r.fail();
+    }
+    s.drip_installed = drip == 1;
+    s.foliar.botrytis_background_index = r.f64();
+    s.foliar.powdery_mildew_background_index = r.f64();
 
     const std::uint64_t weather_count = r.u64();
     if (!r.ok() || weather_count > r.remaining() / kWeatherHourBytes) {
@@ -1372,6 +1640,15 @@ void write_command(detail::ByteWriter& w, const Command& command) {
             w.str(c.seedling_grade);
             w.f64(c.plants_per_m2);
         }
+        // M5b
+        void operator()(const SetFanCommand& c) const { w.u8(c.on ? 1 : 0); }
+        void operator()(const RemovePlantCommand& c) const { write_area(w, c.area); }
+        void operator()(const ReleasePredatorsCommand& c) const {
+            write_area(w, c.area);
+            w.str(c.predator_id);
+            w.f64(c.per_m2);
+        }
+        void operator()(const InstallDripCommand&) const {}
     };
     std::visit(Visitor{w}, command);
 }
@@ -1472,6 +1749,30 @@ std::expected<Command, Error> read_command(detail::ByteReader& r) {
             c.plants_per_m2 = r.f64();
             return c;
         }
+        // M5b
+        case 14: {
+            SetFanCommand c;
+            const std::uint8_t on = r.u8();
+            if (on > 1) {
+                return fail(ErrorCode::InvalidData, "saved fan command has an invalid flag");
+            }
+            c.on = on == 1;
+            return c;
+        }
+        case 15: {
+            RemovePlantCommand c;
+            c.area = read_area(r);
+            return c;
+        }
+        case 16: {
+            ReleasePredatorsCommand c;
+            c.area = read_area(r);
+            c.predator_id = r.str();
+            c.per_m2 = r.f64();
+            return c;
+        }
+        case 17:
+            return InstallDripCommand{};
         default:
             if (!r.ok()) {
                 return fail(ErrorCode::Truncated, "save data ends inside the command queue");
@@ -1503,11 +1804,34 @@ void World::write_dynamic(detail::ByteWriter& w) const {
     w.f64(house_.inside_solar_W_per_m2);
     w.f64(house_.heating_power_W_per_m2);
     w.f64(house_.vent_path_index);
+    // M5b 하우스 습도 (house-humidity 2장): 상태, 장부, 마지막 틱 파생값
+    w.f64(house_.vapor_g_per_m3);
+    w.f64(house_.rh_mean_index);
+    w.u8(house_.fan_on ? 1 : 0);
+    w.f64(house_.vapor_source_mm);
+    w.f64(house_.water_condensed_mm);
+    w.f64(house_.vapor_vented_mm);
+    w.f64(house_.vapor_deposited_mm);
+    w.f64(house_.vapor_initial_mm);
+    w.f64(house_.rh_index);
+    w.f64(house_.airflow_index);
+    w.f64(house_.cover_inner_temp_degC);
+    // M5b 점적·팬 장부, 지상부 병해충 하우스 값
+    w.u8(house_.drip_installed ? 1 : 0);
+    w.f64(house_.fan_hours);
+    w.f64(house_.drip_installations);
+    w.f64(house_.botrytis_spore_index);
+    w.f64(house_.powdery_mildew_spore_index);
+    w.f64(house_.anthracnose_sporulation_index);
+    w.f64(house_.spider_mite_mean_index);
+    w.f64(house_.inside_solar_mean_W_per_m2);
 
     w.u64(biology_rng_.raw_state());
     w.u64(biology_rng_.raw_increment());
     w.u64(disease_rng_.raw_state());
     w.u64(disease_rng_.raw_increment());
+    w.u64(foliar_rng_.raw_state());  // M5b (Disease 스트림 다음)
+    w.u64(foliar_rng_.raw_increment());
 
     w.u64(pending_commands_.size());
     for (const QueuedCommand& queued : pending_commands_) {
@@ -1562,6 +1886,20 @@ void World::write_dynamic(detail::ByteWriter& w) const {
     w.f64(ledger_.Mn_flush_g);
     write_f64_list(w, ledger_.disinfectant_applied_g);
     w.f64(ledger_.inoculant_applied_g);
+    // M5b
+    w.f64(ledger_.N_removed_g);
+    w.f64(ledger_.P_removed_g);
+    w.f64(ledger_.K_removed_g);
+    w.f64(ledger_.Ca_removed_g);
+    w.f64(ledger_.Mg_removed_g);
+    w.f64(ledger_.Mn_removed_g);
+    w.f64(ledger_.dry_matter_removed_g);
+    w.u64(ledger_.plants_removed);
+    w.u64(ledger_.fruit_rot_count);
+    w.f64(ledger_.fruit_rot_fresh_g);
+    w.u64(ledger_.harvested_mildew);
+    w.f64(ledger_.harvested_mildew_fresh_g);
+    w.f64(ledger_.predators_released_per_m2);
 }
 
 std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
@@ -1601,6 +1939,38 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     house_.inside_solar_W_per_m2 = r.f64();
     house_.heating_power_W_per_m2 = r.f64();
     house_.vent_path_index = r.f64();
+    // M5b 하우스 습도
+    house_.vapor_g_per_m3 = r.f64();
+    house_.rh_mean_index = r.f64();
+    {
+        const std::uint8_t fan_on = r.u8();
+        if (fan_on > 1) {
+            return fail(ErrorCode::InvalidData, "house fan flag is invalid");
+        }
+        house_.fan_on = fan_on == 1;
+    }
+    house_.vapor_source_mm = r.f64();
+    house_.water_condensed_mm = r.f64();
+    house_.vapor_vented_mm = r.f64();
+    house_.vapor_deposited_mm = r.f64();
+    house_.vapor_initial_mm = r.f64();
+    house_.rh_index = r.f64();
+    house_.airflow_index = r.f64();
+    house_.cover_inner_temp_degC = r.f64();
+    {
+        const std::uint8_t drip = r.u8();
+        if (drip > 1) {
+            return fail(ErrorCode::InvalidData, "house drip flag is invalid");
+        }
+        house_.drip_installed = drip == 1;
+    }
+    house_.fan_hours = r.f64();
+    house_.drip_installations = r.f64();
+    house_.botrytis_spore_index = r.f64();
+    house_.powdery_mildew_spore_index = r.f64();
+    house_.anthracnose_sporulation_index = r.f64();
+    house_.spider_mite_mean_index = r.f64();
+    house_.inside_solar_mean_W_per_m2 = r.f64();
 
     const std::uint64_t rng_state = r.u64();
     const std::uint64_t rng_increment = r.u64();
@@ -1615,6 +1985,12 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
             return fail(ErrorCode::Truncated, "save data ends inside the disease rng");
         }
         disease_rng_ = Pcg32::from_raw(disease_state, disease_increment);
+        const std::uint64_t foliar_state = r.u64();
+        const std::uint64_t foliar_increment = r.u64();
+        if (!r.ok()) {
+            return fail(ErrorCode::Truncated, "save data ends inside the foliar rng");
+        }
+        foliar_rng_ = Pcg32::from_raw(foliar_state, foliar_increment);
     }
 
     const std::uint64_t pending_count = r.u64();
@@ -1709,6 +2085,20 @@ std::expected<void, Error> World::read_dynamic(detail::ByteReader& r) {
     ledger_.Mn_flush_g = r.f64();
     read_f64_list(r, ledger_.disinfectant_applied_g);
     ledger_.inoculant_applied_g = r.f64();
+    // M5b
+    ledger_.N_removed_g = r.f64();
+    ledger_.P_removed_g = r.f64();
+    ledger_.K_removed_g = r.f64();
+    ledger_.Ca_removed_g = r.f64();
+    ledger_.Mg_removed_g = r.f64();
+    ledger_.Mn_removed_g = r.f64();
+    ledger_.dry_matter_removed_g = r.f64();
+    ledger_.plants_removed = r.u64();
+    ledger_.fruit_rot_count = r.u64();
+    ledger_.fruit_rot_fresh_g = r.f64();
+    ledger_.harvested_mildew = r.u64();
+    ledger_.harvested_mildew_fresh_g = r.f64();
+    ledger_.predators_released_per_m2 = r.f64();
     if (r.ok() && !ledger_.disinfectant_applied_g.empty() &&
         ledger_.disinfectant_applied_g.size() != params_.disinfectants.size()) {
         return fail(ErrorCode::InvalidData, "saved disinfectant ledger does not match params disinfectants");

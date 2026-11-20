@@ -1,0 +1,577 @@
+# S30 서늘한 쪽: 측정 창은 환기를 일찍·많이 해서 낮 20 도 안팎으로 관리
+# 가을 작기(9/10 정식, day 253, 등급 B 모종)가 m4 season_standard와 같은 시작·토양·작물·비료·관수·창·피복(3겹)으로 4/1(틱 4872)까지 가요.
+# 측정 창 4/1~5/15(day 91~135, 45일): season_standard의 창·난방 일정을 지우고 아래 변형으로 바꿔요. 길이: 시작부터 5/15 끝까지 5952틱.
+# 시드 20261119, 배경 포자 잿빛곰팡이 0.05, 흰가루병 0.02
+# 값은 전부 게임용 임의값이에요. 이 파일은 tools/gen_m5b_scenarios.py가 만들어요(고치려면 스크립트를 고쳐요).
+
+schema_version = 7
+
+[scenario]
+name = "m5b/s30_cool"
+seed = 20261119
+start_day_of_year = 253
+weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+cover_layers = 3
+drip_installed = true
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 50.0
+soil_temp_degC = 20.0
+ph = 6.2
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 4.0  # 기준 토양보다 적게. (2026-11-18 프로토타입 점검으로 조정)
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 1  # (2026-11-18 프로토타입 점검으로 조정)
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 200  # (2026-11-18 프로토타입 점검으로 조정)
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.3
+base_buffer_eq_per_m2_per_pH = 1.25
+# M3 항목: 전부 게임용 임의값 (기준 토양 = M3 s5_standard, docs/spec/m3-overview.md)
+cec_mineral_eq_per_m2 = 25.0
+mn_g_per_m2 = 5.0
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[crop]
+seedling_grade = "B"
+plants_per_m2 = 8.0
+initial_establishment_index = 0.0  # (2026-11-18 프로토타입 점검으로 조정)
+
+[microbes]  # M5a 필수: 모든 셀의 무리별 시작 지수 (m5-overview 11장 기본값. 병원균 0 = 오염 없음)
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 1.0
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.0
+phytophthora = 0.0
+anthracnose = 0.0  # M5b: 탄저병균 시작 지수 (foliar-disease 8장)
+
+[foliar]  # 바깥에서 늘 들어오는 포자 수준 (병해 시나리오 기본값: 잿빛곰팡이 0.05, 흰가루병 0.02)
+botrytis_background_index = 0.05
+powdery_mildew_background_index = 0.02
+
+[difficulty]
+stress_combination = "minimum"
+
+# m4 season_standard 일정 (창 시작 전까지)
+
+[[schedule]]
+tick = 0
+action = "add_compost"
+compost = "mature_manure"
+kg_per_m2 = 2.0
+
+[[schedule]]
+tick = 343
+action = "add_fertilizer"
+fertilizer = "calcium_nitrate"
+g_per_m2 = 5.0
+repeat_every_ticks = 336
+repeat_count = 3
+
+[[schedule]]
+tick = 1351
+action = "add_fertilizer"
+fertilizer = "calcium_nitrate"
+g_per_m2 = 2.5
+repeat_every_ticks = 336
+repeat_count = 9
+
+[[schedule]]
+tick = 4375
+action = "add_fertilizer"
+fertilizer = "calcium_nitrate"
+g_per_m2 = 5.0
+repeat_every_ticks = 336
+repeat_count = 5
+
+[[schedule]]
+tick = 343
+action = "add_fertilizer"
+fertilizer = "potassium_sulfate"
+g_per_m2 = 6.0
+repeat_every_ticks = 336
+repeat_count = 17
+
+[[schedule]]
+tick = 8
+action = "irrigate"
+amount_mm = 4.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 1256
+action = "irrigate"
+amount_mm = 2.5
+repeat_every_ticks = 24
+repeat_count = 120
+
+[[schedule]]
+tick = 4136
+action = "irrigate"
+amount_mm = 4.0
+repeat_every_ticks = 24
+repeat_count = 91
+
+[[schedule]]
+tick = 8
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 8
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 8
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 8
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 8
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 8
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 52
+
+[[schedule]]
+tick = 1260
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 30
+
+[[schedule]]
+tick = 1262
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 30
+
+[[schedule]]
+tick = 1260
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 30
+
+[[schedule]]
+tick = 1262
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 30
+
+[[schedule]]
+tick = 1260
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 30
+
+[[schedule]]
+tick = 1262
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 30
+
+[[schedule]]
+tick = 1980
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 1981
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 1980
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 1981
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 1980
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 1981
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 3468
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 28
+
+[[schedule]]
+tick = 3470
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 28
+
+[[schedule]]
+tick = 3468
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 28
+
+[[schedule]]
+tick = 3470
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 28
+
+[[schedule]]
+tick = 3468
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 28
+
+[[schedule]]
+tick = 3470
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 28
+
+[[schedule]]
+tick = 4139
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 31
+
+[[schedule]]
+tick = 4142
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 31
+
+[[schedule]]
+tick = 4139
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 31
+
+[[schedule]]
+tick = 4142
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 31
+
+[[schedule]]
+tick = 4139
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.3
+repeat_every_ticks = 24
+repeat_count = 31
+
+[[schedule]]
+tick = 4142
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 31
+
+[[schedule]]
+tick = 1248
+action = "set_heater"
+on = true
+setpoint_degC = 10.0
+
+# 측정 창: 밤 난방 8.0 도 (설정 온도 아래로 내려갈 때만 켜져요)
+
+[[schedule]]
+tick = 4872
+action = "set_heater"
+on = true
+setpoint_degC = 8.0
+
+# 측정 창: 매일 8~18시 창 전부 50%
+
+[[schedule]]
+tick = 4880
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.5
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4880
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 0.5
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4880
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.5
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4880
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 0.5
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4880
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.5
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4880
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 0.5
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4890
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4890
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4890
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4890
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4890
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 45
+
+[[schedule]]
+tick = 4890
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 45

@@ -50,8 +50,18 @@ struct DiseaseOnsetEvent {
     bool operator==(const DiseaseOnsetEvent&) const = default;
 };
 
+// M5b 지상부 병해충 증상이 보이기 시작함 (foliar-disease 4장 onset 기준). 명세의 "DiseaseOnset에 anthracnose,
+// botrytis, powdery_mildew, spider_mite 추가"를 토양 병해 이벤트와 같은 모양의 별도 이벤트로 구현했어요
+// (토양 병해 이벤트의 SoilDisease 배열 인덱스를 바꾸지 않으려고)
+struct FoliarDiseaseOnsetEvent {
+    std::uint32_t tile_index;
+    FoliarDisease disease;
+
+    bool operator==(const FoliarDiseaseOnsetEvent&) const = default;
+};
+
 using EventPayload = std::variant<CommandAppliedEvent, NitriteThresholdExceededEvent, PlantDiedEvent,
-                                  FruitHarvestedEvent, DiseaseOnsetEvent>;
+                                  FruitHarvestedEvent, DiseaseOnsetEvent, FoliarDiseaseOnsetEvent>;
 
 struct Event {
     std::uint64_t tick;  // 이벤트가 발생한 틱 (처리 중이던 틱 번호)

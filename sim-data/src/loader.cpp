@@ -500,10 +500,23 @@ void read_schedule_entry(TableReader& r, int bed_rows, int bed_cols, std::vector
         std::string grade = r.string("seedling_grade");
         const double plants_per_m2 = r.number("plants_per_m2");
         command = sim::PlantCommand{.seedling_grade = std::move(grade), .plants_per_m2 = plants_per_m2};
+    } else if (action == "set_fan") {
+        // M5b 하우스 전체 명령 (area 없음)
+        command = sim::SetFanCommand{.on = r.boolean("on")};
+    } else if (action == "install_drip") {
+        command = sim::InstallDripCommand{};
+    } else if (action == "remove_plant") {
+        command = sim::RemovePlantCommand{.area = read_area()};
+    } else if (action == "release_predators") {
+        const sim::TileArea area = read_area();
+        std::string id = r.string("predator");
+        const double per_m2 = r.number("per_m2");
+        command = sim::ReleasePredatorsCommand{.area = area, .predator_id = std::move(id), .per_m2 = per_m2};
     } else {
         r.set_error(std::format("'{}': unknown action '{}' (expected irrigate, add_compost, add_fertilizer, "
                                 "add_lime, till, set_window, set_heater, set_cover_layers, thin_flowers, "
-                                "set_mulch, apply_disinfectant, add_inoculant or plant)",
+                                "set_mulch, apply_disinfectant, add_inoculant, plant, set_fan, install_drip, "
+                                "remove_plant or release_predators)",
                                 r.qualified("action"), action));
         return;
     }
@@ -593,6 +606,28 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         h.infiltration_air_changes_per_hour = r.number("infiltration_air_changes_per_hour");
         h.vent_air_changes_per_hour = r.number("vent_air_changes_per_hour");
         h.co2_floor_ppm = r.number("co2_floor_ppm");
+    });
+    // docs/spec/house-humidity.md 3장
+    run("humidity", [&](TableReader& r) {
+        auto& u = p.humidity;
+        u.saturation_vapor_curve = r.curve("saturation_vapor_curve");
+        u.inner_surface_resistance_m2K_per_W = r.number("inner_surface_resistance_m2K_per_W");
+        u.condensation_rate_per_hour = r.number("condensation_rate_per_hour");
+        u.rh_mean_relax_rate_per_hour = r.number("rh_mean_relax_rate_per_hour");
+        u.vent_airflow_factor = r.number("vent_airflow_factor");
+        u.fan_airflow_index = r.number("fan_airflow_index");
+        u.canopy_rh_boost_index = r.number("canopy_rh_boost_index");
+        u.canopy_lai_ref = r.number("canopy_lai_ref");
+        u.dew_rh_index = r.number("dew_rh_index");
+        u.dew_solar_limit_W_per_m2 = r.number("dew_solar_limit_W_per_m2");
+        u.wetting_rate_per_hour = r.number("wetting_rate_per_hour");
+        u.drying_rate_per_hour = r.number("drying_rate_per_hour");
+        u.airflow_drying_factor = r.number("airflow_drying_factor");
+        u.drying_rh_curve = r.curve("drying_rh_curve");
+        u.drying_solar_factor_per_W_per_m2 = r.number("drying_solar_factor_per_W_per_m2");
+        u.overhead_wet_index = r.number("overhead_wet_index");
+        u.wet_threshold_index = r.number("wet_threshold_index");
+        u.wetness_break_hours = r.number("wetness_break_hours");
     });
     run("calendar", [&](TableReader& r) { p.calendar.day_length_curve = r.curve("day_length_curve"); });
     run("phenology", [&](TableReader& r) {
@@ -779,6 +814,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         d.fusarium_curve = r.curve("fusarium_curve");
         d.phytophthora_curve = r.curve("phytophthora_curve");
         d.fumigant_curve = r.curve("fumigant_curve");
+        d.anthracnose_curve = r.curve("anthracnose_curve");  // M5b: 탄저병 감염 지수 -> 시간당 손상
     });
     // M5a 토양 미생물 (docs/spec/soil-microbes.md). 공통 키 + [microbes.<id>] 7개
     run("microbes", [&](TableReader& r) {
@@ -814,7 +850,7 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
             if (gp.competition[i] != 0.0) {
                 g.set_error(std::format("'{}' must not list the group itself", g.qualified("competition")));
             }
-            // 수용력 키는 병원균(fusarium, phytophthora)만 가져요. 다른 무리가 쓰면 모르는 키 오류예요.
+            // 수용력 키는 병원균(fusarium, phytophthora, M5b anthracnose)만 가져요. 다른 무리가 쓰면 모르는 키 오류예요.
             if (i >= sim::microbe(sim::MicrobeGroup::Fusarium)) {
                 gp.saprophytic_capacity_index = g.number("saprophytic_capacity_index");
                 gp.host_capacity_index = g.number("host_capacity_index");
@@ -845,6 +881,86 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         d.flush_C_to_N_ratio = r.number("flush_C_to_N_ratio");
         d.mn_reduction_per_index = r.number("mn_reduction_per_index");
         d.till_residue_release_fraction = r.number("till_residue_release_fraction");
+    });
+    // M5b 지상부 병해충 (docs/spec/foliar-disease.md 3장): 공통 키 + 하위 4개
+    run("foliar_disease", [&](TableReader& r) {
+        auto& f = p.foliar_disease;
+        f.n_susceptibility_curve = r.curve("n_susceptibility_curve");
+        f.n_mean_relax_rate_per_hour = r.number("n_mean_relax_rate_per_hour");
+        f.mite_mean_relax_rate_per_hour = r.number("mite_mean_relax_rate_per_hour");
+        auto finish_child = [&](TableReader& child) {
+            if (auto done = child.finish(); !done) {
+                r.set_error(done.error().message);
+            }
+        };
+        {
+            TableReader a = r.child("anthracnose");
+            auto& ap = f.anthracnose;
+            ap.temp_curve = a.curve("temp_curve");
+            ap.wetness_curve = a.curve("wetness_curve");
+            ap.contact_rate_per_hour = a.number("contact_rate_per_hour");
+            ap.progress_rate_per_hour = a.number("progress_rate_per_hour");
+            ap.splash_transfer_index = a.number("splash_transfer_index");
+            ap.sporulation_curve = a.curve("sporulation_curve");
+            ap.onset_infection_index = a.number("onset_infection_index");
+            ap.soil_deposit_per_hour = a.number("soil_deposit_per_hour");
+            ap.residue_index = a.number("residue_index");
+            finish_child(a);
+        }
+        {
+            TableReader b = r.child("botrytis");
+            auto& bp = f.botrytis;
+            bp.infection_temp_curve = b.curve("infection_temp_curve");
+            bp.wetness_curve = b.curve("wetness_curve");
+            bp.infection_rate_per_hour = b.number("infection_rate_per_hour");
+            bp.infection_decay_rate_per_hour = b.number("infection_decay_rate_per_hour");
+            bp.sporulation_temp_curve = b.curve("sporulation_temp_curve");
+            bp.spore_source_per_infection_per_hour = b.number("spore_source_per_infection_per_hour");
+            bp.spore_source_per_rotten_fruit_per_hour = b.number("spore_source_per_rotten_fruit_per_hour");
+            bp.spore_decay_rate_per_hour = b.number("spore_decay_rate_per_hour");
+            bp.spore_vent_fraction = b.number("spore_vent_fraction");
+            bp.fruit_rot_prob_per_hour = b.number("fruit_rot_prob_per_hour");
+            bp.fruit_stage_curve = b.curve("fruit_stage_curve");
+            bp.onset_infection_index = b.number("onset_infection_index");
+            finish_child(b);
+        }
+        {
+            TableReader m = r.child("powdery_mildew");
+            auto& mp = f.powdery_mildew;
+            mp.temp_curve = m.curve("temp_curve");
+            mp.rh_curve = m.curve("rh_curve");
+            mp.free_water_inhibition_factor = m.number("free_water_inhibition_factor");
+            mp.light_curve = m.curve("light_curve");
+            mp.density_curve = m.curve("density_curve");
+            mp.young_leaf_curve = m.curve("young_leaf_curve");
+            mp.infection_rate_per_hour = m.number("infection_rate_per_hour");
+            mp.spore_source_per_infection_per_hour = m.number("spore_source_per_infection_per_hour");
+            mp.spore_decay_rate_per_hour = m.number("spore_decay_rate_per_hour");
+            mp.spore_vent_fraction = m.number("spore_vent_fraction");
+            mp.photosynthesis_damage_curve = m.curve("photosynthesis_damage_curve");
+            mp.fruit_prob_curve = m.curve("fruit_prob_curve");
+            mp.onset_infection_index = m.number("onset_infection_index");
+            finish_child(m);
+        }
+        {
+            TableReader t = r.child("mites");
+            auto& tp = f.mites;
+            tp.mite_growth_curve_per_hour = t.curve("mite_growth_curve_per_hour");
+            tp.mite_rh_curve = t.curve("mite_rh_curve");
+            tp.mite_spread_rate_per_hour = t.number("mite_spread_rate_per_hour");
+            tp.photosynthesis_damage_curve = t.curve("photosynthesis_damage_curve");
+            tp.predator_temp_curve = t.curve("predator_temp_curve");
+            tp.predator_hatch_curve = t.curve("predator_hatch_curve");
+            tp.attack_rate_per_hour = t.number("attack_rate_per_hour");
+            tp.handling_time_hours = t.number("handling_time_hours");
+            tp.conversion_factor = t.number("conversion_factor");
+            tp.predator_death_rate_per_hour = t.number("predator_death_rate_per_hour");
+            tp.predator_starvation_death_per_hour = t.number("predator_starvation_death_per_hour");
+            tp.predator_death_temp_curve = t.curve("predator_death_temp_curve");
+            tp.predator_search_rate_per_hour = t.number("predator_search_rate_per_hour");
+            tp.mite_onset_index = t.number("mite_onset_index");
+            finish_child(t);
+        }
     });
     run("crop", [&](TableReader& r) {
         auto& c = p.crop;
@@ -904,6 +1020,8 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         c.reserve_release_rate_per_hour = r.number("reserve_release_rate_per_hour");
         c.maintenance_activity_curve = r.curve("maintenance_activity_curve");
         c.rgr_mean_relax_rate_per_hour = r.number("rgr_mean_relax_rate_per_hour");
+        c.transpiration_humidity_curve = r.curve("transpiration_humidity_curve");
+        c.basal_transpiration_mm_per_hour_per_lai = r.number("basal_transpiration_mm_per_hour_per_lai");
     });
     if (!status) {
         return std::unexpected(std::move(status.error()));
@@ -916,6 +1034,12 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         g.crown_g_per_plant = r.number("crown_g_per_plant");
         g.root_g_per_plant = r.number("root_g_per_plant");
         g.initial_induction_index = r.number("initial_induction_index");
+        // M5b 모종 병해 (foliar-disease 3.6)
+        g.latent_anthracnose_fraction = r.number("latent_anthracnose_fraction");
+        g.latent_anthracnose_index = r.number("latent_anthracnose_index");
+        g.spider_mite_fraction = r.number("spider_mite_fraction");
+        g.spider_mite_start_index = r.number("spider_mite_start_index");
+        g.powdery_mildew_start_index = r.number("powdery_mildew_start_index");
         if (auto done = r.finish(); !done) {
             return std::unexpected(std::move(done.error()));
         }
@@ -981,6 +1105,8 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
         m.evaporation_factor = r.number("evaporation_factor");
         m.fumigant_retention_factor = r.number("fumigant_retention_factor");
         m.canopy_reflect_factor = r.number("canopy_reflect_factor");
+        m.soil_splash_factor = r.number("soil_splash_factor");    // M5b
+        m.plant_splash_factor = r.number("plant_splash_factor");  // M5b
         if (auto done = r.finish(); !done) {
             return std::unexpected(std::move(done.error()));
         }
@@ -1012,6 +1138,17 @@ std::expected<sim::Params, Error> parse_params_toml(std::string_view text,
             return std::unexpected(std::move(done.error()));
         }
         p.inoculants.push_back(std::move(inoc));
+    }
+    // M5b 천적 제품
+    for (TableReader& r : root.table_array("predator", true)) {
+        sim::PredatorDef d;
+        d.id = r.string("id");
+        d.name = r.string("name");
+        d.index_per_individual_per_m2 = r.number("index_per_individual_per_m2");
+        if (auto done = r.finish(); !done) {
+            return std::unexpected(std::move(done.error()));
+        }
+        p.predators.push_back(std::move(d));
     }
 
     if (auto done = root.finish(); !done) {
@@ -1052,6 +1189,7 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
     doc.scenario.bed_rows = house.small_integer("bed_rows");
     doc.scenario.bed_cols = house.small_integer("bed_cols");
     doc.scenario.cover_layers = house.small_integer("cover_layers");
+    doc.scenario.drip_installed = house.boolean("drip_installed");  // M5b 필수 (house-humidity 4.4)
     if (auto done = house.finish(); !done) {
         return std::unexpected(std::move(done.error()));
     }
@@ -1085,12 +1223,20 @@ std::expected<ScenarioDocument, Error> parse_scenario_toml(std::string_view text
         return std::unexpected(std::move(done.error()));
     }
 
-    // [microbes]는 필수예요 (M5a): 모든 셀의 무리별 시작 지수 7개 전부 (m5-overview 11장)
+    // [microbes]는 필수예요 (M5a): 모든 셀의 무리별 시작 지수 전부 (m5-overview 11장, M5b anthracnose 포함 8개)
     TableReader microbes = root.child("microbes");
     for (std::size_t i = 0; i < sim::kMicrobeGroupCount; ++i) {
         s.microbe_index[i] = microbes.number(sim::kMicrobeGroupIds[i]);
     }
     if (auto done = microbes.finish(); !done) {
+        return std::unexpected(std::move(done.error()));
+    }
+
+    // [foliar]는 필수예요 (M5b, foliar-disease 8장): 바깥에서 늘 들어오는 포자 수준
+    TableReader foliar = root.child("foliar");
+    doc.scenario.foliar.botrytis_background_index = foliar.number("botrytis_background_index");
+    doc.scenario.foliar.powdery_mildew_background_index = foliar.number("powdery_mildew_background_index");
+    if (auto done = foliar.finish(); !done) {
         return std::unexpected(std::move(done.error()));
     }
 

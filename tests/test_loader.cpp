@@ -29,7 +29,7 @@ std::string weather_csv(std::size_t rows, std::string_view newline = "\n") {
 }
 
 constexpr std::string_view kValidScenario = R"(
-schema_version = 6
+schema_version = 7
 [scenario]
 name = "t"
 seed = 7
@@ -39,6 +39,7 @@ weather_csv = "w.csv"
 bed_rows = 2
 bed_cols = 5
 cover_layers = 3
+drip_installed = true
 [microbes]
 decomposer = 1.0
 nitrifier_aob = 1.0
@@ -47,6 +48,10 @@ antagonist = 0.5
 mycorrhiza = 0.1
 fusarium = 0.0
 phytophthora = 0.25
+anthracnose = 0.0
+[foliar]
+botrytis_background_index = 0.0
+powdery_mildew_background_index = 0.0
 [soil]
 field_capacity_mm = 60.0
 water_mm = 45
@@ -77,7 +82,7 @@ stress_combination = "minimum"
 
 // 형식 검증용 params 문서 (값은 명세 값이 아니어도 돼요)
 constexpr std::string_view kValidParams = R"(
-schema_version = 6
+schema_version = 7
 [house]
 layer_transmittance_factor = 0.9
 layer_resistance_m2K_per_W = 0.13
@@ -259,6 +264,7 @@ acid_curve = [[4.0, 0.006], [5.6, 0.0]]
 fusarium_curve = [[0, 0], [0.8, 0.01]]
 phytophthora_curve = [[0, 0], [0.8, 0.02]]
 fumigant_curve = [[0, 0], [1, 0.2]]
+anthracnose_curve = [[0, 0], [0.8, 0.012]]
 [crop]
 specific_leaf_area_m2_per_g = 0.02
 light_interception_curve = [[0, 0], [4, 0.94]]
@@ -288,6 +294,8 @@ reserve_release_rate_per_hour = 0
 maintenance_activity_curve = [[-1, 1], [1, 1]]
 rgr_mean_relax_rate_per_hour = 0
 transpiration_mm_per_hour_per_W_per_m2 = 0.0015
+transpiration_humidity_curve = [[0, 1], [1, 1]]
+basal_transpiration_mm_per_hour_per_lai = 0
 root_recovery_rate_per_hour = 0.002
 death_root_health = 0.05
 root_dieback_per_damage = 1.0
@@ -406,6 +414,18 @@ immigration_rate_per_hour = 0.001
 competition = { antagonist = 0.8 }
 saprophytic_capacity_index = 0.3
 host_capacity_index = 0.7
+[microbes.anthracnose]
+growth_rate_per_hour = 0.003
+temp_curve = [[9, 0], [27, 1]]
+moisture_curve = [[0, 1], [14, 1]]
+ph_curve = [[0, 1], [14, 1]]
+o2_curve = [[0, 1], [14, 1]]
+base_death_rate_per_hour = 0.002
+heat_kill_curve = [[40, 0], [50, 0.03]]
+immigration_rate_per_hour = 0
+competition = { antagonist = 0.4 }
+saprophytic_capacity_index = 0.05
+host_capacity_index = 0.8
 [soil_disease.fusarium]
 infection_rate_per_hour = 0.004
 infection_env_curve_temp = [[15, 0], [28, 1]]
@@ -423,18 +443,105 @@ flush_N_g_per_m2_per_index = 6.0
 flush_C_to_N_ratio = 6
 mn_reduction_per_index = 0.03
 till_residue_release_fraction = 0.5
+[humidity]
+saturation_vapor_curve = [[0, 4.85], [20, 17.3]]
+inner_surface_resistance_m2K_per_W = 0.09
+condensation_rate_per_hour = 4
+rh_mean_relax_rate_per_hour = 0.014
+vent_airflow_factor = 1
+fan_airflow_index = 0.6
+canopy_rh_boost_index = 0.08
+canopy_lai_ref = 3
+dew_rh_index = 0.92
+dew_solar_limit_W_per_m2 = 50
+wetting_rate_per_hour = 0.5
+drying_rate_per_hour = 0.3
+airflow_drying_factor = 2
+drying_rh_curve = [[0.5, 1.5], [1, 0]]
+drying_solar_factor_per_W_per_m2 = 0.01
+overhead_wet_index = 1
+wet_threshold_index = 0.5
+wetness_break_hours = 4
+)" R"(
+[foliar_disease]
+n_susceptibility_curve = [[0, 1], [30, 2]]
+n_mean_relax_rate_per_hour = 0.003
+mite_mean_relax_rate_per_hour = 0.003
+[foliar_disease.anthracnose]
+temp_curve = [[9, 0], [27, 1], [38, 0]]
+wetness_curve = [[0, 0], [36, 1]]
+contact_rate_per_hour = 0.0005
+progress_rate_per_hour = 0.004
+splash_transfer_index = 0.01
+sporulation_curve = [[0, 0], [0.6, 1]]
+onset_infection_index = 0.15
+soil_deposit_per_hour = 0
+residue_index = 0
+[foliar_disease.botrytis]
+infection_temp_curve = [[5, 0.02], [20, 1], [33, 0]]
+wetness_curve = [[0, 0], [32, 1]]
+infection_rate_per_hour = 0.03
+infection_decay_rate_per_hour = 0.002
+sporulation_temp_curve = [[5, 0.1], [17.5, 1], [30, 0]]
+spore_source_per_infection_per_hour = 0.02
+spore_source_per_rotten_fruit_per_hour = 0.01
+spore_decay_rate_per_hour = 0.02
+spore_vent_fraction = 0.05
+fruit_rot_prob_per_hour = 0.002
+fruit_stage_curve = [[0, 1], [1, 1]]
+onset_infection_index = 0.2
+[foliar_disease.powdery_mildew]
+temp_curve = [[5, 0.05], [20, 1], [32, 0]]
+rh_curve = [[0.6, 0], [0.75, 1]]
+free_water_inhibition_factor = 0.7
+light_curve = [[0, 1.3], [120, 1]]
+density_curve = [[0, 0.8], [4, 1.2]]
+young_leaf_curve = [[0, 0.3], [0.03, 1]]
+infection_rate_per_hour = 0.004
+spore_source_per_infection_per_hour = 0.02
+spore_decay_rate_per_hour = 0.005
+spore_vent_fraction = 0.05
+photosynthesis_damage_curve = [[0, 0], [1, 0.5]]
+fruit_prob_curve = [[0, 0], [0.6, 0.17]]
+onset_infection_index = 0.05
+[foliar_disease.mites]
+mite_growth_curve_per_hour = [[12, 0], [25, 0.0063], [40, 0]]
+mite_rh_curve = [[0.2, 0.8], [1, 0.8]]
+mite_spread_rate_per_hour = 0.0005
+photosynthesis_damage_curve = [[0, 0], [1, 0.6]]
+predator_temp_curve = [[10, 0], [25, 1], [35, 0]]
+predator_hatch_curve = [[0.4, 0], [1, 1]]
+attack_rate_per_hour = 5
+handling_time_hours = 1.25
+conversion_factor = 0.01
+predator_death_rate_per_hour = 0.0022
+predator_starvation_death_per_hour = 0.012
+predator_death_temp_curve = [[0, 1], [40, 1]]
+predator_search_rate_per_hour = 0.05
+mite_onset_index = 0.05
+)" R"(
 [[seedling_grade]]
 id = "A"
 leaf_g_per_plant = 4.0
 crown_g_per_plant = 3
 root_g_per_plant = 2.0
 initial_induction_index = 0.8
+latent_anthracnose_fraction = 0
+latent_anthracnose_index = 0.05
+spider_mite_fraction = 0
+spider_mite_start_index = 0.01
+powdery_mildew_start_index = 0
 [[seedling_grade]]
 id = "C"
 leaf_g_per_plant = 2.5
 crown_g_per_plant = 1.2
 root_g_per_plant = 1.0
 initial_induction_index = 0.0
+latent_anthracnose_fraction = 0.25
+latent_anthracnose_index = 0.05
+spider_mite_fraction = 0.15
+spider_mite_start_index = 0.01
+powdery_mildew_start_index = 0.02
 [[compost]]
 id = "c1"
 name = "compost one"
@@ -488,6 +595,8 @@ soil_solar_gain_degC_per_W_per_m2 = 0.025
 evaporation_factor = 0.1
 fumigant_retention_factor = 0.3
 canopy_reflect_factor = 0.0
+soil_splash_factor = 0.1
+plant_splash_factor = 2.5
 [[mulch]]
 id = "white_film"
 name = "white"
@@ -495,11 +604,13 @@ soil_solar_gain_degC_per_W_per_m2 = -0.004
 evaporation_factor = 0.2
 fumigant_retention_factor = 0.3
 canopy_reflect_factor = 0.25
+soil_splash_factor = 0.1
+plant_splash_factor = 2.5
 [[disinfectant]]
 id = "dazomet"
 name = "dazomet"
 residue_index_per_g_per_m2 = 0.03333333333333333
-kill_rate_per_hour = { decomposer = 0.006, nitrifier_aob = 0.002, nitrifier_nob = 0.001, antagonist = 0.006, mycorrhiza = 0.02, fusarium = 0.012, phytophthora = 0.015 }
+kill_rate_per_hour = { decomposer = 0.006, nitrifier_aob = 0.002, nitrifier_nob = 0.001, antagonist = 0.006, mycorrhiza = 0.02, fusarium = 0.012, anthracnose = 0.02, phytophthora = 0.015 }
 decay_rate_per_hour = 0.02
 decay_temp_curve = [[5, 0.3], [35, 1.5]]
 activation_moisture_curve = [[0.2, 0.1], [0.7, 1]]
@@ -509,6 +620,10 @@ name = "bacillus"
 index_gain_per_g_per_m2 = { antagonist = 0.02 }
 C_g_per_kg = 300.0
 N_g_per_kg = 10.0
+[[predator]]
+id = "persimilis"
+name = "persimilis"
+index_per_individual_per_m2 = 0.00003
 )";
 
 // 문서 안의 문자열을 한 번 바꿔요 (없으면 테스트 실수라서 실패).
@@ -535,7 +650,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
     SECTION("valid document fills every field") {
         auto p = simdata::parse_params_toml(kValidParams, "p.toml");
         REQUIRE(p.has_value());
-        CHECK(p->schema_version == 6);
+        CHECK(p->schema_version == 7);
         CHECK(p->house.ground_heat_W_per_m2 == 6.1);  // M4: house.base_offset_degC 삭제로 같은 float 키 검사로 바꿈
         CHECK(p->soil_water.evap_moisture_curve.points.size() == 2);
         CHECK(p->soil_water.evap_moisture_curve(0.5) == 0.5);
@@ -630,7 +745,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
                    ContainsSubstring("missing required key 'soil_water.drainage_rate_per_hour'"));
     }
     SECTION("missing table is rejected") {
-        auto p = simdata::parse_params_toml("schema_version = 6\n", "p.toml");
+        auto p = simdata::parse_params_toml("schema_version = 7\n", "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK_THAT(p.error().message, ContainsSubstring("missing required key 'house'"));
     }
@@ -662,7 +777,7 @@ TEST_CASE("Params TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(q.error().message, ContainsSubstring("organic_matter.humification_fraction"));
     }
     SECTION("old schema version is rejected") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 4"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 7", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -775,7 +890,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
         CHECK_THAT(doc.error().message, ContainsSubstring("unknown key 'house.bed_depth_cm'"));
     }
     SECTION("missing table") {
-        auto doc = simdata::parse_scenario_toml("schema_version = 6\n[scenario]\n", "s.toml");
+        auto doc = simdata::parse_scenario_toml("schema_version = 7\n[scenario]\n", "s.toml");
         CHECK_FALSE(doc.has_value());
     }
     SECTION("negative seed") {
@@ -783,7 +898,7 @@ TEST_CASE("Scenario TOML loads strictly", "[unit][loader]") {
             simdata::parse_scenario_toml(replaced(kValidScenario, "seed = 7", "seed = -1"), "s.toml").has_value());
     }
     SECTION("unsupported schema version") {
-        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 6", "schema_version = 4"),
+        auto doc = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 7", "schema_version = 4"),
                                                 "s.toml");
         REQUIRE_FALSE(doc.has_value());
         CHECK(doc.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -1104,7 +1219,7 @@ TEST_CASE("M3 params reject missing, removed and unknown keys", "[unit][loader][
         CHECK_FALSE(p.has_value());
     }
     SECTION("params schema 4 (M3) is rejected as an old version") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 4"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 7", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -1136,7 +1251,7 @@ TEST_CASE("M3 scenario soil keys are read and required", "[unit][loader][m3]") {
 TEST_CASE("Repository params and scenarios carry the M3 fields", "[unit][loader][data][m3]") {
     auto params = simdata::load_params(test::repo_path("data/params.toml"));
     REQUIRE(params.has_value());
-    CHECK(params->schema_version == 6);
+    CHECK(params->schema_version == 7);
     CHECK(params->cation_exchange.solver_iterations == 60);
     CHECK(params->crop.mn_max_uptake_ratio == 30.0);
     bool has_mnso4 = false;
@@ -1235,7 +1350,7 @@ TEST_CASE("M4 params reject missing, removed and malformed keys", "[unit][loader
         CHECK_FALSE(floating.has_value());
     }
     SECTION("params schema 4 (M3) is rejected as an old version") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 4"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 7", "schema_version = 4"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -1370,7 +1485,7 @@ TEST_CASE("Repository params and scenarios carry the M4 fields", "[unit][loader]
 TEST_CASE("M5a params tables are read", "[unit][loader][m5a]") {
     auto p = simdata::parse_params_toml(kValidParams, "p.toml");
     REQUIRE(p.has_value());
-    CHECK(p->schema_version == 6);
+    CHECK(p->schema_version == 7);
     CHECK(p->microbes.capacity_floor_index == 0.01);
     CHECK(p->microbes.moist_heat_curve.points.size() == 2);
     const auto& fus = p->microbes.groups[sim::microbe(sim::MicrobeGroup::Fusarium)];
@@ -1416,10 +1531,10 @@ TEST_CASE("M5a params reject missing, unknown and malformed keys", "[unit][loade
     }
     SECTION("unknown id in competition") {
         auto p = simdata::parse_params_toml(
-            replaced(kValidParams, "{ fusarium = 0.3, phytophthora = 0.3 }", "{ fusarium = 0.3, anthracnose = 0.3 }"),
+            replaced(kValidParams, "{ fusarium = 0.3, phytophthora = 0.3 }", "{ fusarium = 0.3, rhizoctonia = 0.3 }"),
             "p.toml");
         REQUIRE_FALSE(p.has_value());
-        CHECK_THAT(p.error().message, ContainsSubstring("anthracnose"));
+        CHECK_THAT(p.error().message, ContainsSubstring("rhizoctonia"));
     }
     SECTION("competition must not list the group itself") {
         auto p = simdata::parse_params_toml(
@@ -1485,7 +1600,7 @@ TEST_CASE("M5a params reject missing, unknown and malformed keys", "[unit][loade
         CHECK_THAT(p.error().message, ContainsSubstring("fumigant_curve"));
     }
     SECTION("schema 5 params are rejected") {
-        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 6", "schema_version = 5"),
+        auto p = simdata::parse_params_toml(replaced(kValidParams, "schema_version = 7", "schema_version = 5"),
                                             "p.toml");
         REQUIRE_FALSE(p.has_value());
         CHECK(p.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -1516,7 +1631,7 @@ TEST_CASE("M5a scenario microbes section is read and required", "[unit][loader][
         REQUIRE_FALSE(bad.has_value());
     }
     SECTION("schema 5 scenarios are rejected") {
-        auto bad = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 6", "schema_version = 5"),
+        auto bad = simdata::parse_scenario_toml(replaced(kValidScenario, "schema_version = 7", "schema_version = 5"),
                                                 "s.toml");
         REQUIRE_FALSE(bad.has_value());
         CHECK(bad.error().code == sim::ErrorCode::UnsupportedVersion);
@@ -1598,7 +1713,7 @@ plants_per_m2 = 8
 TEST_CASE("Repository params and M5a scenarios load", "[unit][loader][data][m5a]") {
     auto params = simdata::load_params(test::repo_path("data/params.toml"));
     REQUIRE(params.has_value());
-    CHECK(params->schema_version == 6);
+    CHECK(params->schema_version == 7);
     CHECK(params->mulches.size() == 3);
     CHECK(params->disinfectants.size() == 2);
     CHECK(params->inoculants.size() == 3);

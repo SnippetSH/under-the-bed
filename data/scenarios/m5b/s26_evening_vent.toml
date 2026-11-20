@@ -1,0 +1,190 @@
+# 저녁 환기: s26_closed + 매일 16~18시 창 전부 1.0 — M5b 3차 프로토타입. 게임용 임의값
+# 창을 한 번도 열지 않아요.
+# 길이는 sim-cli의 --ticks 1488로 정해요. 시작: day 335, 틱 0 = 그날 0시.
+
+schema_version = 7
+
+[scenario]
+name = "m5b/s26_evening_vent"
+seed = 20261118
+start_day_of_year = 335
+weather_csv = "../../weather/synthetic_year.csv" # 이 파일 기준 상대 경로
+
+[house]
+bed_rows = 4
+bed_cols = 20
+cover_layers = 3
+drip_installed = true  # M5b: 점적 설치 (house-humidity)
+
+[soil]
+field_capacity_mm = 60.0
+water_mm = 50.0
+soil_temp_degC = 8.0
+ph = 6.2
+nh4_N_g_per_m2 = 2.0
+no2_N_g_per_m2 = 0.0
+no3_N_g_per_m2 = 10.0
+labile_C_g_per_m2 = 50.0
+labile_N_g_per_m2 = 5.0
+stable_C_g_per_m2 = 3600.0
+stable_N_g_per_m2 = 360.0
+# M2 항목: 전부 게임용 임의값 (docs/spec/m2-overview.md 예시)
+saturation_mm = 110.0
+compaction_index = 0.3
+base_buffer_eq_per_m2_per_pH = 1.25
+# M3 항목: 전부 게임용 임의값 (기준 토양 = M3 s5_standard, docs/spec/m3-overview.md)
+cec_mineral_eq_per_m2 = 25.0
+mn_g_per_m2 = 5.0
+mn_oxide_g_per_m2 = 100.0            # 산화물 Mn, 게임용 임의값 (ADR-0010, 2026-11-18 개정)
+p_fixed_g_per_m2 = 150.0
+k_g_per_m2 = 60.0
+ca_g_per_m2 = 400.0
+mg_g_per_m2 = 60.0
+p_g_per_m2 = 25.0
+s_g_per_m2 = 3.0
+
+[crop]
+seedling_grade = "B"
+plants_per_m2 = 8.0
+initial_establishment_index = 1.0  # (2026-11-18 프로토타입 점검으로 조정)
+
+[microbes]  # M5a 필수: 모든 셀의 무리별 시작 지수 (m5-overview 11장 기본값. 병원균 0 = 오염 없음)
+decomposer = 1.0
+nitrifier_aob = 1.0
+nitrifier_nob = 1.0
+antagonist = 0.5
+mycorrhiza = 0.1
+fusarium = 0.0
+phytophthora = 0.0
+anthracnose = 0.0  # M5b: 탄저병균 시작 지수 (foliar-disease 8장)
+
+[foliar]  # M5b 필수: 바깥에서 늘 들어오는 포자 수준 (foliar-disease 8장). 0 = 배경 포자 없음
+botrytis_background_index = 0.0
+powdery_mildew_background_index = 0.0
+
+[difficulty]
+stress_combination = "minimum"
+
+# 관수: 매일 08시, 62일 (게임용 임의값, s18 겨울과 같은 2.5 mm)
+[[schedule]]
+tick = 8
+action = "irrigate"
+amount_mm = 2.5
+repeat_every_ticks = 24
+repeat_count = 62
+
+# 난방 6.0 도, 틱 0부터 (게임용 임의값)
+[[schedule]]
+tick = 0
+action = "set_heater"
+on = true
+setpoint_degC = 6.0
+
+# 매일 16시 열고 18시 닫음
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 16
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 1.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 0
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 0
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 1
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 1
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 2
+side = "left"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
+
+[[schedule]]
+tick = 18
+action = "set_window"
+layer = 2
+side = "right"
+open_fraction = 0.0
+repeat_every_ticks = 24
+repeat_count = 62
