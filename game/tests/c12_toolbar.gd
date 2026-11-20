@@ -1,8 +1,7 @@
 # C12 (m6b-character-play 9.1, 2.3·R10): 도구 줄. 평소 숨김 → 숨긴 상태에서 도구 단축키를 누르면 잠깐 올라왔다 내려감,
 # 잠깐 보이는 중 다시 누르면 처음부터, Tab으로 고정·해제, 도구 고르기는 줄 상태와 무관, 고정 여부는 세이브 게임 구역에.
 # 캐릭터 화면에서 실제 키(Tab, 3)로도 한 번 지나가요. 지금 든 도구 표시(알약)는 숨김일 때도 보여요.
-# TODO(UI 크기, 명세 2.3·Q4): C12의 "화면 높이 3가지(1080·1440·2160)에서 UI 높이 ÷ 화면 높이가 같음"은 아직 검사하지 않아요.
-#   이 파일은 도구 줄 부분만 다뤄요. UI를 화면 높이에 비례시키는 작업(다음 작업)에서 그 검사를 여기에 더해요.
+# UI 크기(명세 2.3·Q4): 화면 높이 3가지(1080·1440·2160, 16:9)에서 UI 높이 ÷ 화면 높이가 같고, 1080에서는 기준 크기(설정 값에서 계산)와 같아요.
 #   godot --headless --path game --script res://tests/c12_toolbar.gd -- out=<폴더>
 extends SceneTree
 
@@ -109,6 +108,59 @@ func _initialize() -> void:
 	for i in range(10):
 		cp._process(0.05)
 	_ok("screen_tab_unpins", not cp.bar.pinned and not cp.s.toolbar_shown and not cp._bar_card.visible)
+	await _check_ui_scale(cp)
 	cp.queue_free()
 	await process_frame
 	U.finish(self, fails)
+
+
+# UI 요소의 화면 픽셀 높이(창 배율 포함) ÷ 창 높이
+func _ratio(c: Control, win: Window) -> float:
+	return c.size.y * win.content_scale_factor / float(win.size.y)
+
+
+func _measure(cp: Node, win: Window) -> Dictionary:
+	for i in range(3):
+		await process_frame
+	cp._process(0.016)
+	var out := {"date": _ratio(cp._clock_card, win), "tool": _ratio(cp._tool_pill, win), "bar": _ratio(cp._bar_card, win)}
+	cp.open_help(0)
+	for i in range(3):
+		await process_frame
+	cp._process(0.016)
+	out["help"] = _ratio(cp._popup, win)
+	out["factor"] = win.content_scale_factor
+	out["help_visible"] = cp._popup.visible
+	cp._close_popup()
+	return out
+
+
+func _check_ui_scale(cp: Node) -> void:
+	var win := get_root()
+	var ref_h := float(Cfg.get_v("ui", "ui_reference_height_px"))
+	var k := float(Cfg.get_v("ui", "ui_scale"))
+	_ok("ui_reference_height_from_config", ref_h > 0.0 and is_equal_approx(cp._ref_height_px, ref_h))
+	if not cp.bar.pinned:
+		_key(cp, KEY_TAB)   # 도구 줄을 고정해서 보이게
+	for i in range(10):
+		cp._process(0.05)
+	var res := {}
+	for h in [1080, 1440, 2160]:
+		win.size = Vector2i(h * 16 / 9, h)   # 진짜 창 크기 바꾸기: size_changed로 배율이 따라와야 해요
+		var m: Dictionary = await _measure(cp, win)
+		res[h] = m
+		print("ui h=%d factor=%.3f size=%s %s" % [h, win.content_scale_factor, win.size, m])
+		_ok("ui_factor_follows_window_%d" % h, is_equal_approx(win.content_scale_factor, h / ref_h), "factor=%.3f size=%s" % [win.content_scale_factor, win.size])
+		_ok("ui_bar_and_help_visible_%d" % h, cp._bar_card.visible and m["help_visible"] and cp._clock_card.size.y > 0.0)
+	for key in ["date", "tool", "bar", "help"]:
+		var base: float = res[1080][key]
+		for h in [1440, 2160]:
+			var r: float = res[h][key]
+			# 설계 픽셀이 정수로 반올림되므로 아주 작은 차이는 허용
+			_ok("ui_ratio_same_%s_%d" % [key, h], absf(r - base) <= 0.003, "1080=%.4f %d=%.4f" % [base, h, r])
+	# 기준 높이(1080)에서는 배율 1, K = ui_scale 그대로라서 예전 화면과 같은 픽셀 크기예요
+	_ok("ui_1080_uses_ui_scale_unscaled", is_equal_approx(cp.K, k) and is_equal_approx(float(res[1080]["factor"]), 1.0))
+	win.size = Vector2i(1920, 1080)
+	for i in range(3):
+		await process_frame
+	_ok("ui_1080_factor_is_one", is_equal_approx(win.content_scale_factor, 1.0))

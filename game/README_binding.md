@@ -195,7 +195,7 @@ if SimWorld.peek_save_version(raw)["supported"]:
 | C9 | `engine_C09_rejection_notice_korean` | `game/tests/c09_rejections.gd` |
 | C10 | `engine_C10_cell_info` | `game/tests/c10_cell_info.gd` |
 | C11 | `engine_C11_help` | `game/tests/c11_help.gd` |
-| C12 | `engine_C12_toolbar` | `game/tests/c12_toolbar.gd` (화면 높이 비례 UI 부분은 아직: 파일 안 TODO) |
+| C12 | `engine_C12_toolbar` | `game/tests/c12_toolbar.gd` (도구 줄 + 화면 높이 3가지 1080·1440·2160에서 UI 높이 ÷ 화면 높이 같음. 창 크기를 실제로 바꿔 검사) |
 | C13 | `engine_C13_model_slots` | `game/tests/c13_model_slots.gd` |
 | C14 | `engine_C14_cover_fans_outside` | `game/tests/c14_cover_fans_outside.gd` |
 

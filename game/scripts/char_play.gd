@@ -49,10 +49,16 @@ var _popup_box: VBoxContainer
 var _popup_kind := ""
 var _last_tick := -1
 var _season_done := false
-# HUD 크기: game_config [ui] ui_scale. 캐릭터 화면에서는 창 늘이기(stretch)를 끄고 실제 화면 픽셀로 그려요.
-# TODO(M6b UI 크기, 명세 2.3·Q4·C12): UI를 화면 높이에 비례시키는 일은 다음 작업이에요. 지금은 프로토타입대로 고정 배율이에요.
+# HUD 크기: game_config [ui] ui_scale = 기준 높이(ui_reference_height_px)에서의 배율 (K, 설계 픽셀 -> 화면 픽셀).
+# 화면 높이에 비례시키는 방법(명세 2.3·Q4): 캐릭터 화면이 열려 있는 동안 창의 content_scale_mode를 CANVAS_ITEMS(기준 크기 없음)로 하고
+# content_scale_factor = 창 높이 / 기준 높이로 둬요. 2D(HUD)만 그 배율로 커지고 3D는 영향 없어요. 마우스 좌표도 엔진이 같은 배율로 되돌려
+# 주므로 단추 클릭 자리가 어긋나지 않아요. 창 크기가 바뀌면(size_changed, 전체화면 전환 포함) 배율을 다시 계산해요.
+# 기준 높이에서는 배율이 1이라 예전 모습과 같아요. 나갈 때 창 설정은 원래대로 돌려놔요.
 var K := 1.0
 var _prev_scale_mode := -1
+var _prev_scale_size := Vector2i.ZERO
+var _prev_scale_factor := 1.0
+var _ref_height_px := 1080.0
 var _bar_card: PanelContainer
 var _clock_card: PanelContainer
 var _speed_card: PanelContainer
@@ -66,9 +72,15 @@ var bar := ToolbarState.new()   # 도구 줄 숨김·잠깐 보이기·고정 (�
 
 func _ready() -> void:
 	K = float(Cfg.get_v("ui", "ui_scale"))
+	_ref_height_px = float(Cfg.get_v("ui", "ui_reference_height_px"))
 	var win := get_window()
 	_prev_scale_mode = win.content_scale_mode
-	win.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED   # 점검 화면은 그대로 (나갈 때 되돌려요)
+	_prev_scale_size = win.content_scale_size
+	_prev_scale_factor = win.content_scale_factor
+	win.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS   # 기준 크기 없이 배율만 (나갈 때 되돌려요)
+	win.content_scale_size = Vector2i.ZERO
+	win.size_changed.connect(_apply_ui_scale)
+	_apply_ui_scale()
 	s = CharSession.new()
 	s.notice.connect(_notify)
 	s.device_opened.connect(_open_device)
@@ -125,7 +137,12 @@ func _show_start_error(message: String) -> void:
 
 func _exit_tree() -> void:
 	if _prev_scale_mode >= 0:
-		get_window().content_scale_mode = _prev_scale_mode
+		var win := get_window()
+		if win.size_changed.is_connected(_apply_ui_scale):
+			win.size_changed.disconnect(_apply_ui_scale)
+		win.content_scale_mode = _prev_scale_mode
+		win.content_scale_size = _prev_scale_size
+		win.content_scale_factor = _prev_scale_factor
 	if s != null:
 		s.dispose()
 
@@ -136,6 +153,12 @@ const C_PANEL_BORDER := Color(1.0, 0.92, 0.78, 0.18)
 const C_TEXT := Color(1.0, 0.97, 0.9)
 const C_DIM := Color(1.0, 0.95, 0.85, 0.62)
 const C_ACCENT := Color(1.0, 0.84, 0.45)
+
+
+# 창 높이에 맞춰 UI 배율 정하기 (높이를 안 주면 지금 창 높이)
+func _apply_ui_scale(height_px := -1) -> void:
+	var h := height_px if height_px > 0 else get_window().size.y
+	get_window().content_scale_factor = maxf(float(h) / _ref_height_px, 0.01)
 
 
 # 설계 픽셀(1280×720 기준 값) → 지금 화면 픽셀
