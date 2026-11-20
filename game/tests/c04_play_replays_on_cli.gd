@@ -56,7 +56,7 @@ func _init() -> void:
 	print("fast_forward stops [tick, hour, ticks run] = %s" % [ra["stops"]])
 	_ok("sleep_and_skip_stop_at_wake_hour", stop_ok and ra["stops"].size() == 5)
 	_ok("skip_3_days_is_3_wakeups", ra["stops"].size() >= 2 and int(ra["stops"][1][2]) > 48 and int(ra["stops"][1][2]) <= 72)
-	# 열흘(240틱) 맡기기를 20프레임(240틱/초 × 1/30초 × 20 = 160틱) 뒤에 끊으면 그다음 기상 시각(168틱)에 멈춰요
+	# 열흘(240틱) 맡기기를 160틱 돈 뒤에 끊으면 그다음 기상 시각(168틱)에 멈춰요 (char_plan, 끊는 때는 틱 기준)
 	_ok("skip_10_interrupted_stops_at_next_wake", ra["stops"].size() >= 3 and int(ra["stops"][2][2]) == 168, "ran=%d" % (int(ra["stops"][2][2]) if ra["stops"].size() >= 3 else -1))
 	_ok("skip_hour_runs_one_tick_applies_pending_refused_while_paused", ra["skip_checks"].size() == 3 and not ra["skip_checks"].has(false), str(ra["skip_checks"]))
 	var tool_1x1 := 0

@@ -56,11 +56,13 @@ var speed_multipliers: Array = [1.0]
 var speed_index := 0               # 일하는 속도 단추 ×1~×4. 결과에 안 들어가요
 var toolbar_shown := false         # 도구 줄을 Tab으로 고정해 보이는지 (화면 설정, 게임 쪽 저장)
 var wake_hour := 6
-var sleep_tps := 24.0
-var skip_tps := 240.0
+var sleep_cycle_s := 4.0           # 자러 가기: 표현(낮→밤→낮 한 번)과 틱이 함께 끝나는 현실 초 ([char_time])
+var skip_cycle_s := 8.0            # 며칠 맡기기: 같은 뜻, 며칠이든 이 시간 안에
 var max_per_frame := 48
 var ff_target_tick := -1
 var _clock_accum := 0.0
+var _ff_elapsed := 0.0             # 자러 가기·며칠 맡기기가 흐른 현실 초 (일시정지 중에는 멈춰요)
+var _ff_duration := 0.0
 var _season_end_hit := false
 
 # 행동
@@ -107,8 +109,8 @@ func _make_runner() -> void:
 	base_seconds_per_hour = float(Cfg.get_v("char_time", "seconds_per_game_hour"))
 	speed_multipliers = Cfg.get_v("char_time", "speed_multipliers")
 	wake_hour = int(Cfg.get_v("char_time", "wake_hour"))
-	sleep_tps = float(Cfg.get_v("char_time", "sleep_ticks_per_second"))
-	skip_tps = float(Cfg.get_v("char_time", "skip_ticks_per_second"))
+	sleep_cycle_s = float(Cfg.get_v("char_time", "sleep_cycle_seconds"))
+	skip_cycle_s = float(Cfg.get_v("char_time", "skip_cycle_seconds"))
 	max_per_frame = int(Cfg.get_v("time", "max_ticks_per_frame"))
 
 
@@ -448,6 +450,8 @@ func _begin_fast_forward(m: String, target: int) -> bool:
 	mode = m
 	ff_target_tick = target
 	_clock_accum = 0.0
+	_ff_elapsed = 0.0
+	_ff_duration = sleep_cycle_s if m == MODE_SLEEP else skip_cycle_s
 	_action_was_held = false
 	_hold_cells.clear()
 	runner.autosave_hold = true   # 자는 동안에는 저장하지 않아요. 멈춘 뒤에 저장해요 (명세 8장)
@@ -468,7 +472,18 @@ func remaining_ff_ticks() -> int:
 	return maxi(0, ff_target_tick - runner.world.get_tick()) if mode != MODE_WORK else 0
 
 
+# 자러 가기·며칠 맡기기 표현의 진행 (0~1). 일하는 동안은 1. 빛(DayLight)이 이 값만 보고 한 번 돌아요
+func rest_progress() -> float:
+	if mode == MODE_WORK:
+		return 1.0
+	if _ff_duration <= 0.0:
+		return 1.0
+	return clampf(_ff_elapsed / _ff_duration, 0.0, 1.0)
+
+
 # 현실 시간 dt초를 흘려요. 돌린 틱 수를 돌려줘요.
+# 자러 가기·며칠 맡기기: 남은 틱을 남은 표현 시간에 고르게 나눠 돌려요(속도만 다르고 틱·순서·시간마다 처리는 그대로).
+# 마지막 틱은 표현이 끝나는 프레임에 돌려서 둘이 함께 끝나요. 끊기(interrupt_skip)로 목표가 줄면 남은 틱을 남은 시간에 다시 나눠요.
 func advance_clock(dt: float) -> int:
 	if paused:
 		return 0
@@ -478,10 +493,16 @@ func advance_clock(dt: float) -> int:
 		n = int(_clock_accum)
 		_clock_accum -= n
 	else:
-		_clock_accum += dt * (sleep_tps if mode == MODE_SLEEP else skip_tps)
-		n = int(_clock_accum)
-		_clock_accum -= n
-		n = mini(n, remaining_ff_ticks())
+		var rem := remaining_ff_ticks()
+		var left := _ff_duration - _ff_elapsed
+		_ff_elapsed += dt
+		if _ff_elapsed >= _ff_duration:
+			n = rem
+			_clock_accum = 0.0
+		else:
+			_clock_accum += float(rem) * dt / left
+			n = mini(int(_clock_accum), maxi(0, rem - 1))
+			_clock_accum -= n
 	if n > max_per_frame:
 		n = max_per_frame   # 상한: 실제 속도가 느려질 뿐 결과는 같아요
 		_clock_accum = 0.0

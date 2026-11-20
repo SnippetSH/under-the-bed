@@ -11,6 +11,7 @@ const Lib = preload("res://scripts/art_library.gd")
 const Tools = preload("res://scripts/char_tools.gd")
 const HouseCover = preload("res://scripts/house_cover.gd")
 const CharacterRig = preload("res://scripts/character_rig.gd")
+const DayLight = preload("res://scripts/day_light.gd")
 
 const MARKER_KIND := {
 	"watering_can": "water", "fertilizer": "powder", "compost": "powder", "lime": "powder", "hoe": "furrow",
@@ -480,13 +481,15 @@ func plant_instance_counts() -> Dictionary:
 
 # 시각(시 + 몫)에 따른 해 (꾸밈, 진짜 값 없음)
 func set_light(hour_f: float) -> void:
-	var day := clampf(sin((hour_f - 6.0) / 13.0 * PI), 0.0, 1.0)
-	var elev := lerpf(8.0, 62.0, day)
-	var az := lerpf(-70.0, 70.0, clampf((hour_f - 6.0) / 13.0, 0.0, 1.0))
-	sun.rotation = Vector3(deg_to_rad(-elev), deg_to_rad(180.0 + az), 0)
-	var warm := Color(1.0, 0.72, 0.5).lerp(Color(1.0, 0.97, 0.9), clampf(day * 1.6, 0.0, 1.0))
-	sun.light_color = warm
-	sun.light_energy = float(Cfg.get_v("light", "sun_energy_day")) * clampf(day * 1.4, 0.06, 1.0)
+	apply_light(DayLight.params(hour_f))
+
+
+# 빛 값(DayLight.params / DayLight.update)으로 해·하늘을 그려요. 자러 가기·며칠 맡기기 동안에는 한 번 도는 표현 값이 와요
+func apply_light(p: Dictionary) -> void:
+	sun.rotation = Vector3(deg_to_rad(-float(p["sun_elev_deg"])), deg_to_rad(180.0 + float(p["sun_az_deg"])), 0)
+	sun.light_color = p["sun_color"]
+	sun.light_energy = float(Cfg.get_v("light", "sun_energy_day")) * float(p["sun_energy_factor"])
+	set_sky(DayLight.SKY_BASE * (p["tint"] as Color))
 
 
 # 유동팬 날개: 켜져 있으면 정한 속도까지 서서히 빨라지고, 꺼지면 서서히 멈춰요 (보이는 것 fan_on만 봐요)

@@ -1,4 +1,4 @@
-# 엔진 검사 E1~E10 (m6-overview 10.1), 게임 스크립트 검사 G1~G3, 캐릭터 화면 검사 C1~C14 (m6b-character-play 9.1)를 ctest에 등록해요. SIM_BUILD_GODOT(godot 프리셋)일 때만 tests/CMakeLists.txt가 포함해요.
+# 엔진 검사 E1~E10 (m6-overview 10.1), 게임 스크립트 검사 G1~G3, 캐릭터 화면 검사 C1~C15 (m6b-character-play 9.1, C15는 2026-11-20 디렉터 요청)를 ctest에 등록해요. SIM_BUILD_GODOT(godot 프리셋)일 때만 tests/CMakeLists.txt가 포함해요.
 #
 # Godot 실행 파일 위치는 저장소에 적지 않아요(CLAUDE.md). 다음 중 하나로 받아요:
 #   - 구성할 때 CMake 캐시: cmake --preset godot -DGODOT_EXECUTABLE=<경로>
@@ -56,6 +56,7 @@ sim_add_engine_check(engine_C11_help c11_help.gd)                               
 sim_add_engine_check(engine_C12_toolbar c12_toolbar.gd)                               # 도구 줄 숨김·잠깐 보이기·Tab (UI 비례 크기는 아직: 파일 안 TODO)
 sim_add_engine_check(engine_C13_model_slots c13_model_slots.gd)                       # 모델 자리, character.glb, 평면 그림으로 돌아가기
 sim_add_engine_check(engine_C14_cover_fans_outside c14_cover_fans_outside.gd)         # 피복 겹·측창·유동팬 5개·바깥 땅과 하늘
+sim_add_engine_check(engine_C15_rest_cycle_no_flash c15_rest_no_flash.gd)             # 자러 가기·며칠 맡기기: 빛은 낮→밤→낮 한 번, 틱·해시는 그대로
 
 # E2: 전체 시나리오 목록(tools/compare_engine_cli.py E2_CASES)을 모든 틱 비교. 결과표를 출력해요.
 add_test(NAME engine_E2_matches_cli_every_tick

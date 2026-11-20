@@ -139,12 +139,16 @@ func wait_ticks(n: int) -> int:
 	return guard
 
 
-# 자러 가기·며칠 맡기기: 일하는 상태로 돌아올 때까지 시계를 흘려요. interrupt_after > 0이면 그 프레임 뒤 아무 키
-func fast_forward(interrupt_after := 0) -> int:
+# 자러 가기·며칠 맡기기: 일하는 상태로 돌아올 때까지 시계를 흘려요. interrupt_after_ticks > 0이면 그만큼 틱이 돈 뒤 아무 키.
+# (틱 기준이라 표현 길이·프레임 간격과 무관하게 같은 틱에서 끊겨요. 예전에는 프레임 수였어요: 240틱/초 × 1/30초 × 20 = 160틱)
+func fast_forward(interrupt_after_ticks := 0) -> int:
 	var f := 0
+	var t0: int = s.world().get_tick()
+	var interrupted := false
 	while s.mode != "work" and f < 1000000:
 		s.advance_clock(CLOCK_DT)
 		f += 1
-		if interrupt_after > 0 and f == interrupt_after:
+		if interrupt_after_ticks > 0 and not interrupted and s.world().get_tick() - t0 >= interrupt_after_ticks:
+			interrupted = true
 			s.interrupt_skip()
 	return f

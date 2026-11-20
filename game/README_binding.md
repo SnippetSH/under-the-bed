@@ -198,5 +198,7 @@ if SimWorld.peek_save_version(raw)["supported"]:
 | C12 | `engine_C12_toolbar` | `game/tests/c12_toolbar.gd` (도구 줄 + 화면 높이 3가지 1080·1440·2160에서 UI 높이 ÷ 화면 높이 같음. 창 크기를 실제로 바꿔 검사) |
 | C13 | `engine_C13_model_slots` | `game/tests/c13_model_slots.gd` |
 | C14 | `engine_C14_cover_fans_outside` | `game/tests/c14_cover_fans_outside.gd` |
+| C15 | `engine_C15_rest_cycle_no_flash` | `game/tests/c15_rest_no_flash.gd` (자러 가기·30일 맡기기·도중 끊기·작기 끝: 보이는 밝기가 한 번만 어두워졌다 밝아지고 변화 속도에 상한, 마지막 틱·해시 = 같은 틱 수를 바로 돌린 판, 실제 화면 `char_play.presented_light_level()`) |
 
-- 가짜 입력은 `game/tests/char_driver.gd`가 넣어요. 걷기는 시간을 흘리지 않고, 기다리기·자러 가기·맡기기만 시계를 흘려서 입력이 틱 기준이에요(C5).
+- 가짜 입력은 `game/tests/char_driver.gd`가 넣어요. 걷기는 시간을 흘리지 않고, 기다리기·자러 가기·맡기기만 시계를 흘려서 입력이 틱 기준이에요(C5). 맡기기 도중 끊기도 "그만큼 틱이 돈 뒤"로 넣어요(표현 길이와 무관).
+- 자러 가기·며칠 맡기기의 속도: 표현 길이(`[char_time] sleep_cycle_seconds` 4초, `skip_cycle_seconds` 8초) 안에 남은 틱을 고르게 나눠 돌려요. 빛·하늘·해/달 아이콘은 그동안 시계 대신 `day_light.gd`의 "낮 → 밤 → 낮 한 번" 값을 따라요.

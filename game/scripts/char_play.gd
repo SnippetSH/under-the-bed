@@ -17,6 +17,7 @@ const ToolbarState = preload("res://scripts/toolbar_state.gd")
 const HelpData = preload("res://scripts/help_data.gd")
 const ActionNames = preload("res://scripts/action_names.gd")
 const CellInfo = preload("res://scripts/cell_info.gd")
+const DayLight = preload("res://scripts/day_light.gd")
 
 const START_SCENE := "res://scenes/start.tscn"
 const DEFAULT_SCENARIO := "direct_play"
@@ -68,6 +69,8 @@ var _cell_chip: PanelContainer
 var _cell_label: Label
 var _cell_key := ""             # 칸 정보를 다시 쓸지 (대상 칸·틱이 바뀔 때만)
 var bar := ToolbarState.new()   # 도구 줄 숨김·잠깐 보이기·고정 (명세 2.3)
+var light := DayLight.new()     # 시각 빛 + 자러 가기·며칠 맡기기의 한 번 도는 표현
+var _frame_dt := 0.0
 
 
 func _ready() -> void:
@@ -436,21 +439,10 @@ func _date_text(t: Dictionary) -> String:
 	return "%d월 %d일  %02d:%02d" % [t["month"], t["day"], t["hour"], minute]
 
 
-# 시각(시 + 시간 안의 몫) → 빛 색 (꾸밈, 진짜 값 없음)
-const LIGHT_KEYS := [
-	[0.0, Color(0.42, 0.47, 0.72)], [4.5, Color(0.45, 0.49, 0.74)], [6.0, Color(0.98, 0.8, 0.74)],
-	[7.5, Color(1, 0.97, 0.92)], [12.0, Color(1, 1, 1)], [16.0, Color(1, 0.97, 0.9)],
-	[18.0, Color(1.0, 0.88, 0.76)], [19.5, Color(0.74, 0.68, 0.86)], [21.0, Color(0.44, 0.48, 0.73)], [24.0, Color(0.42, 0.47, 0.72)],
-]
-
-
-static func light_at(h: float) -> Color:
-	for i in range(LIGHT_KEYS.size() - 1):
-		var a: Array = LIGHT_KEYS[i]
-		var b: Array = LIGHT_KEYS[i + 1]
-		if h >= a[0] and h <= b[0]:
-			return (a[1] as Color).lerp(b[1], smoothstep(a[0], b[0], h))
-	return LIGHT_KEYS[0][1]
+# 시각 빛(곱하기 색·하늘·해·해/달 아이콘)은 전부 DayLight 한 곳에서 와요. 자러 가기·며칠 맡기기 동안에는
+# 시계 대신 "낮 → 밤 → 낮 한 번" 표현 값이에요(광과민 대응, day_light.gd 머리 주석)
+func presented_light_level() -> float:
+	return light.last_level()
 
 
 func _refresh(force: bool) -> void:
@@ -461,12 +453,11 @@ func _refresh(force: bool) -> void:
 		view.refresh_visuals()
 		var tot: Dictionary = w.get_harvest_totals()
 		_harvest.text = "누적 수확  %d개 · %.1f kg" % [tot["harvested_fruits"], float(tot["harvested_fresh_g"]) / 1000.0]
-	var hf: float = float(t["hour"]) + s.hour_fraction()
-	var lc := light_at(hf)
-	_tint.color = lc
-	view.set_sky(Color("#d6e8ee") * lc)
-	view.set_light(hf)
-	_sky_icon.texture = Soft.sky_icon(hf >= 6.0 and hf < 19.0, _k(40))
+	var lp: Dictionary = light.update(s, _frame_dt)
+	_frame_dt = 0.0
+	_tint.color = lp["tint"]
+	view.apply_light(lp)
+	_sky_icon.texture = Soft.sky_icon(bool(lp["day_icon"]), _k(40))
 	_date.text = _date_text(t)
 	match s.mode:
 		CharSession.MODE_SLEEP:
@@ -625,6 +616,7 @@ func _process(delta: float) -> void:
 	bar.update(delta)
 	_layout()
 	view.update_dynamic(delta)
+	_frame_dt = delta
 	_refresh(false)
 
 
