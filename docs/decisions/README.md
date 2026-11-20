@@ -25,7 +25,7 @@
 | [0013](0013-m5a-deep-soil-and-cell-variation.md) | M5a 깊은 흙 온도 항과 셀 간 병해 차이 | 승인 |
 | [0014](0014-m5b-transpiration-humidity-feedback.md) | 증산의 습도 되먹임을 M5b로 당김 (ADR-0011 결정 6 일부 대체) | 되돌림 (2026-11-19 0차, 결정 33) |
 | [0015](0015-godot-version-and-gdextension-build.md) | Godot·godot-cpp 버전 고정과 GDExtension 빌드 방식 (M6) | 승인 (2026-11-20) |
-| [0016](0016-m6-split-and-character-play.md) | M6를 M6a(엔진 연결)·M6b(캐릭터 플레이)로 나누기, 비스듬한 2.5D 화면, 칸 단위 상호작용 | 제안됨 (2026-11-20) |
+| [0016](0016-m6-split-and-character-play.md) | M6를 M6a(엔진 연결)·M6b(캐릭터 플레이)로 나누기, 비스듬한 2.5D 화면, 칸 단위 상호작용 | 승인 (2026-11-20) |
 
 ## 템플릿
 
