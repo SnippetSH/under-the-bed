@@ -4,7 +4,7 @@ extends Control
 const Cfg = preload("res://scripts/cfg.gd")
 
 signal selection_changed(area: Array)   # [row, col, rows, cols], 선택 없으면 빈 배열
-signal cell_hovered(index: int)
+signal cell_picked(index: int)          # 누른 칸 (끌기를 시작한 칸). 개발자 패널의 "칸 정보"가 따라가요
 
 var cols := 20
 var rows := 4
@@ -12,14 +12,19 @@ var cell_px := 44
 var visuals: Dictionary = {}
 var selection: Array = []               # [row, col, rows, cols]
 var flashes: Dictionary = {}            # tile_index -> 남은 초
-var dev_selected_cell := -1             # 개발자 패널이 보여 주는 칸 (테두리만)
+var overlay := PackedFloat64Array()     # 개발자 오버레이 값 (칸 수와 같은 길이, 없으면 빈 배열). 이 파일은 값의 뜻을 몰라요
+var overlay_min := 0.0
+var overlay_max := 1.0
+var picked_cell := -1                   # 개발자 패널이 보여 주는 칸 (테두리만)
 
 var _drag_from := Vector2i(-1, -1)
 var _drag_cur := Vector2i(-1, -1)
 var _dragging := false
-var _press_pos := Vector2.ZERO
 var _stage_thresholds: Array = []
 var _c := {}
+var _overlay_low := Color.BLUE
+var _overlay_high := Color.YELLOW
+var _overlay_alpha := 0.6
 
 
 func _ready() -> void:
@@ -41,6 +46,14 @@ func set_grid(c: int, r: int) -> void:
 
 func set_visuals(v: Dictionary) -> void:
 	visuals = v
+	queue_redraw()
+
+
+# 개발자 패널이 칠할 값을 넘겨요 (값 읽기는 개발자 패널 몫). 빈 배열이면 끔.
+func set_overlay(values: PackedFloat64Array, mn: float, mx: float) -> void:
+	overlay = values
+	overlay_min = mn
+	overlay_max = mx
 	queue_redraw()
 
 
@@ -82,7 +95,6 @@ func _gui_input(ev: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
 				_dragging = true
-				_press_pos = mb.position
 				_drag_from = _cell_at(mb.position)
 				_drag_cur = _drag_from
 			elif _dragging:
@@ -93,21 +105,15 @@ func _gui_input(ev: InputEvent) -> void:
 				var x1 := maxi(_drag_from.x, _drag_cur.x)
 				var y1 := maxi(_drag_from.y, _drag_cur.y)
 				_set_selection([y0, x0, y1 - y0 + 1, x1 - x0 + 1])
-				dev_selected_cell = _drag_from.y * cols + _drag_from.x
-				cell_cursor_changed()
+				picked_cell = _drag_from.y * cols + _drag_from.x
+				cell_picked.emit(picked_cell)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
 			clear_selection()
 	elif ev is InputEventMouseMotion:
 		var mm := ev as InputEventMouseMotion
-		var c := _cell_at(mm.position)
-		cell_hovered.emit(c.y * cols + c.x)
 		if _dragging:
-			_drag_cur = c
+			_drag_cur = _cell_at(mm.position)
 			queue_redraw()
-
-
-func cell_cursor_changed() -> void:
-	cell_hovered.emit(dev_selected_cell)
 
 
 func stage_of(leaf_g: float) -> int:
@@ -168,6 +174,11 @@ func _draw() -> void:
 			var fc: Color = _c["harvest_flash"]
 			fc.a = a * 0.7
 			draw_rect(rect.grow(-2.0), fc)
+	_draw_overlay(cp)
+	# 개발자 패널이 보여 주는 칸 테두리
+	if picked_cell >= 0 and picked_cell < rows * cols:
+		var pc := Rect2((picked_cell % cols) * cp, (picked_cell / cols) * cp, cp, cp)
+		draw_rect(pc.grow(-1.0), Color(1, 1, 1, 0.8), false, 1.5)
 	# 선택 테두리 (끌고 있는 동안은 끄는 사각형)
 	var sel := selection
 	if _dragging:
@@ -180,3 +191,15 @@ func _draw() -> void:
 		fill.a = 0.18
 		draw_rect(sr, fill)
 		draw_rect(sr, _c["selection"], false, 3.0)
+
+
+# 개발자 오버레이: 값을 [min, max] 구간의 색으로 칠해요 (값이 없거나 길이가 안 맞으면 안 그려요)
+func _draw_overlay(cp: float) -> void:
+	if overlay.size() != rows * cols:
+		return
+	var span := overlay_max - overlay_min
+	for i in range(overlay.size()):
+		var f := 0.5 if span <= 0.0 else clampf((overlay[i] - overlay_min) / span, 0.0, 1.0)
+		var col := _overlay_low.lerp(_overlay_high, f)
+		col.a = _overlay_alpha
+		draw_rect(Rect2((i % cols) * cp, (i / cols) * cp, cp, cp).grow(-1.0), col)
