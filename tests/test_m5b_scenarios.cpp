@@ -352,7 +352,7 @@ TEST_CASE("M5b S26 and S27 closed house without venting or fan is wetter and rot
         CHECK(rh_c > rh_v);
         CHECK(day_rh_c > day_rh_v);  // B2 방향
         CHECK(wet_c > wet_v);
-        // "가장 긴 연속 젖음"(창 안 칸 최대)은 두 쪽 모두 17 h로 같아서 검사하지 않아요 (보고 사항). 참고로 하루 최대의 평균을 WARN으로 내요.
+        // 연속 젖음 지표는 "하루 최장 연속 젖음의 창 평균"이에요 (결정 50). 창 전체 최댓값은 두 쪽 모두 17 h라 비교가 안 돼요.
         const auto daily_max_mean = [](const Run& r, std::size_t from, std::size_t to) {
             double s = 0.0;
             double n = 0.0;
@@ -362,8 +362,10 @@ TEST_CASE("M5b S26 and S27 closed house without venting or fan is wetter and rot
             }
             return s / n;
         };
-        WARN(std::format("S26 daily longest wet run mean closed/vented {:.1f}/{:.1f} h", daily_max_mean(closed, w, end + 1),
-                         daily_max_mean(vented, w, end + 1)));
+        const double daily_run_c = daily_max_mean(closed, w, end + 1);
+        const double daily_run_v = daily_max_mean(vented, w, end + 1);
+        WARN(std::format("S26 daily longest wet run mean closed/vented {:.1f}/{:.1f} h", daily_run_c, daily_run_v));
+        CHECK(daily_run_c > daily_run_v);
         CHECK(bot_c > bot_v);
         CHECK(rot_c > rot_v);
         check_conserved("s26_closed", closed);

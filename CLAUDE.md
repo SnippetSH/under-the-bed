@@ -11,9 +11,10 @@
 
 ## 현재 마일스톤
 
-**M5b 하우스 습도·지상부 병해충** (M5는 M5a → M5b로 나눠요, [ADR-0012](docs/decisions/0012-m5-split-and-population-index.md)). M5 전체 완료 기준: 소독 후 양쪽 개체군 감소, 고습 시 병 발생 증가 재현, 태양열 소독은 토양 온도·지속 시간이 클수록 사멸량 증가 (계획서 7장). 하우스 습도와 공기 흐름(병해)도 M5 범위예요 (ADR-0011).
-M5a 명세(m5-overview, soil-microbes, disinfection)는 2026-11-19 승인, 사전 작업(m5-overview 13장)과 본 프로토타입(14장) 뒤 최종 명세도 2026-11-19 승인([ADR-0013](docs/decisions/0013-m5a-deep-soil-and-cell-variation.md)). **M5a는 2026-11-19 승인**(정식 구현, `ctest --preset ci` 472개 통과). M5b 명세(house-humidity, foliar-disease, m5-overview M5b 부분, [ADR-0014](docs/decisions/0014-m5b-transpiration-humidity-feedback.md))는 2026-11-19 승인. 프로토타입 0~7차(버리는 브랜치 `proto/m5b-check`) 뒤 **M5b 최종 명세는 2026-11-20 승인**(m5-overview 15장, ADR-0014는 0차에서 되돌림). **M5b 본구현은 2026-11-20에 main에 로컬 병합**(틈새 환기 0.3 → 0.1 별도 파라미터 변경 → `feature/m5b` → 새 1작기 기준값 → 테스트 보강, `ctest --preset ci` 565개 통과, 결정 45~49는 m5-overview 12장). 지금은 **M5b 완료 승인 대기**예요. 승인 뒤에 M5 전체 완료와 다음 마일스톤(M6)으로 넘어가요.
-(M0~M3는 2026-11-18, M4·M5a는 2026-11-19 승인. 단, GitHub Actions CI는 원격 저장소가 없어 실행 검증을 건너뜀)
+**M6 엔진 연결** (계획서 7장: GDExtension 바인딩, 타일 렌더링, 행동 입력, 세이브. 완료 기준: 화면에서 1작기 플레이 가능, CLI 결과와 동일한 결과). 아직 명세가 없어요. **다음은 M6 명세 초안 → 디렉터 승인**이고, 승인 전에는 M6 코드를 만들지 않아요.
+**M5(미생물·병해)는 2026-11-20 완료 승인**: M5a(토양 미생물·소독, 2026-11-19 승인, [ADR-0013](docs/decisions/0013-m5a-deep-soil-and-cell-variation.md)) + M5b(하우스 습도·지상부 병해충, 2026-11-20 승인, [ADR-0012](docs/decisions/0012-m5-split-and-population-index.md), [ADR-0014](docs/decisions/0014-m5b-transpiration-humidity-feedback.md)는 되돌림). 기록은 [m5-overview](docs/spec/m5-overview.md) 12장(결정 1~52)·15장. `ctest --preset ci` 565개 통과. 프로토타입 브랜치 `proto/m5b-check`는 기록용으로 남아 있어요.
+밸런싱 때 다시 볼 것(디렉터 보류): 살균·살충제 추가(M7 이후), 천적 바깥 유입(결정 49), 겨울 백색 필름 지온(결정 23).
+(M0~M3는 2026-11-18, M4·M5a는 2026-11-19, M5b는 2026-11-20 승인. 단, GitHub Actions CI는 원격 저장소가 없어 실행 검증을 건너뜀)
 승인 전에 다음 마일스톤의 기능을 미리 만들지 않아요. (마일스톤이 바뀌면 이 줄을 갱신해요.)
 
 ## 작업 절차
