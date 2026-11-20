@@ -25,6 +25,13 @@ var season_over_notified := false
 var speed_index := 0                                # 0 = 일시정지, 1.. = 배속 단계
 var auto_irrigation := {"enabled": false, "hour": 8, "amount_mm": 4.0}
 var autosave_enabled := true
+# M6b 캐릭터 화면: 자러 가기·며칠 맡기기 동안은 자동 저장을 미뤘다가 멈춘 뒤에 해요(m6b-character-play 8장).
+# true인 동안 저장할 때가 오면 기억만 해 두고, release_autosave_hold()가 그때 한 번 저장해요. 점검 화면은 늘 false예요.
+var autosave_hold := false
+# M6b: 세이브 묶음 게임 구역에 더할 화면 쪽 값 (캐릭터 화면이 {"character": …}를 돌려주는 Callable을 넣어요). 비어 있으면 없음
+var extra_game_state := Callable()
+# 마지막으로 불러온 세이브의 게임 구역 전체 (캐릭터 화면이 "character"를 되살릴 때 읽어요). 새 판이면 빈 사전
+var loaded_game: Dictionary = {}
 var event_log: Array = []                           # 개발자 패널용 최근 이벤트 (최대 EVENT_LOG_MAX개)
 var stats := {"ticks_run": 0, "frames": 0, "capped_frames": 0, "step_usec_sum": 0, "step_usec_max": 0}
 
@@ -33,6 +40,7 @@ var _last_auto_day := -1                            # 자동 물 주기를 마�
 var _ticks_per_second: Array = []
 var _max_per_frame := 48
 var _autosave_ticks := 168
+var _autosave_pending := false
 
 
 func _ready() -> void:
@@ -66,6 +74,7 @@ func start_new(entry: Dictionary) -> Dictionary:
 	}
 	_last_auto_day = -1
 	season_over_notified = false
+	loaded_game = {}
 	_reset_runtime()
 	world_replaced.emit()
 	return r
@@ -86,6 +95,7 @@ func adopt_loaded(new_world: Object, game: Dictionary) -> void:
 	}
 	_last_auto_day = int(game.get("last_auto_day", -1))
 	season_over_notified = bool(game.get("season_over_notified", false))
+	loaded_game = game.duplicate(true)
 	_reset_runtime()
 	world_replaced.emit()
 
@@ -93,12 +103,14 @@ func adopt_loaded(new_world: Object, game: Dictionary) -> void:
 func _reset_runtime() -> void:
 	speed_index = 0
 	_accum = 0.0
+	_autosave_pending = false
 	event_log.clear()
 
 
 # 세이브 묶음의 게임 구역 (코어 세이브 형식과 무관). 배속은 저장하지 않아요 (불러오면 일시정지).
+# 캐릭터 화면이면 extra_game_state가 돌려준 키(예: "character")가 더해져요. 그 키가 없는 옛 세이브도 그대로 읽혀요.
 func game_state() -> Dictionary:
-	return {
+	var g := {
 		"format": GAME_STATE_FORMAT,
 		"mode": mode,
 		"scenario_id": scenario_id,
@@ -108,6 +120,9 @@ func game_state() -> Dictionary:
 		"last_auto_day": _last_auto_day,
 		"season_over_notified": season_over_notified,
 	}
+	if extra_game_state.is_valid():
+		g.merge(extra_game_state.call(), true)
+	return g
 
 
 # ---------- 배속 ----------
@@ -203,7 +218,19 @@ func set_auto_irrigation(enabled: bool, hour: int, amount_mm: float) -> void:
 
 
 func _autosave() -> void:
+	if autosave_hold:
+		_autosave_pending = true
+		return
 	autosaved.emit(SaveStore.save(self, SaveStore.AUTO))
+
+
+# 미뤄 둔 자동 저장이 있으면 지금 해요 (캐릭터 화면: 자러 가기·며칠 맡기기가 멈춘 뒤)
+func release_autosave_hold() -> void:
+	autosave_hold = false
+	if _autosave_pending:
+		_autosave_pending = false
+		if autosave_enabled:
+			_autosave()
 
 
 func _end_season() -> void:

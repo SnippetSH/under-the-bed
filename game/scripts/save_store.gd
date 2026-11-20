@@ -9,6 +9,14 @@
 # 요약: 목록에 보여 줄 표시용 값 (시뮬레이션에 안 들어가요). 게임 구역: SimRunner가 되살릴 값 (자동 물 주기 설정 등).
 # 엔진 상태: SimWorld.get_engine_state() (일정표 위치·명령 기록). 코어: SimWorld.save_bytes().
 #
+# 게임 구역 키 (SimRunner.game_state): format, mode, scenario_id, scenario_label, season_ticks,
+#   auto_irrigation {enabled, hour, amount_mm}, last_auto_day, season_over_notified
+# M6b 캐릭터 화면이 저장하면 "character"가 더해져요 (CharSession.char_state, m6b-character-play 8장):
+#   format, pos [x, z] (m), facing [x, z], tool_index, tool_settings [{kind?, amount?} × 도구 11종], speed_index(×1~×4 단추),
+#   toolbar_shown(도구 줄 Tab 고정), held [{cmd, cell, tool, stroke}] (코어에 아직 안 넣은 대기 행동과 구간 묶음 번호)
+#   자동 물 주기 설정은 위의 auto_irrigation 그대로예요. 요약의 "screen"은 "character"(캐릭터 화면) 또는 "check"(점검 화면)이고
+#   시작 화면이 어느 화면으로 열지 고를 때만 써요. "character"나 "screen"이 없는 M6a 세이브는 점검 화면 세이브로 읽어요(묶음 형식 버전은 그대로 1).
+#
 # 규칙 (결정 D6): 다른 버전·깨진 세이브는 불러오기를 거부하고 안내해요. 그 파일은 지우지도 덮어쓰지도 않아요
 # (같은 칸에 새로 저장할 때는 옛 파일을 "<칸>_old<번호>.utsave"로 비켜 두고 저장해요).
 # 쓸 때는 임시 파일에 쓴 뒤 이름을 바꿔요 (쓰다 꺼져도 이전 세이브가 남게).
@@ -22,6 +30,8 @@ const EXT := ".utsave"
 const HEADER_SIZE := 56
 const QUICK := "quick"
 const AUTO := "auto"
+const SCREEN_CHECK := "check"          # 요약 "screen": 점검 화면 (M6a)
+const SCREEN_CHARACTER := "character"  # 요약 "screen": 캐릭터 화면 (M6b)
 
 # 저장 폴더. 테스트가 다른 폴더로 바꿔 써요 (절대 경로도 돼요)
 static var dir := "user://saves"
@@ -246,7 +256,13 @@ static func build_summary(runner: Node, kind: String) -> Dictionary:
 		"mode": runner.mode, "season_ticks": runner.season_ticks, "schedule_enabled": w.is_schedule_enabled(),
 		"game_version": str(Cfg.get_v("game", "version")),
 		"core_save_version": SimWorld.core_save_version(), "bundle_version": BUNDLE_VERSION,
+		"screen": SCREEN_CHARACTER if runner.extra_game_state.is_valid() else SCREEN_CHECK,
 	}
+
+
+# 요약의 화면 (없는 옛 세이브는 점검 화면)
+static func screen_of(e: Dictionary) -> String:
+	return str(e.get("summary", {}).get("screen", SCREEN_CHECK))
 
 
 static func build_bundle(runner: Node, kind: String) -> PackedByteArray:

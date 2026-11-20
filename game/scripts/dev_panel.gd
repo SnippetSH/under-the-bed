@@ -7,8 +7,9 @@ extends PanelContainer
 const Cfg = preload("res://scripts/cfg.gd")
 
 var runner: Node
-var bed: Control
+var bed: Control                 # 점검 화면의 베드 그리드. 캐릭터 화면은 null이에요 (오버레이 없음, 칸은 cell_index로 정해 줘요)
 var cell_index := 0
+var raw_notes: Array = []        # 캐릭터 화면: 거부 원문 등 개발자용 기록 (플레이어 화면 알림은 한국어 문장만, m6b 2.3)
 
 var _overlay_opt: OptionButton
 var _legend: Label
@@ -70,7 +71,10 @@ func setup(r: Node, b: Control) -> void:
 	_house_text.name = "하우스"
 	_event_text = _mk(tabs)
 	_event_text.name = "이벤트 기록"
-	bed.cell_picked.connect(func(i: int): cell_index = i)
+	if bed != null:
+		bed.cell_picked.connect(func(i: int): cell_index = i)
+	else:
+		ov.visible = false   # 캐릭터 화면: 칠할 그리드가 없어요
 	visibility_changed.connect(_on_visibility_changed)
 	rebind()
 
@@ -178,6 +182,9 @@ func refresh() -> void:
 	_update_overlay()
 	var head := "tick %d  (%d월 %d일 %02d시, day_of_year %d)\n수확 합계: %s\n대기 명령 %d\n" % [
 		t["tick"], t["month"], t["day"], t["hour"], t["day_of_year"], fmt(w.get_harvest_totals()), w.get_pending_command_count()]
+	if not raw_notes.is_empty():
+		var recent := raw_notes.slice(maxi(0, raw_notes.size() - 6)).map(func(n): return str(n).replace("[", "[lb]"))
+		head += "[b]최근 거부·기록 (원문)[/b]\n" + "\n".join(recent) + "\n"
 	_house_text.text = ""
 	_house_text.append_text(head + dump(w.get_true_house(), "하우스 (진짜 값)"))
 	var idx := clampi(cell_index, 0, g.x * g.y - 1)
@@ -195,6 +202,8 @@ func refresh() -> void:
 
 
 func _update_overlay() -> void:
+	if bed == null:
+		return
 	var sel := _overlay_opt.selected
 	if sel <= 0 or sel >= _options.size():
 		bed.set_overlay(PackedFloat64Array(), 0.0, 1.0)
