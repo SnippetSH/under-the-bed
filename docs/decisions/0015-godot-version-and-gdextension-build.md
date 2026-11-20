@@ -1,6 +1,6 @@
 # ADR-0015: Godot·godot-cpp 버전 고정과 GDExtension 빌드 방식
 
-- 상태: 제안됨
+- 상태: 승인 (2026-11-20, m6-overview 결정 D9)
 - 날짜: 2026-11-20
 - 관련: [ADR-0001](0001-game-engine.md)(Godot 4 + GDExtension), [ADR-0004](0004-determinism-scope.md) 규칙 3(코어는 한 번만 빌드), [ADR-0005](0005-cpp-toolchain.md)(툴체인), [m6-overview](../spec/m6-overview.md)
 
@@ -42,7 +42,7 @@ ADR-0001은 "Godot와 godot-cpp 버전은 뷰어 작업을 시작할 때 그 시
 
 ### 승인되면 함께 적용할 문서 변경 (초안)
 
-- ADR-0001 맨 아래에 한 줄 덧붙임(ADR-0001이 스스로 정한 절차): "**버전 고정 (2026-11-XX, ADR-0015)**: Godot 4.7.2 안정판(표준 빌드), godot-cpp 10.0.0-stable(`GODOTCPP_API_VERSION=4.7`)."
+- ADR-0001 맨 아래에 한 줄 덧붙임(ADR-0001이 스스로 정한 절차): "**버전 고정 (2026-11-20, ADR-0015)**: Godot 4.7.2 안정판(표준 빌드), godot-cpp 10.0.0-stable(`GODOTCPP_API_VERSION=4.7`)."
 - `CLAUDE.md` "빌드와 실행"에 `godot` 프리셋과 `GODOT_EXECUTABLE` 설명 추가(M6 구현 PR에서).
 - `.gitignore`의 `*.import`: Godot 4 공식 권장은 `.godot/`만 무시하고 `*.import`는 커밋하는 것으로 알고 있어요(**확인 필요**, 이번에 다시 확인하지 못했어요). M6 구현 PR에서 확인 후 고쳐요.
 

@@ -35,3 +35,5 @@
 - **Unity**: 생태계와 에셋은 풍부하지만, C# ↔ C++ 경계 비용, 씬 파일 리뷰 난이도, 과거 라이선스 정책 변경 이력 때문에 제외했어요.
 - **raylib/SDL로 직접 구현**: 렌더링은 간단하지만 그래프 패널, 영농일지, 오버레이 같은 UI를 직접 만들어야 해서 비용이 커요.
 - **Bevy 등 Rust 엔진**: C++ 코어와 언어가 맞지 않아요.
+
+**버전 고정 (2026-11-20, [ADR-0015](0015-godot-version-and-gdextension-build.md))**: Godot 4.7.2 안정판(표준 빌드), godot-cpp 10.0.0-stable(`GODOTCPP_API_VERSION=4.7`).
