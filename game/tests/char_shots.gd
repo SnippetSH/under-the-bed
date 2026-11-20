@@ -40,10 +40,21 @@ func close_char(cp: Node) -> void:
 
 
 func _initialize() -> void:
-	out_dir = String(U.parse_args()["out"])
+	var args := U.parse_args()
+	out_dir = String(args["out"])
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	SaveStore.dir = "user://char_shots_saves"
 	root.msaa_3d = Viewport.MSAA_4X
+	if str(args.get("set", "")) == "v2":
+		await shots_v2(args)
+		Session.scenario_id = ""
+		quit(0)
+		return
+	if str(args.get("set", "")) == "scale":
+		await shots_scale()
+		Session.scenario_id = ""
+		quit(0)
+		return
 
 	# 1 시작 화면
 	var st: Node = load("res://scenes/start.tscn").instantiate()
@@ -141,3 +152,151 @@ func _initialize() -> void:
 	await close_char(cp2)
 	Session.scenario_id = ""
 	quit(0)
+
+
+# ---------- set=v2 (딸기 단계 모델·런너·자러 가기 한 번 도는 빛, 2026-11-20 요청) ----------
+const Cfg = preload("res://scripts/cfg.gd")
+const Art = preload("res://scripts/plant_art.gd")
+const Lib = preload("res://scripts/art_library.gd")
+
+
+func _grow(scenario_id: String, days: int, hour := 10) -> Node:
+	var cp: Node = await open_char(scenario_id)
+	var s: Object = cp.s
+	s.step_ticks(24 * days)
+	while s.hour_now() != hour:
+		s.step_ticks(1)
+	cp._notes.clear()
+	return cp
+
+
+# 칸 c 옆 통로에 서서 그 칸을 바라봐요
+func _stand_at_cell(s: Object, c: int) -> void:
+	var sp: Array = s.layout.stand_point_for_cell(c)
+	s.place(sp[0], sp[1])
+
+
+func _stage_summary(cp: Node) -> String:
+	var counts: Dictionary = cp.view.plant_instance_counts()
+	var parts := []
+	for k in counts:
+		if int(counts[k]) > 0:
+			parts.append("%s=%d" % [String(k).replace("strawberry_", ""), counts[k]])
+	var t: Dictionary = cp.s.world().get_time()
+	return "%d/%d %02d:00 runner_steps=%d %s" % [t["month"], t["day"], t["hour"], cp.view.runner_steps_now, ", ".join(parts)]
+
+
+func _shot_grow(name: String, scenario_id: String, days: int, cell: int, close := false) -> void:
+	var cp: Node = await _grow(scenario_id, days)
+	_stand_at_cell(cp.s, cell)
+	if close:
+		cp.view._cam_h = 2.0
+		cp.view._cam_d = 2.3
+		cp.view._look = 0.9
+	cp._notes.clear()
+	await frames(8)
+	print("%s: %s" % [name, _stage_summary(cp)])
+	await shot(name)
+	await close_char(cp)
+
+
+func _dead_cell(s: Object) -> int:
+	var v: Dictionary = s.world().get_tile_visuals(0.8)
+	for i in range(v["crop_present"].size()):
+		if v["crop_present"][i] == 1 and v["crop_alive"][i] == 0:
+			return i
+	return -1
+
+
+func _frame_time(cp: Node, label: String, n := 300) -> void:
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
+	await frames(30)
+	var t0 := Time.get_ticks_usec()
+	var gpu := 0.0
+	var cpu := 0.0
+	for i in range(n):
+		await process_frame
+		gpu += RenderingServer.viewport_get_measured_render_time_gpu(root.get_viewport_rid())
+		cpu += RenderingServer.viewport_get_measured_render_time_cpu(root.get_viewport_rid())
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0 / n
+	print("FRAME %s size=%s avg_frame_ms=%.3f gpu_ms=%.3f render_cpu_ms=%.3f fps=%.0f [%s]" % [label, root.size, ms, gpu / n, cpu / n, 1000.0 / ms, _stage_summary(cp)])
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+
+
+func shots_v2(args: Dictionary) -> void:
+	# (a)~(g) 표준 작기(처방 일정표대로 키운 밭)
+	await _shot_grow("v2_a_young.png", "season_standard", 2, 45)
+	await _shot_grow("v2_b_vegetative.png", "season_standard", 30, 45)
+	await _shot_grow("v2_c_flowering.png", "season_standard", 54, 45)
+	await _shot_grow("v2_d_fruit_set.png", "season_standard", 66, 45)
+	await _shot_grow("v2_e_harvest.png", "season_standard", 93, 45)
+	# (f) 죽은 포기
+	var cpf: Node = await _grow("season_standard", 100)
+	var dc := _dead_cell(cpf.s)
+	print("dead cell %d" % dc)
+	_stand_at_cell(cpf.s, maxi(dc, 0))
+	await frames(8)
+	print("v2_f_dead_among_live.png: %s" % _stage_summary(cpf))
+	await shot("v2_f_dead_among_live.png")
+	await close_char(cpf)
+	# (g) 캐릭터 옆 가까이 (카메라만 가까이)
+	await _shot_grow("v2_g_close_with_character.png", "season_standard", 93, 45, true)
+	# 정식 미리 보기 (빈 밭)
+	var cp2: Node = await open_char("direct_play")
+	cp2.s.step_ticks(10)
+	_stand_at_cell(cp2.s, 45)
+	cp2.s.device_command({"action": "plant", "seedling_grade": "B", "plants_per_m2": 8.0})
+	cp2._notes.clear()
+	await frames(8)
+	print("v2_preview.png: %s" % _stage_summary(cp2))
+	await shot("v2_preview.png")
+	await close_char(cp2)
+	# (i) 5월 중순 런너 (심어 둔 밭: 열매 몫이 있는 포기와 없는 포기가 섞여 둘 다 보여요), 그리고 표준 작기
+	await _shot_grow("v2_i_mid_may_runners_char_planted.png", "char_planted", 247, 45)
+	await _shot_grow("v2_i_mid_may_runners_close.png", "char_planted", 247, 45, true)
+	await _shot_grow("v2_i_mid_may_runners_season_standard.png", "season_standard", 247, 45)
+	# 프레임 시간: 꽃·열매가 가득한 때 (표준 작기 93일), 1920×1080
+	var cpt: Node = await _grow("season_standard", 93)
+	_stand_at_cell(cpt.s, 45)
+	await _frame_time(cpt, "stage_models")
+	await close_char(cpt)
+	Lib.model_dir = "res://art/no_models_for_compare"
+	Lib.clear_cache()
+	var cpo: Node = await _grow("season_standard", 93)
+	_stand_at_cell(cpo.s, 45)
+	await _frame_time(cpo, "old_placeholders_with_addons")
+	await close_char(cpo)
+	Lib.model_dir = Lib.MODEL_DIR
+	Lib.clear_cache()
+	# (h) 30일 맡기기 한 번: 낮 14시에 시작, 표현 진행 0 / 0.2 / 0.4 / 0.6 / 0.8 / 끝
+	var cph: Node = await _grow("season_standard", 60, 14)
+	_stand_at_cell(cph.s, 45)
+	await frames(8)
+	var s: Object = cph.s
+	await shot("v2_h0_skip_start.png")
+	s.skip_days(30)
+	var marks := [0.2, 0.4, 0.6, 0.8]
+	var mi := 0
+	var t0 := Time.get_ticks_msec()
+	var levels := []
+	while s.mode != "work":
+		await process_frame
+		levels.append(snappedf(cph.presented_light_level(), 0.001))
+		if mi < marks.size() and s.rest_progress() >= marks[mi]:
+			print("h%d progress=%.2f level=%.3f %s" % [mi + 1, s.rest_progress(), cph.presented_light_level(), _stage_summary(cph)])
+			await shot("v2_h%d_skip_%d.png" % [mi + 1, int(marks[mi] * 100)])
+			mi += 1
+	await frames(4)
+	print("h5 end after %.2f s level=%.3f %s" % [(Time.get_ticks_msec() - t0) / 1000.0, cph.presented_light_level(), _stage_summary(cph)])
+	await shot("v2_h5_skip_end.png")
+	print("skip levels (every 10th frame): %s" % [levels.filter(func(x): return true).slice(0, levels.size(), 10)])
+	await close_char(cph)
+
+
+# 크기 배율 비교 (stage_model_scale 0.4 / 0.5 / 0.6, 표준 작기 93일, 캐릭터 옆)
+func shots_scale() -> void:
+	for sc in [0.4, 0.5, 0.6]:
+		Cfg._load().set_value("plant_models", "stage_model_scale", sc)
+		await _shot_grow("scale_%d.png" % int(sc * 100), "season_standard", 93, 45)
+		await _shot_grow("scale_%d_close.png" % int(sc * 100), "season_standard", 93, 45, true)

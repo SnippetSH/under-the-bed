@@ -162,18 +162,18 @@ func _initialize() -> void:
 	await process_frame
 	view.setup(p)
 	view.refresh_visuals()
-	_ok("empty_field_no_plants", view.plant_instance_counts()["plant_stage1"] == 0)
+	_ok("empty_field_no_plants", view.plant_instance_counts()[view.seedling_slot()] == 0)
 	var notes: Array = []
 	p.notice.connect(func(t: String): notes.append(t))
 	p.device_command({"action": "plant", "seedling_grade": "B", "plants_per_m2": 8.0})
 	view.refresh_visuals()
 	var c1: Dictionary = view.plant_instance_counts()
-	_ok("preview_draws_seedlings_on_every_cell", p.has_held_plant() and view.preview_plant and c1["plant_stage1"] == 640, str(c1))
+	_ok("preview_draws_seedlings_on_every_cell", p.has_held_plant() and view.preview_plant and c1[view.seedling_slot()] == 640, str(c1))
 	_ok("preview_chip_text", CellInfo.text(view._last_v, 5, p.plant_density(), view.preview_plant) == "방금 심은 모종 (다음 시간에 자리 잡아요)")
 	var h0: String = p.world().state_hash()
 	p.cancel_last()
 	view.refresh_visuals()
-	_ok("Z_removes_preview", not p.has_held_plant() and view.plant_instance_counts()["plant_stage1"] == 0)
+	_ok("Z_removes_preview", not p.has_held_plant() and view.plant_instance_counts()[view.seedling_slot()] == 0)
 	_ok("preview_has_no_effect_on_core", p.world().state_hash() == h0 and p.world().get_pending_command_count() == 0)
 	var keys := {}
 	for grade in ["A", "B", "C"]:
@@ -192,7 +192,7 @@ func _initialize() -> void:
 	p.step_ticks(1)
 	view.refresh_visuals()
 	var ascii := RegEx.create_from_string("[A-Za-z_]")
-	_ok("flush_rejection_removes_preview_with_korean_notice", had and not view.preview_plant and view.plant_instance_counts()["plant_stage1"] == 0 and notes.size() >= 1 and ascii.search(str(notes[0])) == null, str(notes))
+	_ok("flush_rejection_removes_preview_with_korean_notice", had and not view.preview_plant and view.plant_instance_counts()[view.seedling_slot()] == 0 and notes.size() >= 1 and ascii.search(str(notes[0])) == null, str(notes))
 	view.free()
 	p.dispose()
 	U.finish(self, fails)

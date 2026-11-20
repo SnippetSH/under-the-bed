@@ -2,7 +2,7 @@
 # 문구가 "꽃·꽃봉오리 N개"(코어의 open_flower_count는 안 핀 꽃봉오리를 포함해요). 보이는 것만 써요(진짜 값 접근자 없음).
 #  1) 글 함수: 심은 칸, 빈 칸, 죽은 포기, 대상 없음, 밀도 모름
 #  2) 실제 판(처방대로 키운 작기 중간): 글이 보이는 값과 같고, 밀도는 시나리오 [crop] / 정식 명령에서
-#  3) 그림: 칸마다 그린 꽃·열매 수가 개수와 같은 방향(0이면 0, 많으면 많이, 자리 수에서 잘림), MultiMesh 합과 같음
+#  3) 그림(딸기 단계 모델이 없을 때의 예전 자리로 강제): 칸마다 그린 꽃·열매 수가 개수와 같은 방향(0이면 0, 많으면 많이, 자리 수에서 잘림), MultiMesh 합과 같음
 #  4) 캐릭터 화면 칩: 대상 칸을 바꾸면 글이 바뀌고, 대상 없음이면 숨김
 #   godot --headless --path game --script res://tests/c10_cell_info.gd -- out=<폴더>
 extends SceneTree
@@ -13,6 +13,7 @@ const CellInfo = preload("res://scripts/cell_info.gd")
 const HouseView3D = preload("res://scripts/house_view_3d.gd")
 const SaveStore = preload("res://scripts/save_store.gd")
 const Session = preload("res://scripts/session.gd")
+const Lib = preload("res://scripts/art_library.gd")
 
 var fails := PackedStringArray()
 
@@ -55,7 +56,9 @@ func _initialize() -> void:
 		var tt := CellInfo.text(v, pick, s.plant_density())
 		print("chip_real cell=%d %s" % [pick, tt.replace("\n", " / ")])
 		_ok("real_text_matches_visuals", tt.contains("꽃·꽃봉오리 %d개" % v["open_flower_count"][pick]) and tt.contains("열매 %d개" % v["fruit_count"][pick]) and tt.contains("익어 가는 것 %d개" % v["ripening_fruit_count"][pick]))
-	# ---- 3) 그림 덧붙임 ----
+	# ---- 3) 그림 덧붙임 (예전 자리: 딸기 단계 모델 파일이 없을 때의 그림. 단계 모델은 꽃·열매가 모델 안에 있어 C13 D가 봐요) ----
+	Lib.model_dir = "res://art/c10_no_models"
+	Lib.clear_cache()
 	var view: Node3D = HouseView3D.new()
 	get_root().add_child(view)
 	view.setup(s)
@@ -91,7 +94,10 @@ func _initialize() -> void:
 				mono = false
 			prev = dn
 		_ok("more_flowers_more_drawn_capped", mono and prev == 8 * 4, "last=%d" % prev)
+	_ok("fallback_view_without_stage_models", not view.stage_mode)
 	view.free()
+	Lib.model_dir = Lib.MODEL_DIR
+	Lib.clear_cache()
 	s.dispose()
 	# 빈 밭: 시나리오에 작물이 없으면 밀도 모름 → 정식하면 그 명령의 밀도
 	var e: Object = Driver.new_session("direct_play", false)

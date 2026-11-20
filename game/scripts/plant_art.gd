@@ -149,6 +149,87 @@ static func marker_texture(col: Color) -> ImageTexture:
 	return tex
 
 
+# ---------- 딸기 생육 단계 모델 고르기 (디렉터 모델 2026-11-20, game/art/README.md) ----------
+# 번호 = art_library.STAGE_SLOTS 순서
+enum { STAGE_S1, STAGE_S2, STAGE_S3, STAGE_S4, STAGE_S5, STAGE_S6_BERRIES, STAGE_S6_NO_BERRIES, STAGE_S7 }
+const RUNNER_SALT := 3                # 런너 모습 해시의 고정 소금 (꾸밈 yaw = 1, 크기 = 2와 겹치지 않게)
+const DAYS_PER_YEAR := 365            # 바인딩 get_time()과 같은 윤년 없는 달력
+const MONTH_START_DOY0 := [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]   # 각 달 1일의 (day_of_year − 1)
+
+static var _runner_cfg := {}
+
+
+# 고정 해시 → 0~1 (포기마다 꾸밈 값, 시뮬레이션과 무관. house_view_3d의 꾸밈 회전·크기와 같은 식)
+static func hash01(i: int, salt: int) -> float:
+	var x := (i * 73856093) ^ (salt * 19349663)
+	x = (x ^ (x >> 13)) * 1274126177
+	return float(absi(x) % 10007) / 10007.0
+
+
+# 칸 개수 total을 포기 per개에 고르게 나눌 때 k번째 포기 몫 (앞 포기부터 하나씩 더. house_view_3d와 같은 규칙)
+static func share(total: int, k: int, per: int) -> int:
+	return (total + (per - 1 - k)) / per
+
+
+static func runner_cfg() -> Dictionary:
+	if _runner_cfg.is_empty():
+		_runner_cfg = {
+			"month": int(Cfg.get_v("plant_models", "runner_start_month")),
+			"day": int(Cfg.get_v("plant_models", "runner_start_day")),
+			"step_days": float(Cfg.get_v("plant_models", "runner_step_days")),
+			"fraction": float(Cfg.get_v("plant_models", "runner_fraction_per_step")),
+		}
+	return _runner_cfg
+
+
+# 런너 시작일부터 지난 단계 수 (0 = 아직 시작 전). t = get_time() {elapsed_days, day_of_year, hour}.
+# 이번 작기 안에서 시작일(월·일)을 처음 지난 날부터 세요: 오늘과 시작일의 날짜 차이(1년 안)가 작기 경과 일수 이하일 때만.
+# 시작일 당일이 1단계(첫 포기들이 바로 바뀌어요), 그 뒤 runner_step_days마다 1단계씩. 달력만 보고 프레임·저장 상태와 무관해요.
+static func runner_steps(t: Dictionary) -> int:
+	var c := runner_cfg()
+	var start0: int = MONTH_START_DOY0[clampi(int(c["month"]), 1, 12) - 1] + int(c["day"]) - 1
+	var since := posmod(int(t["day_of_year"]) - 1 - start0, DAYS_PER_YEAR)
+	if since > int(t["elapsed_days"]):
+		return 0
+	var step := float(c["step_days"])
+	var days := float(since) + float(t["hour"]) / 24.0
+	return (int(floor(days / step)) if step > 0.0 else 0) + 1
+
+
+# 포기(칸 cell, 칸 안 k번째, 칸당 per)가 런너 모습으로 바뀌는 단계 (1부터). 단계마다 아직 안 바뀐 포기의 fraction씩:
+# 고정 해시 u(0~1)의 기하 분포 분위수라서 N단계 뒤 바뀐 몫의 기댓값 = 1 − (1 − fraction)^N
+static func runner_switch_step(cell: int, k: int, per: int) -> int:
+	var f := float(runner_cfg()["fraction"])
+	if f <= 0.0:
+		return 1 << 30
+	if f >= 1.0:
+		return 1
+	var u := hash01(cell * per + k, RUNNER_SALT)
+	return maxi(1, int(ceil(log(1.0 - u) / log(1.0 - f))))
+
+
+# 보이는 것(get_tile_visuals)만으로 칸 i의 k번째 포기 모델 번호 (-1 = 그리지 않음). steps = runner_steps(get_time()).
+# has_berries / has_no_berries: 런너 모델 파일이 있는지 (하나만 있으면 그것으로, 둘 다 없으면 런너 모습 없음)
+static func stage_for_plant(v: Dictionary, i: int, k: int, per: int, steps: int, has_berries := true, has_no_berries := true) -> int:
+	if v["crop_present"][i] == 0:
+		return -1
+	if v["crop_alive"][i] == 0:
+		return STAGE_S7
+	var fruit: int = v["fruit_count"][i]
+	if steps > 0 and (has_berries or has_no_berries) and steps >= runner_switch_step(i, k, per):
+		var berries := share(fruit, k, per) > 0
+		if (berries and has_berries) or not has_no_berries:
+			return STAGE_S6_BERRIES
+		return STAGE_S6_NO_BERRIES
+	if share(int(v["ripening_fruit_count"][i]), k, per) > 0:
+		return STAGE_S5
+	if share(fruit, k, per) > 0:
+		return STAGE_S4
+	if share(int(v["open_flower_count"][i]), k, per) > 0:
+		return STAGE_S3
+	return STAGE_S1 if stage_of(v["leaf_g_per_m2"][i]) == 0 else STAGE_S2
+
+
 # 칸 안의 포기 자리 8개 (칸 기준 0~1, 2줄 × 4). 자리만 조금씩 어긋나게 (고정된 값, 난수 없음)
 static func plant_offsets(n: int) -> Array:
 	var out := []

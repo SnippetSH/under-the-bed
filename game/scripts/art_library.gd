@@ -12,6 +12,13 @@ const SPRITE_DIR := "res://art/sprites"
 const ICON_DIR := "res://art/icons"
 
 const PLANT_SLOTS := ["plant_stage1", "plant_stage2", "plant_stage3", "plant_stage4", "plant_dead", "flower", "fruit_green", "fruit_red"]
+# 디렉터 딸기 생육 단계 모델 (2026-11-20, .obj + 함께 쓰는 strawberry_stages.mtl). 꽃·열매가 모델 안에 있어요.
+# 순서 = plant_art.gd의 STAGE_* 번호. 코드 자리 채움 모델이 없어서, 꼭 있어야 할 자리(STAGE_REQUIRED)가 하나라도 없으면
+# 화면은 예전 자리(PLANT_SLOTS: 크기 4단계 + 덧붙임)로 돌아가요. 런너 둘은 선택: 하나만 있으면 그것을 같이 쓰고, 둘 다 없으면 런너 모습 없음
+const STAGE_SLOTS := ["strawberry_s1_transplant", "strawberry_s2_vegetative", "strawberry_s3_flowering", "strawberry_s4_fruit_set",
+		"strawberry_s5_harvest", "strawberry_s6_runners", "strawberry_s6_runners_no_berrys", "strawberry_s7_dead"]
+const STAGE_REQUIRED := ["strawberry_s1_transplant", "strawberry_s2_vegetative", "strawberry_s3_flowering", "strawberry_s4_fruit_set",
+		"strawberry_s5_harvest", "strawberry_s7_dead"]
 const STRUCTURE_SLOTS := ["house_frame", "bed", "mulch_clear", "mulch_black", "mulch_white", "aisle_floor"]
 const DEVICE_SLOTS := ["heater", "fan_switch", "window_panel", "workbench_seedlings", "workbench_cover", "door", "drip_valve", "irrigation_controller", "ceiling_fan", "ceiling_fan_blades"]
 const CHARACTER_SPRITES := ["character_front", "character_back", "character_side"]
@@ -25,15 +32,24 @@ const REFERENCE_HOUSE_WIDTH_M := 6.7   # house_frame 모델의 기준 폭 (기�
 
 static var _cache := {}
 static var plant_detail := 1           # 자리 채움 포기의 세밀함 (프레임 시간 측정용)
+static var model_dir := MODEL_DIR      # 검사용: 다른 폴더를 가리키면 "모델 파일 없음"을 흉내 내요 (C10·C13)
 
 
 static func clear_cache() -> void:
 	_cache.clear()
 
 
+# 딸기 생육 단계 모델을 쓸 수 있는지 (꼭 있어야 할 자리가 전부 파일로 있음)
+static func has_stage_models() -> bool:
+	for slot in STAGE_REQUIRED:
+		if model_path(slot) == "":
+			return false
+	return true
+
+
 static func model_path(slot: String) -> String:
 	for ext in ["glb", "obj"]:
-		var p := MODEL_DIR.path_join("%s.%s" % [slot, ext])
+		var p := model_dir.path_join("%s.%s" % [slot, ext])
 		if FileAccess.file_exists(p):
 			return p
 	return ""
@@ -303,7 +319,7 @@ static func tool_icon(tool_id: String, px := 128) -> Texture2D:
 # 자리마다 지금 무엇을 쓰는지 (README·보고용)
 static func report() -> Array:
 	var out := []
-	for slot in PLANT_SLOTS + STRUCTURE_SLOTS + DEVICE_SLOTS:
+	for slot in STAGE_SLOTS + PLANT_SLOTS + STRUCTURE_SLOTS + DEVICE_SLOTS:
 		var m := model(slot)
 		out.append({"slot": slot, "source": ("placeholder" if m.get("placeholder", true) else m.get("path", "")) if not m.is_empty() else "none", "tris": m.get("tris", 0)})
 	for s in CHARACTER_SPRITES:

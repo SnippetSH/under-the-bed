@@ -2,6 +2,8 @@
 # 읽는 것: CharSession의 캐릭터·표시, SimWorld의 보이는 것(get_tile_visuals). 진짜 값 접근자(get_true 계열)는 안 불러요.
 # 좌표: 바닥 (x, z) → Vector3(x, 높이, z). 카메라는 안쪽 끝(큰 z) 쪽에서 출입구(z 0 쪽)를 바라봐요.
 # P7: 모델은 art_library.gd가 art/models/에서 찾고, 없으면 코드 자리 채움 모델을 써요. 포기 640개는 MultiMesh로 그려요.
+# 2026-11-20: 디렉터 딸기 생육 단계 모델(strawberry_s1~s7)이 있으면 단계마다 MultiMesh 하나로 그리고(꽃·열매가 모델 안), 고르는 규칙은
+# plant_art.stage_for_plant (늦봄 런너 모습은 꾸밈만, 고정 해시). 없으면 예전 크기 4단계 + 덧붙임으로 그려요.
 extends Node3D
 
 const Cfg = preload("res://scripts/cfg.gd")
@@ -32,6 +34,14 @@ var rig: Node3D = null            # art/models/character.glb가 있으면 3D 캐
 var _mm := {}                    # 자리 -> MultiMeshInstance3D
 var _mulch_mm := {}              # 멀칭 종류 -> MultiMeshInstance3D
 var _plant_xf: Array = []        # 포기마다 기본 변환 (자리 + 꾸밈 회전·크기)
+# 딸기 생육 단계 모델(art/models/strawberry_s*.obj)이 있으면 그것으로(꽃·열매가 모델 안에 있어서 덧붙임 없음),
+# 없으면 예전 자리(크기 4단계 + 덧붙임)로 그려요. 정하는 것은 setup 때 한 번 (art_library.has_stage_models)
+var stage_mode := false
+var _stage_xf: Array = []        # 단계 모델용 변환 (기본 변환 × stage_model_scale)
+var _stage_has_berries := true
+var _stage_has_no_berries := true
+var _drawn_stage := PackedInt32Array()   # 포기마다 이번에 그린 단계 모델 번호 (-1 없음, 검사용)
+var runner_steps_now := 0        # 이번 그림의 런너 단계 수 (검사·개발용)
 var _addon_off := {}             # "flower"/"fruit_green"/"fruit_red" -> 단계별 [Vector3...]
 var _fruit_tilt := 1.2
 var _per := 8
@@ -55,9 +65,7 @@ static func v3(p: Vector2, y := 0.0) -> Vector3:
 
 
 static func _h01(i: int, salt: int) -> float:
-	var x := (i * 73856093) ^ (salt * 19349663)
-	x = (x ^ (x >> 13)) * 1274126177
-	return float(absi(x) % 10007) / 10007.0
+	return Art.hash01(i, salt)
 
 
 func _mat(c: Color, tex: Texture2D = null) -> StandardMaterial3D:
@@ -233,6 +241,13 @@ func setup(s: Object) -> void:
 			var yaw := (_h01(idx, 1) * 2.0 - 1.0) * yaw_j
 			var sc := 1.0 + (_h01(idx, 2) * 2.0 - 1.0) * sc_j
 			_plant_xf.append(Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc)), v3(cr.position + o * cr.size, _bed_h)))
+	stage_mode = Lib.has_stage_models()
+	_stage_has_berries = Lib.model_path(Lib.STAGE_SLOTS[Art.STAGE_S6_BERRIES]) != ""
+	_stage_has_no_berries = Lib.model_path(Lib.STAGE_SLOTS[Art.STAGE_S6_NO_BERRIES]) != ""
+	var st_sc := float(Cfg.get_v("plant_models", "stage_model_scale"))
+	_stage_xf = _plant_xf.map(func(xf: Transform3D): return Transform3D(xf.basis.scaled_local(Vector3(st_sc, st_sc, st_sc)), xf.origin))
+	_drawn_stage.resize(_plant_xf.size())
+	_drawn_stage.fill(-1)
 	_build_plant_multimeshes()
 	# 장치 (앞면 +Z = 카메라 쪽)
 	var font := _font()
@@ -326,9 +341,18 @@ func setup(s: Object) -> void:
 
 func _build_plant_multimeshes() -> void:
 	var cap: int = _plant_xf.size()
+	for slot in _mm:
+		_mm[slot].queue_free()
+	_mm.clear()
+	if stage_mode:
+		# 단계마다 MultiMesh 하나 (포기 640개가 다 같은 단계일 수 있어서 용량 = 포기 수). 파일이 없는 런너 자리는 만들지 않아요
+		for slot in Lib.STAGE_SLOTS:
+			var m := Lib.model(slot)
+			if not m.is_empty():
+				_mm[slot] = _multimesh(m["mesh"], cap)
+		_last_v = {}
+		return
 	for slot in PLANT_MM_SLOTS:
-		if _mm.has(slot):
-			_mm[slot].queue_free()
 		var mult := 1
 		if slot == "flower":
 			mult = 4
@@ -343,6 +367,7 @@ func rebuild_plants(detail: int) -> int:
 	Lib.plant_detail = detail
 	for slot in PLANT_MM_SLOTS:
 		Lib._cache.erase(slot)
+	stage_mode = false   # 자리 채움 모델 측정용이라 예전 자리로 그려요
 	_build_plant_multimeshes()
 	refresh_visuals()
 	return int(Lib.model("plant_stage4")["tris"])
@@ -395,8 +420,11 @@ func refresh_visuals() -> void:
 	var L: Object = session.layout
 	var n_cells: int = L.rows * L.cols
 	var counts := {}
-	for slot in PLANT_MM_SLOTS:
+	for slot in _mm:
 		counts[slot] = 0
+	if stage_mode:
+		runner_steps_now = Art.runner_steps(w.get_time())
+		_drawn_stage.fill(-1)
 	var mul_counts := {}
 	for kind in _mulch_mm:
 		mul_counts[kind] = 0
@@ -411,6 +439,16 @@ func refresh_visuals() -> void:
 		if preview_plant and (key == "e" or key == "d"):
 			key = "p0000"
 		if key == "e":
+			continue
+		if stage_mode:
+			# 딸기 단계 모델: 포기마다 칸 개수의 몫으로 단계를 골라요(plant_art.stage_for_plant). 미리 보기는 전부 s1
+			for k in range(_per):
+				var st := Art.STAGE_S1 if key == "p0000" and preview_plant and (v["crop_present"][i] == 0 or v["crop_alive"][i] == 0) \
+						else Art.stage_for_plant(v, i, k, _per, runner_steps_now, _stage_has_berries, _stage_has_no_berries)
+				if st < 0:
+					continue
+				_drawn_stage[i * _per + k] = st
+				_put(Lib.STAGE_SLOTS[st], _stage_xf[i * _per + k], counts)
 			continue
 		var base_slot := "plant_dead"
 		var stage := 3
@@ -435,7 +473,7 @@ func refresh_visuals() -> void:
 			var ro: Array = _addon_off["fruit_red"][stage - 1]
 			for j in range(mini(_share(rp_n, k), ro.size())):
 				_put("fruit_red", xf * Transform3D(Basis(Vector3.UP, j * 2.4 + 1.0) * Basis(Vector3.RIGHT, _fruit_tilt), ro[j]), counts)
-	for slot in PLANT_MM_SLOTS:
+	for slot in _mm:
 		_mm[slot].multimesh.visible_instance_count = counts[slot]
 	for kind in _mulch_mm:
 		_mulch_mm[kind].multimesh.visible_instance_count = mul_counts[kind]
@@ -449,8 +487,8 @@ func _share(total: int, k: int) -> int:
 # 검사용: 칸 하나에 그려진 덧붙임 수 {flower, fruit_green, fruit_red}
 func drawn_addons_for_cell(cell: int) -> Dictionary:
 	var out := {"flower": 0, "fruit_green": 0, "fruit_red": 0}
-	if _last_v.is_empty():
-		return out
+	if _last_v.is_empty() or stage_mode:
+		return out   # 단계 모델은 꽃·열매가 모델 안에 있어서 덧붙임이 없어요
 	var key := Art.key_for(_last_v, cell)
 	if key == "e" or key == "d":
 		return out
@@ -474,8 +512,23 @@ func _put(slot: String, xf: Transform3D, counts: Dictionary) -> void:
 
 func plant_instance_counts() -> Dictionary:
 	var out := {}
-	for slot in PLANT_MM_SLOTS:
+	for slot in _mm:
 		out[slot] = _mm[slot].multimesh.visible_instance_count
+	return out
+
+
+# 정식 직후·미리 보기 모종을 그리는 자리 이름 (단계 모델이면 s1, 아니면 크기 단계 1)
+func seedling_slot() -> String:
+	return Lib.STAGE_SLOTS[Art.STAGE_S1] if stage_mode else "plant_stage1"
+
+
+# 검사용: 칸 하나의 포기 8개가 이번에 그린 단계 모델 번호 (plant_art STAGE_*, -1 = 없음). 단계 모델이 아니면 빈 배열
+func drawn_stages_for_cell(cell: int) -> Array:
+	if not stage_mode:
+		return []
+	var out := []
+	for k in range(_per):
+		out.append(_drawn_stage[cell * _per + k])
 	return out
 
 
