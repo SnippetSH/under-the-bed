@@ -1,8 +1,8 @@
-# M5b 시나리오 (프로토타입 0~6차)
+# M5b 시나리오 (프로토타입 0~7차)
 
 스키마는 7이에요 (`[house] drip_installed`, `[microbes] anthracnose`, `[foliar]` 필수, [foliar-disease](../../../docs/spec/foliar-disease.md) 8장).
 값은 모두 게임용 임의값이에요. 길이는 시나리오 파일이 아니라 sim-cli의 `--ticks`로 정해요.
-`s26_closed`, `s26_vented`, `s27`~`s32`(S29 포함)는 `tools/gen_m5b_scenarios.py`가 만들어요 (고치려면 스크립트를 고치고 다시 돌려요).
+`s26_closed`, `s26_vented`, `s27`~`s32`(S29 포함), `s34_*`는 `tools/gen_m5b_scenarios.py`가 만들어요 (고치려면 스크립트를 고치고 다시 돌려요).
 병해 시나리오의 배경 포자는 잿빛곰팡이 0.05, 흰가루병 0.02, 모종 등급 B예요 (다르면 아래에 적어요). 새 시나리오 시드는 20261119예요.
 
 ## 표준 방사 (6차)
@@ -78,8 +78,11 @@ B8(응애 지수 0.05 이하·15~28 도·습도 0.6 이상에서 방사), B20(�
 | `s31_predator` | 틱 1800 (11/25, 응애 지수 약 0.045) | 틱 1800~2808 (6주) | B8 |
 | `s31_predator_late` | 틱 3600 (2/2, 응애 지수 약 0.167) | 틱 3600~4608 | B20 (이 구간 한낮 평균 27 도, 일 최고 35 도) |
 | `s31_predator_dry` | 틱 1800 | 틱 1800~2808 | B9: 같은 시점 방사 + 건조 |
+| `s31_none_dry` | 없음 | (기준) | `s31_predator_dry`의 건조 대조: 같은 건조 기상·환기·난방(틱 1800~2808, 이후 난방 10 도·창 닫힘), 방사만 없음 |
 
-**건조 변형** (`data/weather/synthetic_year_dry_winter.csv`): `python tools/gen_weather_dry.py data/weather/synthetic_year.csv data/weather/synthetic_year_dry_winter.csv --factor 0.1 --doy-range 328 5`로 만들었어요 (`FROM > TO`면 연말을 넘어가는 범위, 11/24~1/5의 바깥 습도만 0.1배). 방사 후 6주 동안 난방 24 도 + 매일 8~16시 창 6개 전부 30%라 창 안 하우스 습도 평균이 0.58이에요 (한낮 평균 19.7 도, 일 최고 24 도). 6주가 지나면 난방 10 도, 창 닫힘으로 돌아가요. 방사 전까지는 `s31_predator`와 똑같아요. 건조하면 응애도 빨리 늘어서, 방사 없는 같은 건조 조건 대조와 비교해야 해요 (대조의 +3주·+5주 응애 0.412·0.818, `s31_predator_dry`는 0.281·0.667).
+**건조 변형** (`data/weather/synthetic_year_dry_winter.csv`): `python tools/gen_weather_dry.py data/weather/synthetic_year.csv data/weather/synthetic_year_dry_winter.csv --factor 0.1 --doy-range 328 5`로 만들었어요 (`FROM > TO`면 연말을 넘어가는 범위, 11/24~1/5의 바깥 습도만 0.1배). 방사 후 6주 동안 난방 24 도 + 매일 8~16시 창 6개 전부 30%라 창 안 하우스 습도 평균이 0.58이에요 (한낮 평균 19.7 도, 일 최고 24 도). 6주가 지나면 난방 10 도, 창 닫힘으로 돌아가요. 방사 전까지는 `s31_predator`와 똑같아요. 건조하면 응애도 빨리 늘어서, 방사 없는 같은 건조 조건 대조(`s31_none_dry`)와 비교해야 해요 (대조의 +3주·+5주 응애 0.412·0.818, `s31_predator_dry`는 0.261·0.617, 최종 값 기준 감소 37%·25%).
+
+**방사량 보류 (디렉터 결정 46)**: S31 방사량 15 마리/m2는 보류예요. 구현 뒤 15/75/135 마리/m2 비교로 정해요. 그때까지 커밋된 `s31_predator*.toml`은 15를 그대로 두고, 다른 방사량은 커밋된 파일을 건드리지 않고 생성기로 `runs/` 아래에 만들어요: `python tools/gen_m5b_scenarios.py --s31-release-per-m2 75 --out-dir runs/s31_release75 --only s31` (135도 같은 방식).
 
 ### S32 흰가루병 (측정 창 3/1~5/15, day 60~135, 틱 4128~5951, 5952틱)
 

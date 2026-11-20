@@ -1,14 +1,20 @@
-"""M5b 5차 프로토타입 시나리오 생성기 (S26 병해 변형, S27~S32, docs/spec/foliar-disease.md 9장).
+"""M5b 시나리오 생성기 (S26 병해 변형, S27~S32, S34, docs/spec/foliar-disease.md 9장).
 
-data/scenarios/m5b/ 에 s26_closed/s26_vented, s27~s32 시나리오를 써요. s26 습도 변형(s26_heated 등)은 이미 있는 파일(s26_heated)에서 토양·작물을 읽고,
+data/scenarios/m5b/ 에 s26_closed/s26_vented, s27~s32, s34 시나리오를 써요. s26 습도 변형(s26_heated 등)은 이미 있는 파일(s26_heated)에서 토양·작물을 읽고,
 s29와 가을 작기 시나리오(s26_closed/vented, s27, s30~s32)의 원본은 m4 season_standard예요.
 고치려면 이 스크립트를 고치고 다시 돌려요 (UTF-8, BOM 없음, LF). 값은 전부 게임용 임의값이에요.
 
     python tools/gen_m5b_scenarios.py
+
+S31 천적 방사량(기본 15 마리/m2, 디렉터 결정 46: 구현 뒤 15/75/135 비교 전까지 보류)을 바꾼 변형은
+커밋된 파일을 건드리지 않고 다른 폴더에 만들어요 (--only s31 은 이름이 s31로 시작하는 시나리오만):
+
+    python tools/gen_m5b_scenarios.py --s31-release-per-m2 75 --out-dir runs/s31_release75 --only s31
 """
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import math
 import re
@@ -18,7 +24,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 OUT = REPO / "data/scenarios/m5b"
 SEED = 20261119
 HOURS = 24
-NEW_ACTIONS = {"set_fan", "release_predators", "remove_plant", "install_drip"}
+WEATHER_DIR = "../../weather"  # 시나리오 파일 기준 기상 폴더 (main이 --out-dir에 맞춰 바꿔요)
 
 
 def fmt(v) -> str:
@@ -60,11 +66,9 @@ class Sched:
         self.windows(layers, start_day * HOURS + open_h, frac, days, comment, n)
         self.windows(layers, start_day * HOURS + close_h, 0.0, days, None, n)
 
-    def render(self, legacy: bool) -> str:
+    def render(self) -> str:
         out = []
         for comment, e in self.events:
-            if legacy and e["action"] in NEW_ACTIONS:
-                continue
             if comment:
                 out.append(f"# {comment}\n")
             lines = ["[[schedule]]"] + [f"{k} = {fmt(v)}" for k, v in e.items()]
@@ -98,15 +102,6 @@ def with_soil_temp(soil: str, t: float) -> str:
     return re.sub(r"soil_temp_degC = [\d.]+", f"soil_temp_degC = {t}", soil)
 
 
-def downgrade(t: str) -> str:
-    """스키마 7 텍스트를 옛 코어(스키마 6)가 읽는 형태로 (임시 탐색용)."""
-    t = t.replace("schema_version = 7", "schema_version = 6")
-    t = re.sub(r"^drip_installed = .*\n", "", t, flags=re.M)
-    t = re.sub(r"^anthracnose = .*\n", "", t, flags=re.M)
-    t = re.sub(r"\[foliar\].*?\n\n", "", t, flags=re.S)
-    return t
-
-
 def microbes_block(anthracnose: float = 0.0) -> str:
     b = MICROBES_S26
     b = re.sub(r"anthracnose = [\d.]+", f"anthracnose = {anthracnose}", b)
@@ -114,30 +109,27 @@ def microbes_block(anthracnose: float = 0.0) -> str:
 
 
 def render(*, name, comment, start_doy, layers, drip, soil, crop, sched: Sched, bg=(0.05, 0.02), weather="synthetic_year",
-           legacy=False, microbes=None) -> str:
+           microbes=None) -> str:
     head = "\n".join(f"# {c}" for c in comment)
     micro = microbes or microbes_block()
-    if legacy:
-        micro = re.sub(r"^anthracnose = .*\n", "", micro, flags=re.M)
     parts = [
         f"{head}\n# 값은 전부 게임용 임의값이에요. 이 파일은 tools/gen_m5b_scenarios.py가 만들어요(고치려면 스크립트를 고쳐요).\n",
-        f"schema_version = {6 if legacy else 7}\n",
+        "schema_version = 7\n",
         f"""[scenario]
 name = "m5b/{name}"
 seed = {SEED}
 start_day_of_year = {start_doy}
-weather_csv = "../../weather/{weather}.csv" # 이 파일 기준 상대 경로
+weather_csv = "{WEATHER_DIR}/{weather}.csv" # 이 파일 기준 상대 경로
 """,
         "[house]\nbed_rows = 4\nbed_cols = 20\n" + f"cover_layers = {layers}\n"
-        + ("" if legacy else f"drip_installed = {fmt(drip)}\n"),
+        + f"drip_installed = {fmt(drip)}\n",
         soil,
         crop,
         micro,
     ]
-    if not legacy:
-        parts.append(f"[foliar]  # 바깥에서 늘 들어오는 포자 수준 (병해 시나리오 기본값: 잿빛곰팡이 0.05, 흰가루병 0.02)\n"
-                     f"botrytis_background_index = {bg[0]}\npowdery_mildew_background_index = {bg[1]}\n")
-    parts += ['[difficulty]\nstress_combination = "minimum"\n', sched.render(legacy)]
+    parts.append(f"[foliar]  # 바깥에서 늘 들어오는 포자 수준 (병해 시나리오 기본값: 잿빛곰팡이 0.05, 흰가루병 0.02)\n"
+                 f"botrytis_background_index = {bg[0]}\npowdery_mildew_background_index = {bg[1]}\n")
+    parts += ['[difficulty]\nstress_combination = "minimum"\n', sched.render()]
     return "\n".join(parts)
 
 
@@ -278,6 +270,7 @@ def build(cfg: dict) -> dict[str, tuple[int, str]]:
     # 모두 season_standard 기반 가을 작기에서 표준 방사(틱 24)를 뺀 것. 창 시작(early_tick)부터 같은 관리: 난방 + 창 닫힘 (낮 15~28 도)
     e_t, l_t, s31_end = cfg["s31_early_tick"], cfg["s31_late_tick"], cfg["s31_end_tick"]
     six = 6 * 7 * HOURS
+    rel = cfg["s31_release_per_m2"]  # 천적 방사량 (마리/m2). 결정 46: 15는 보류, 구현 뒤 15/75/135 비교
     s31_common = ["가을 작기(9/10 정식, day 253, 등급 B 모종)가 m4 season_standard와 같은 시작·토양·작물·비료·관수·창·피복(3겹)으로 가요. 단 표준 방사(틱 24)는 뺐어요 (S31이 천적을 직접 다뤄요).",
                   f"창 시작(틱 {e_t}, 11/25)부터 모든 S31 시나리오가 같은 관리: 난방 {cfg['s31_heater']} 도, 창 닫힘 (season_standard의 창·난방 일정은 지움). 길이는 모두 {s31_end}틱.",
                   f"시드 {SEED}, 배경 포자 잿빛곰팡이 0.05, 흰가루병 0.02"]
@@ -296,13 +289,15 @@ def build(cfg: dict) -> dict[str, tuple[int, str]]:
                     s.day_vent(3, v[0], v[1], v[2], six // HOURS, e_t // HOURS, f"건조 변형: 창 안 매일 {v[0]}~{v[1]}시 창 전부 {int(v[2] * 100)}%")
                 s.add(d_end, "set_heater", f"6주 뒤 난방 {cfg['s31_heater']} 도로 되돌림", on=True, setpoint_degC=cfg["s31_heater"])
             if release is not None:
-                s.add(release, "release_predators", f"천적 방사: 틱 {release} 칠레이리응애 15마리/m2", predator="persimilis", per_m2=15.0)
+                s.add(release, "release_predators", f"천적 방사: 틱 {release} 칠레이리응애 {rel:g}마리/m2", predator="persimilis", per_m2=rel)
         return f
 
     for nm, cm, kw in (
             ("s31_none", "S31 방사 없음: 이후 세 시나리오의 기준 (같은 관리, 천적 방사 없음)", dict()),
-            ("s31_predator", f"S31 일찍 방사: 틱 {e_t}(11/25, 하우스 평균 응애 지수 약 0.045)에 칠레이리응애 15마리/m2 (B8)", dict(release=e_t)),
-            ("s31_predator_late", f"S31 늦은 방사: 틱 {l_t}(2/2, 하우스 평균 응애 지수 약 0.16)에 15마리/m2 (B20)", dict(release=l_t)),
+            ("s31_none_dry", "S31 건조 대조: s31_predator_dry와 같은 건조 기상·환기·난방(방사 후 6주), 천적 방사 없음 — s31_predator_dry의 비교 기준 (m5-overview 15.3 항목 28)",
+             dict(dry=True, weather="synthetic_year_dry_winter")),
+            ("s31_predator", f"S31 일찍 방사: 틱 {e_t}(11/25, 하우스 평균 응애 지수 약 0.045)에 칠레이리응애 {rel:g}마리/m2 (B8)", dict(release=e_t)),
+            ("s31_predator_late", f"S31 늦은 방사: 틱 {l_t}(2/2, 하우스 평균 응애 지수 약 0.16)에 {rel:g}마리/m2 (B20)", dict(release=l_t)),
             ("s31_predator_dry", f"S31 건조: s31_predator와 같은 시점에 방사, 방사 후 6주 동안 건조 기상(synthetic_year_dry_winter.csv, 11/24~1/5만 바깥 습도 x {cfg['dry_factor']}) + 환기·난방 (B9)",
              dict(release=e_t, dry=True, weather="synthetic_year_dry_winter"))):
         put(autumn_scenario(nm, [cm] + s31_common, window_tick=e_t, run_days=s31_end // HOURS, standard_release=False,
@@ -333,6 +328,19 @@ def build(cfg: dict) -> dict[str, tuple[int, str]]:
         t = re.sub(r"powdery_mildew_background_index = [\d.]+", "powdery_mildew_background_index = 0.02", t)
         t = f"# {label}: m4/{src}와 같은 처방·기후·모종(등급 B) + 병해 배경 포자(잿빛곰팡이 0.05, 흰가루병 0.02). 263일(6312틱), 시드 {SEED}\n# 원본 파일: data/scenarios/m4/{src}.toml (이 파일은 tools/gen_m5b_scenarios.py가 복사해서 만들어요)\n" + t
         res[nm] = (263, t)
+
+    # ---- S34: m4 season 복사 + 배경 포자 (시드는 m4 원본 그대로 20261118)
+    for src, nm, head in (
+            ("season_standard", "s34_season_spores",
+             "# S34 배경 포자 시즌: m4 season_standard와 같고 바깥 배경 포자(잿빛곰팡이 0.05, 흰가루병 0.02)만 넣음 (2026-11-20 디렉터 요청). 263일 = --ticks 6312. 게임용 임의값"),
+            ("season_n_excess", "s34_season_spores_n_excess",
+             "# S34 배경 포자 시즌, 질소 과다: m4 season_n_excess + 배경 포자(0.05, 0.02) (2026-11-20). 263일 = --ticks 6312. 게임용 임의값")):
+        t = read(f"data/scenarios/m4/{src}.toml")
+        t = t.replace(f'name = "m4/{src}"', f'name = "m5b/{nm}"')
+        t = re.sub(r"botrytis_background_index = [\d.]+", "botrytis_background_index = 0.05", t)
+        t = re.sub(r"powdery_mildew_background_index = [\d.]+", "powdery_mildew_background_index = 0.02", t)
+        t = head + "\n" + t.split("\n", 1)[1]  # 첫 줄(m4 원본 설명)을 S34 설명으로 바꿔요
+        res[nm] = (263, t)
     return res
 
 
@@ -344,23 +352,31 @@ CFG = dict(
     s32_dark_vent=[(8, 16, 0.3)],
     s32_dry_vent=[(8, 17, 0.5)], s32_dry_heat=24.0,
     s31_early_tick=1800, s31_late_tick=3600, s31_end_tick=4608, s31_heater=10.0,
+    s31_release_per_m2=15.0,
     dry_heat=24.0, dry31_vent=[(8, 16, 0.3)], dry_factor=0.1,
 )
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--cfg", help="CFG 덮어쓰기 (python dict 리터럴)")
+    global WEATHER_DIR
+    ap = argparse.ArgumentParser(description="M5b 시나리오 생성기")
+    ap.add_argument("--s31-release-per-m2", type=float, default=CFG["s31_release_per_m2"],
+                    help="S31 천적 방사량 (마리/m2). 기본값은 커밋된 파일의 값(15)이에요")
+    ap.add_argument("--out-dir", type=pathlib.Path, default=OUT,
+                    help="출력 폴더 (기본 data/scenarios/m5b). 방사량 변형은 runs/ 아래처럼 다른 곳에 써요")
+    ap.add_argument("--only", help="이 문자열로 시작하는 이름의 시나리오만 써요 (예: s31)")
     a = ap.parse_args()
     cfg = dict(CFG)
-    if a.cfg:
-        cfg.update(eval(a.cfg))  # 임시 탐색용
-    out = OUT
+    cfg["s31_release_per_m2"] = a.s31_release_per_m2
+    out = a.out_dir.resolve()
     out.mkdir(parents=True, exist_ok=True)
+    WEATHER_DIR = pathlib.PurePath(os.path.relpath(REPO / "data/weather", out)).as_posix()
     res = build(cfg)
     for nm, (days, text) in sorted(res.items()):
+        if a.only and not nm.startswith(a.only):
+            continue
         (out / f"{nm}.toml").write_text(text, encoding="utf-8", newline="\n")
-        print(f"{nm:24s} {days:4d} days {days * HOURS:5d} ticks")
+        print(f"{nm:28s} {days:4d} days {days * HOURS:5d} ticks")
 
 
 if __name__ == "__main__":
