@@ -268,3 +268,11 @@ func part_e() -> void:
 			stray.append(f)
 	check(stray.is_empty(), "E: stray temp/backup files left behind: %s" % [stray])
 	check(entry_of("slot_1")["can_load"], "E: slot_1 should load")
+	# 저장 폴더가 아직 없는 처음 실행: 목록은 빈 칸뿐이고 엔진 오류가 찍히지 않아요 (검사 실행기가 오류 줄을 잡아요)
+	var keep := SaveStore.dir
+	SaveStore.dir = keep.path_join("never_created")
+	var fresh := SaveStore.list_saves()
+	check(fresh.size() == SaveStore.canonical_ids().size() and fresh.all(func(e): return e["status"] == "empty"),
+			"E: a missing save folder should list only empty slots")
+	check(SaveStore.latest_loadable() == "", "E: nothing to continue in a missing save folder")
+	SaveStore.dir = keep

@@ -174,7 +174,9 @@ static func list_saves() -> Array:
 		seen[id + EXT] = true
 		out.append(_entry(id))
 	var extra: Array = []
-	for f in DirAccess.get_files_at(ProjectSettings.globalize_path(dir)):
+	var dir_abs := ProjectSettings.globalize_path(dir)
+	# 저장 폴더가 아직 없으면(처음 실행) 목록은 빈 칸뿐이에요 (없는 폴더를 열면 엔진이 오류를 찍어요)
+	for f in (DirAccess.get_files_at(dir_abs) if DirAccess.dir_exists_absolute(dir_abs) else PackedStringArray()):
 		if f.ends_with(EXT) and not seen.has(f):
 			extra.append(f.trim_suffix(EXT))
 	extra.sort()
